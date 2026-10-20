@@ -26,17 +26,17 @@ impl Drop for BlockingRegion {
     }
 }
 
-pub(crate) fn on_tokio_worker() -> bool {
+pub fn on_tokio_worker() -> bool {
     thread::current()
         .name()
         .is_some_and(|n| n.starts_with("tokio-rt-worker"))
 }
 
-pub(crate) fn in_blocking_region() -> bool {
+pub fn in_blocking_region() -> bool {
     BLOCKING_DEPTH.with(|d| d.get() > 0)
 }
 
-pub(crate) fn assert_not_reactor(what: &'static str) {
+pub fn assert_not_reactor(what: &'static str) {
     assert!(
         !on_tokio_worker() || in_blocking_region(),
         "{what} on tokio-rt-worker"

@@ -8,19 +8,20 @@ use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-fn wait_chain_tip(ctx: &RpcContext) {
+#[doc(hidden)]
+pub fn wait_chain_tip(ctx: &RpcContext) {
     if let Some(c) = ctx.chain.as_ref() {
         c.wait_tip_stable_for_rpc();
     }
 }
 
-pub(crate) fn getblockcount(ctx: &RpcContext) -> Result<Value, Value> {
+pub fn getblockcount(ctx: &RpcContext) -> Result<Value, Value> {
     wait_chain_tip(ctx);
     let h = ctx.query.tip_height().map(|h| h.0).unwrap_or(0);
     Ok(json!(h))
 }
 
-pub(crate) fn getbestblockhash(ctx: &RpcContext) -> Result<Value, Value> {
+pub fn getbestblockhash(ctx: &RpcContext) -> Result<Value, Value> {
     wait_chain_tip(ctx);
     let Some(tip) = ctx.query.tip_height() else {
         return Err(rpc_error(ERR_MISC, "no tip"));
@@ -33,7 +34,7 @@ pub(crate) fn getbestblockhash(ctx: &RpcContext) -> Result<Value, Value> {
     Ok(json!(hash_hex_display(&rec.hash)))
 }
 
-pub(crate) fn getblockhash(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getblockhash(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["height"])?;
     let height = params.req_u64(0, "height")? as u32;
     let (_, rec) = ctx
@@ -44,7 +45,7 @@ pub(crate) fn getblockhash(ctx: &RpcContext, params: &RpcParams) -> Result<Value
     Ok(json!(hash_hex_display(&rec.hash)))
 }
 
-pub(crate) fn getblockchaininfo(ctx: &RpcContext) -> Result<Value, Value> {
+pub fn getblockchaininfo(ctx: &RpcContext) -> Result<Value, Value> {
     let tip = ctx.query.tip_height().map(|h| h.0).unwrap_or(0);
     let best = if let Some(h) = ctx.query.tip_height() {
         ctx.query
@@ -115,7 +116,7 @@ pub(crate) fn getblockchaininfo(ctx: &RpcContext) -> Result<Value, Value> {
 }
 
 /// Bitcoin Core includes `signet_challenge` only on signet.
-pub(crate) fn signet_challenge_hex(ctx: &RpcContext) -> Option<String> {
+pub fn signet_challenge_hex(ctx: &RpcContext) -> Option<String> {
     if ctx.network != Network::Signet {
         return None;
     }
@@ -127,7 +128,7 @@ pub(crate) fn signet_challenge_hex(ctx: &RpcContext) -> Option<String> {
     Some(rbitcoin_primitives::hex_encode(script.as_bytes()))
 }
 
-pub(crate) fn rpc_warnings(ctx: &RpcContext) -> Vec<String> {
+pub fn rpc_warnings(ctx: &RpcContext) -> Vec<String> {
     let w = rbitcoin_net::warning_strings(ctx.query.as_ref(), ctx.network);
     if !w.is_empty()
         && ctx
@@ -178,19 +179,19 @@ pub(crate) fn rpc_warnings(ctx: &RpcContext) -> Vec<String> {
 /// RPCs use that. `getmininginfo` puts this float straight into JSON, which
 /// is `null` when it is non-finite. A connected tip cannot have a zero
 /// target.
-pub(crate) fn difficulty_from_bits(bits: u32) -> f64 {
+pub fn difficulty_from_bits(bits: u32) -> f64 {
     bitcoin::Target::from_compact(bitcoin::CompactTarget::from_consensus(bits)).difficulty_float()
 }
 
 /// Compact-target bytes as Core `target` (64 hex chars).
-pub(crate) fn target_hex(bits: u32) -> String {
+pub fn target_hex(bits: u32) -> String {
     let target = bitcoin::Target::from_compact(bitcoin::CompactTarget::from_consensus(bits));
     format!("{target:064x}")
 }
 
 /// Core `UniValue` `setprecision(16)` defaultfloat. Keeps the 16th significant
 /// digit (`132757073449487.52` prints `132757073449487.5`).
-pub(crate) fn format_core_double(v: f64) -> String {
+pub fn format_core_double(v: f64) -> String {
     if !v.is_finite() || v == 0.0 {
         return "0".to_string();
     }
@@ -228,7 +229,7 @@ pub(crate) fn format_core_double(v: f64) -> String {
     }
 }
 
-pub(crate) fn core_f64_json(v: f64) -> Value {
+pub fn core_f64_json(v: f64) -> Value {
     let s = format_core_double(v);
     Value::Number(s.parse().expect("core double decimal"))
 }
@@ -240,7 +241,7 @@ pub fn difficulty_rpc_f64(bits: u32) -> f64 {
         .expect("core difficulty decimal")
 }
 
-pub(crate) fn difficulty_at_tip(ctx: &RpcContext) -> Result<f64, Value> {
+pub fn difficulty_at_tip(ctx: &RpcContext) -> Result<f64, Value> {
     let tip = ctx
         .query
         .tip_height()
@@ -253,11 +254,11 @@ pub(crate) fn difficulty_at_tip(ctx: &RpcContext) -> Result<f64, Value> {
     Ok(difficulty_from_bits(rec.bits))
 }
 
-pub(crate) fn getdifficulty(ctx: &RpcContext) -> Result<Value, Value> {
+pub fn getdifficulty(ctx: &RpcContext) -> Result<Value, Value> {
     Ok(core_f64_json(difficulty_at_tip(ctx)?))
 }
 
-pub(crate) fn getblockheader(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getblockheader(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash", "verbose"])?;
     let hash_hex = params.req_str(0, "blockhash")?;
     let verbose = params.opt_bool(1, "verbose")?.unwrap_or(true);
@@ -279,7 +280,12 @@ pub(crate) fn getblockheader(ctx: &RpcContext, params: &RpcParams) -> Result<Val
     Err(rpc_error(ERR_INVALID_ADDRESS_OR_KEY, "Block not found"))
 }
 
-fn active_block_header(ctx: &RpcContext, height: Height, verbose: bool) -> Result<Value, Value> {
+#[doc(hidden)]
+pub fn active_block_header(
+    ctx: &RpcContext,
+    height: Height,
+    verbose: bool,
+) -> Result<Value, Value> {
     let (_, rec) = ctx
         .query
         .header_at_height(height)
@@ -326,14 +332,16 @@ fn active_block_header(ctx: &RpcContext, height: Height, verbose: bool) -> Resul
     Ok(obj)
 }
 
-fn header_hex(hdr: &bitcoin::block::Header) -> Result<String, Value> {
+#[doc(hidden)]
+pub fn header_hex(hdr: &bitcoin::block::Header) -> Result<String, Value> {
     let mut raw = Vec::new();
     hdr.consensus_encode(&mut raw)
         .map_err(|_| rpc_error(ERR_MISC, "header encode"))?;
     Ok(rbitcoin_primitives::hex_encode(&(raw)))
 }
 
-fn insert_previousblockhash(obj: &mut Value, prev: &str) {
+#[doc(hidden)]
+pub fn insert_previousblockhash(obj: &mut Value, prev: &str) {
     if prev.is_empty() {
         return;
     }
@@ -342,24 +350,30 @@ fn insert_previousblockhash(obj: &mut Value, prev: &str) {
     }
 }
 
-struct OffChainHeader {
-    rec: rbitcoin_store::HeaderRecord,
-    header_fk: rbitcoin_primitives::Fk,
-    height: u32,
-    prev_hash: Option<[u8; 32]>,
-    chainwork: String,
+#[doc(hidden)]
+pub struct OffChainHeader {
+    pub rec: rbitcoin_store::HeaderRecord,
+    pub header_fk: rbitcoin_primitives::Fk,
+    pub height: u32,
+    pub prev_hash: Option<[u8; 32]>,
+    pub chainwork: String,
     /// Median of this header and up to 10 ancestors (Core `GetMedianTimePast`).
-    mediantime: u32,
+    pub mediantime: u32,
 }
 
 /// Header-sync ancestry cap (`stored_header_height`). One `prev_fk` read per
 /// step; active membership is the height index. A longer stale branch errors
 /// instead of scanning the rest of the branch.
-const OFF_CHAIN_WALK_MAX: u32 = 10_000;
+#[doc(hidden)]
+pub const OFF_CHAIN_WALK_MAX: u32 = 10_000;
 
 /// Header that is stored but not on the active chain. Height and chainwork
 /// walk `prev_fk` until an active ancestor (or genesis).
-fn off_chain_header(ctx: &RpcContext, hash: &[u8; 32]) -> Result<Option<OffChainHeader>, Value> {
+#[doc(hidden)]
+pub fn off_chain_header(
+    ctx: &RpcContext,
+    hash: &[u8; 32],
+) -> Result<Option<OffChainHeader>, Value> {
     let Some((header_fk, rec)) = ctx
         .query
         .get_header_by_hash(hash)
@@ -425,7 +439,8 @@ fn off_chain_header(ctx: &RpcContext, hash: &[u8; 32]) -> Result<Option<OffChain
     Err(rpc_error(ERR_MISC, "side header walk exceeded"))
 }
 
-fn off_chain_done(
+#[doc(hidden)]
+pub fn off_chain_done(
     rec: rbitcoin_store::HeaderRecord,
     header_fk: rbitcoin_primitives::Fk,
     height: u32,
@@ -444,7 +459,12 @@ fn off_chain_done(
 }
 
 /// Ancestors strictly below an active parent, until the 11-timestamp window is full.
-fn fill_mtp_below(ctx: &RpcContext, times: &mut Vec<u32>, parent_height: u32) -> Result<(), Value> {
+#[doc(hidden)]
+pub fn fill_mtp_below(
+    ctx: &RpcContext,
+    times: &mut Vec<u32>,
+    parent_height: u32,
+) -> Result<(), Value> {
     let mut h = parent_height;
     while times.len() < 11 && h > 0 {
         h -= 1;
@@ -461,7 +481,12 @@ fn fill_mtp_below(ctx: &RpcContext, times: &mut Vec<u32>, parent_height: u32) ->
 }
 
 /// MTP when the block is not a stored header row: at most 10 parent reads.
-fn median_time_from_wire(ctx: &RpcContext, time: u32, prev_hash: [u8; 32]) -> Result<u32, Value> {
+#[doc(hidden)]
+pub fn median_time_from_wire(
+    ctx: &RpcContext,
+    time: u32,
+    prev_hash: [u8; 32],
+) -> Result<u32, Value> {
     let mut times = vec![time];
     if prev_hash != [0u8; 32] {
         if let Some((_, rec)) = ctx
@@ -484,7 +509,8 @@ fn median_time_from_wire(ctx: &RpcContext, time: u32, prev_hash: [u8; 32]) -> Re
     median_time_past_times(&times).map_err(|e| rpc_error(ERR_MISC, e))
 }
 
-fn work_from_bits(bits: u32) -> bitcoin::Work {
+#[doc(hidden)]
+pub fn work_from_bits(bits: u32) -> bitcoin::Work {
     bitcoin::block::Header {
         version: bitcoin::block::Version::from_consensus(0),
         prev_blockhash: BlockHash::from_byte_array([0u8; 32]),
@@ -496,11 +522,13 @@ fn work_from_bits(bits: u32) -> bitcoin::Work {
     .work()
 }
 
-fn sum_header_work(works: Vec<bitcoin::Work>) -> bitcoin::Work {
+#[doc(hidden)]
+pub fn sum_header_work(works: Vec<bitcoin::Work>) -> bitcoin::Work {
     rbitcoin_net::sum_work(works.into_iter()).unwrap_or(bitcoin::Work::from_be_bytes([0xff; 32]))
 }
 
-fn wire_header_from_record(
+#[doc(hidden)]
+pub fn wire_header_from_record(
     rec: &rbitcoin_store::HeaderRecord,
     prev: [u8; 32],
 ) -> bitcoin::block::Header {
@@ -514,7 +542,8 @@ fn wire_header_from_record(
     }
 }
 
-fn off_chain_header_value(
+#[doc(hidden)]
+pub fn off_chain_header_value(
     ctx: &RpcContext,
     loc: &OffChainHeader,
     verbose: bool,
@@ -552,7 +581,8 @@ fn off_chain_header_value(
     Ok(obj)
 }
 
-fn held_header_value(ctx: &RpcContext, block: &Block, verbose: bool) -> Result<Value, Value> {
+#[doc(hidden)]
+pub fn held_header_value(ctx: &RpcContext, block: &Block, verbose: bool) -> Result<Value, Value> {
     if !verbose {
         return Ok(json!(header_hex(&block.header)?));
     }
@@ -582,7 +612,7 @@ fn held_header_value(ctx: &RpcContext, block: &Block, verbose: bool) -> Result<V
 }
 
 /// 32-byte BE chainwork hex (regtest = 2 per block). Empty store → 64 zeros.
-pub(crate) fn chainwork_hex(ctx: &RpcContext, through: Option<Height>) -> String {
+pub fn chainwork_hex(ctx: &RpcContext, through: Option<Height>) -> String {
     let Some(tip) = through.or_else(|| ctx.query.tip_height()) else {
         return "00".repeat(32);
     };
@@ -604,11 +634,13 @@ pub(crate) fn chainwork_hex(ctx: &RpcContext, through: Option<Height>) -> String
     )
 }
 
-fn version_hex(version: i32) -> String {
+#[doc(hidden)]
+pub fn version_hex(version: i32) -> String {
     format!("{:08x}", version as u32)
 }
 
-fn nextblockhash_at(ctx: &RpcContext, height: Height) -> Option<String> {
+#[doc(hidden)]
+pub fn nextblockhash_at(ctx: &RpcContext, height: Height) -> Option<String> {
     ctx.query
         .header_at_height(Height(height.0 + 1))
         .ok()
@@ -616,7 +648,8 @@ fn nextblockhash_at(ctx: &RpcContext, height: Height) -> Option<String> {
         .map(|(_, r)| hash_hex_display(&r.hash))
 }
 
-fn enrich_block_header_json(
+#[doc(hidden)]
+pub fn enrich_block_header_json(
     obj: &mut Value,
     ctx: &RpcContext,
     version: i32,
@@ -648,7 +681,8 @@ fn enrich_block_header_json(
     }
 }
 
-fn held_chainwork_hex(ctx: &RpcContext, block: &Block) -> String {
+#[doc(hidden)]
+pub fn held_chainwork_hex(ctx: &RpcContext, block: &Block) -> String {
     let prev = block.header.prev_blockhash.to_byte_array();
     if let Ok(Some(h)) = ctx.query.height_of_hash(&prev) {
         if let Some(hub) = ctx.chain.as_ref() {
@@ -660,12 +694,14 @@ fn held_chainwork_hex(ctx: &RpcContext, block: &Block) -> String {
     rbitcoin_primitives::hex_encode(block.header.work().to_be_bytes())
 }
 
-fn insert_block_size_fields(obj: &mut Value, block: &Block) {
+#[doc(hidden)]
+pub fn insert_block_size_fields(obj: &mut Value, block: &Block) {
     insert_size_weight(obj, block.total_size() as u64, block.weight().to_wu());
 }
 
 /// Core `size` / `strippedsize` / `weight` (strippedsize = (weight - size) / 3).
-fn insert_size_weight(obj: &mut Value, size: u64, weight: u64) {
+#[doc(hidden)]
+pub fn insert_size_weight(obj: &mut Value, size: u64, weight: u64) {
     let Some(o) = obj.as_object_mut() else {
         return;
     };
@@ -677,7 +713,8 @@ fn insert_size_weight(obj: &mut Value, size: u64, weight: u64) {
     );
 }
 
-fn getblock_v2_tx_json(ctx: &RpcContext, block: &Block) -> Vec<Value> {
+#[doc(hidden)]
+pub fn getblock_v2_tx_json(ctx: &RpcContext, block: &Block) -> Vec<Value> {
     let net = rpc_btc_network(ctx.network);
     block
         .txdata
@@ -696,7 +733,7 @@ fn getblock_v2_tx_json(ctx: &RpcContext, block: &Block) -> Vec<Value> {
         .collect()
 }
 
-pub(crate) fn getblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash", "verbosity", "verbose"])?;
     let hash_hex = params.req_str(0, "blockhash")?;
     let verbosity = match params.get(1, "verbosity") {
@@ -803,7 +840,8 @@ pub(crate) fn getblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Va
     Ok(obj)
 }
 
-fn disconnected_block_value(
+#[doc(hidden)]
+pub fn disconnected_block_value(
     ctx: &RpcContext,
     hash: &[u8; 32],
     block: &Block,
@@ -859,7 +897,12 @@ fn disconnected_block_value(
     Ok(obj)
 }
 
-fn getblock_unknown_hash(ctx: &RpcContext, hash: [u8; 32], verbosity: u32) -> Result<Value, Value> {
+#[doc(hidden)]
+pub fn getblock_unknown_hash(
+    ctx: &RpcContext,
+    hash: [u8; 32],
+    verbosity: u32,
+) -> Result<Value, Value> {
     if let Ok(Some(block)) = ctx.query.reconstruct_archived_block(&hash) {
         return disconnected_block_value(ctx, &hash, &block, verbosity);
     }
@@ -878,12 +921,12 @@ fn getblock_unknown_hash(ctx: &RpcContext, hash: [u8; 32], verbosity: u32) -> Re
     Err(rpc_error(ERR_INVALID_ADDRESS_OR_KEY, "Block not found"))
 }
 
-pub(crate) fn confirmations(ctx: &RpcContext, height: Height) -> u32 {
+pub fn confirmations(ctx: &RpcContext, height: Height) -> u32 {
     let tip = ctx.query.tip_height().map(|h| h.0).unwrap_or(0);
     tip.saturating_sub(height.0).saturating_add(1)
 }
 
-pub(crate) fn getblockfilter(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getblockfilter(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash", "filtertype"])?;
     let hex = params.req_str(0, "blockhash")?;
     let filtertype = params.opt_str(1, "filtertype")?.unwrap_or("basic");
@@ -912,7 +955,7 @@ pub(crate) fn getblockfilter(ctx: &RpcContext, params: &RpcParams) -> Result<Val
     }))
 }
 
-pub(crate) fn gettxout(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn gettxout(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["txid", "n", "include_mempool"])?;
     let hex = params.req_str(0, "txid")?;
     let n = params.req_u64(1, "n")? as u32;
@@ -1005,7 +1048,7 @@ pub(crate) fn gettxout(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Va
     }))
 }
 
-pub(crate) fn getindexinfo(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getindexinfo(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["index_name"])?;
     let tip = ctx.query.tip_height().map(|h| h.0).unwrap_or(0);
     let txindex = json!({
@@ -1020,7 +1063,7 @@ pub(crate) fn getindexinfo(ctx: &RpcContext, params: &RpcParams) -> Result<Value
     }
 }
 
-pub(crate) fn getchaintips(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getchaintips(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&[])?;
     if let Some(chain) = ctx.chain.as_ref() {
         let tips: Vec<Value> = chain
@@ -1053,12 +1096,12 @@ pub(crate) fn getchaintips(ctx: &RpcContext, params: &RpcParams) -> Result<Value
     }]))
 }
 
-pub(crate) fn wait_timeout_ms(params: &RpcParams, idx: usize, name: &str) -> Result<u64, Value> {
+pub fn wait_timeout_ms(params: &RpcParams, idx: usize, name: &str) -> Result<u64, Value> {
     let ms = params.opt_u64(idx, name)?.unwrap_or(30_000);
     Ok(ms.min(super::RPC_WAIT_TIMEOUT_MS))
 }
 
-pub(crate) fn tip_hash_height(ctx: &RpcContext) -> Result<(String, u32), Value> {
+pub fn tip_hash_height(ctx: &RpcContext) -> Result<(String, u32), Value> {
     let h = ctx
         .query
         .tip_height()
@@ -1071,7 +1114,7 @@ pub(crate) fn tip_hash_height(ctx: &RpcContext) -> Result<(String, u32), Value> 
     Ok((hash_hex_display(&rec.hash), h.0))
 }
 
-pub(crate) fn buried_row(height: u32, at: u32) -> Value {
+pub fn buried_row(height: u32, at: u32) -> Value {
     // Core `DeploymentActiveAfter`: active for the *next* block after `at`.
     json!({
         "type": "buried",
@@ -1084,7 +1127,7 @@ pub(crate) fn buried_row(height: u32, at: u32) -> Value {
 /// No BIP9 / testdummy / versionbits invention.
 /// Buried deployments from the node's `ChainParams` (overlay heights included).
 /// No BIP9 / testdummy / versionbits invention.
-pub(crate) fn buried_deployments(params: &rbitcoin_consensus::ChainParams, at: u32) -> Value {
+pub fn buried_deployments(params: &rbitcoin_consensus::ChainParams, at: u32) -> Value {
     json!({
         "bip34": buried_row(params.btc.bip34_height, at),
         "bip66": buried_row(params.btc.bip66_height, at),
@@ -1095,7 +1138,7 @@ pub(crate) fn buried_deployments(params: &rbitcoin_consensus::ChainParams, at: u
     })
 }
 
-pub(crate) fn getdeploymentinfo(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getdeploymentinfo(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash"])?;
     let cp = ctx
         .chain
@@ -1120,21 +1163,21 @@ pub(crate) fn getdeploymentinfo(ctx: &RpcContext, params: &RpcParams) -> Result<
     }))
 }
 
-pub(crate) fn waitforblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn waitforblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash", "timeout"])?;
     let want = params.req_str(0, "blockhash")?.to_string();
     let timeout_ms = wait_timeout_ms(params, 1, "timeout")?;
     wait_for_tip(ctx, timeout_ms, |hash, _height| hash == want)
 }
 
-pub(crate) fn waitforblockheight(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn waitforblockheight(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["height", "timeout"])?;
     let want = params.req_u64(0, "height")? as u32;
     let timeout_ms = wait_timeout_ms(params, 1, "timeout")?;
     wait_for_tip(ctx, timeout_ms, |_hash, height| height >= want)
 }
 
-pub(crate) fn waitfornewblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn waitfornewblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["timeout"])?;
     let timeout_ms = wait_timeout_ms(params, 0, "timeout")?;
     let (start_hash, _) = tip_hash_height(ctx)?;
@@ -1145,7 +1188,7 @@ pub(crate) fn waitfornewblock(ctx: &RpcContext, params: &RpcParams) -> Result<Va
 /// return the current tip instead of hanging until the connection drops.
 /// `feature_shutdown.py`: stop must wake waiters so in-flight wait RPCs
 /// return the current tip instead of hanging until the connection drops.
-pub(crate) fn wait_for_tip(
+pub fn wait_for_tip(
     ctx: &RpcContext,
     timeout_ms: u64,
     pred: impl Fn(&str, u32) -> bool,
@@ -1171,19 +1214,19 @@ pub(crate) fn wait_for_tip(
     }
 }
 
-pub(crate) fn require_chain(ctx: &RpcContext) -> Result<&rbitcoin_net::ChainHub, Value> {
+pub fn require_chain(ctx: &RpcContext) -> Result<&rbitcoin_net::ChainHub, Value> {
     ctx.chain
         .as_deref()
         .ok_or_else(|| rpc_error(ERR_MISC, "chain hub not attached"))
 }
 
-pub(crate) fn parse_blockhash_param(params: &RpcParams) -> Result<bitcoin::BlockHash, Value> {
+pub fn parse_blockhash_param(params: &RpcParams) -> Result<bitcoin::BlockHash, Value> {
     let hex = params.req_str(0, "blockhash")?;
     let b = parse_hash32_display(hex)?;
     Ok(bitcoin::BlockHash::from_byte_array(b))
 }
 
-pub(crate) fn invalidateblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn invalidateblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash"])?;
     let hub = require_chain(ctx)?;
     let hash = parse_blockhash_param(params)?;
@@ -1198,7 +1241,7 @@ pub(crate) fn invalidateblock(ctx: &RpcContext, params: &RpcParams) -> Result<Va
     Ok(Value::Null)
 }
 
-pub(crate) fn submitheader(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn submitheader(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["hexdata"])?;
     let hub = require_chain(ctx)?;
     let hex = params.req_str(0, "hexdata")?;
@@ -1208,7 +1251,7 @@ pub(crate) fn submitheader(ctx: &RpcContext, params: &RpcParams) -> Result<Value
     Ok(Value::Null)
 }
 
-pub(crate) fn decode_header_hex(hex: &str) -> Result<bitcoin::block::Header, Value> {
+pub fn decode_header_hex(hex: &str) -> Result<bitcoin::block::Header, Value> {
     let raw = rbitcoin_primitives::hex_decode(hex)
         .map_err(|_| rpc_error(ERR_DESERIALIZATION, "Block header decode failed"))?;
     if raw.len() >= 80 {
@@ -1221,7 +1264,7 @@ pub(crate) fn decode_header_hex(hex: &str) -> Result<bitcoin::block::Header, Val
         .map_err(|_| rpc_error(ERR_DESERIALIZATION, "Block header decode failed"))
 }
 
-pub(crate) fn reconsiderblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn reconsiderblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash"])?;
     let hub = require_chain(ctx)?;
     let hash = parse_blockhash_param(params)?;
@@ -1230,7 +1273,7 @@ pub(crate) fn reconsiderblock(ctx: &RpcContext, params: &RpcParams) -> Result<Va
     Ok(Value::Null)
 }
 
-pub(crate) fn preciousblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn preciousblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["blockhash"])?;
     let hub = require_chain(ctx)?;
     let hash = parse_blockhash_param(params)?;
@@ -1243,31 +1286,4 @@ pub(crate) fn preciousblock(ctx: &RpcContext, params: &RpcParams) -> Result<Valu
         }
     })?;
     Ok(Value::Null)
-}
-
-#[cfg(test)]
-mod core_double_tests {
-    use super::format_core_double;
-
-    #[test]
-    fn sixteen_significant_digits() {
-        assert_eq!(format_core_double(1.0), "1");
-        assert_eq!(format_core_double(0.0), "0");
-        assert_eq!(format_core_double(132757073449487.52), "132757073449487.5");
-    }
-}
-
-#[cfg(test)]
-mod wait_tests {
-    use super::*;
-
-    #[test]
-    fn wait_timeout_ms_caps_at_two_minutes() {
-        let huge = RpcParams::positional(vec![json!(500_000)]);
-        assert_eq!(wait_timeout_ms(&huge, 0, "timeout").unwrap(), 120_000);
-        let absent = RpcParams::positional(vec![]);
-        assert_eq!(wait_timeout_ms(&absent, 0, "timeout").unwrap(), 30_000);
-        let short = RpcParams::positional(vec![json!(50)]);
-        assert_eq!(wait_timeout_ms(&short, 0, "timeout").unwrap(), 50);
-    }
 }

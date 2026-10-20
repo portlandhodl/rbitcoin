@@ -37,15 +37,24 @@
 //! - **P3:** package accept (CPFP), durable remove, block/reorg hooks  
 //! - **P5:** full RBF + pure RBFR (1.25×) + package RBF + worst-chunk eviction  
 
-mod accept;
-mod error;
-mod fee_analog;
-mod fee_est;
-mod fee_flow;
-mod graph;
-mod orphanage;
-mod packed;
-mod store;
+#[doc(hidden)]
+pub mod accept;
+#[doc(hidden)]
+pub mod error;
+#[doc(hidden)]
+pub mod fee_analog;
+#[doc(hidden)]
+pub mod fee_est;
+#[doc(hidden)]
+pub mod fee_flow;
+#[doc(hidden)]
+pub mod graph;
+#[doc(hidden)]
+pub mod orphanage;
+#[doc(hidden)]
+pub mod packed;
+#[doc(hidden)]
+pub mod store;
 pub mod testutil;
 
 pub use accept::{

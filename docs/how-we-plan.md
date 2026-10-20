@@ -43,7 +43,7 @@ after the last step (optional):
 ```
 
 Edits inside Red and Green stay targeted: `cargo test -p <crate> …` and
-`cargo check -p <crate> --lib`. Do not `cargo check --tests` after every
+`cargo test -p <crate> --test suite <filter>`. Do not `cargo check --tests` after every
 edit. The workspace suite is step 3 (and again in step 5 if Refactor
 changed code).
 
@@ -73,7 +73,7 @@ After the command, print **exit code** in the tool result
 `cargo …` line per command: clippy `-D warnings`, `cargo deny check`,
 `cargo fmt --all -- --check`, `./scripts/ast-grep.sh`,
 `./scripts/ci-os-smoke.sh`). Inner loop:
-`cargo test -p <crate> --lib <filter> -- --quiet` redirected the same way.
+`cargo test -p <crate> --test suite <filter> -- --quiet` redirected the same way.
 
 ```bash
 log=$(mktemp /tmp/rbtc-agent-XXXXXX.log)
@@ -123,15 +123,16 @@ or because “CI at the end will catch it.”
 Schema/API rewires stall when a session deletes the old type (`TxIdx`, a
 body meta field, …) and then spends the rest of the turn on `unresolved` /
 `dead_code` across store tests, query, consensus, and net. That is not TDD;
-it is a compile-doom loop. `rbitcoin-store --tests` is a fat rustc unit —
-do not use it as the edit cycle.
+it is a compile-doom loop. Library tests live in each crate's `tests/suite`
+and link the normal rlib. Do not use a workspace `--tests` check as the
+edit cycle.
 
 | Do | Do not |
 |----|--------|
 | New type + its unit tests green, **then** a thin wrap on the old API | Delete the old module in the same dirty tree as all callers |
-| Switch **one** caller crate per step; `--lib` stays green | One uncommitted tree spanning store + confirm + query + net + docs |
-| Keep `--lib` compiling throughout; commit after local CI except coverage | Hours of un-gated WIP, or a slice commit that has not passed those gates |
-| `cargo check -p <crate> --lib` (or `cargo test -p <crate> --lib <filter>`) | `cargo check -p rbitcoin-store --tests` or six-crate `--tests` after each edit |
+| Switch **one** caller crate per step; `cargo check -p <crate>` stays green | One uncommitted tree spanning store + confirm + query + net + docs |
+| Keep the rlib compiling throughout; commit after local CI except coverage | Hours of un-gated WIP, or a slice commit that has not passed those gates |
+| `cargo check -p <crate>` (or `cargo test -p <crate> --test suite <filter>`) | `cargo test --workspace` or six-crate `--tests` after each edit |
 
 `--tests` / multi-crate check belongs after Green and in Gates, not in the
 inner loop. Commands:
@@ -331,7 +332,7 @@ even if the slices are “vertical.”
   one-off branch. Reach green fast so Refactor happens under a passing suite.
 - Do not design ahead. YAGNI: if a later step needs the abstraction, that
   step’s Red will force it, under green tests from this one.
-- Keep `--lib` compiling: wrap the old API, switch one caller
+- Keep `cargo check -p <crate>` compiling: wrap the old API, switch one caller
   ([Keep the tree compiling](#keep-the-tree-compiling)). Do not commit yet.
 
 ### Refactor: production **and** tests, under green
@@ -438,7 +439,7 @@ Each step is independently green, gated, committed, and shippable.
 | Core functional as the default-CI Red | In-tree catalog journey; Core stays nightly |
 | Several slices uncommitted; first GitHub run is the fmt/clippy/suite gate | Each slice commits only after those gates |
 | Delete a large type/module then `cargo check --tests` until the workspace builds | Keep-compiling facade ([agent contract](#keep-the-tree-compiling)) |
-| Inner loop = `cargo check --tests` after every edit | `--lib` until that crate’s lib is green |
+| Inner loop = `cargo check --tests` after every edit | `cargo check -p <crate>` until that crate’s lib is green |
 
 ## Checklist for authors (and agents)
 

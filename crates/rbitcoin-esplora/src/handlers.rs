@@ -32,14 +32,18 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const MULTI_ADDRESS_LIMIT: usize = 300;
+#[doc(hidden)]
+pub const MULTI_ADDRESS_LIMIT: usize = 300;
 /// Esplora mempool history on `/txs` and `/txs/mempool`.
-const MEMPOOL_TX_PAGE: usize = 50;
+#[doc(hidden)]
+pub const MEMPOOL_TX_PAGE: usize = 50;
 
-type JoinBag = HashMap<[u8; 32], Arc<ShJoinSlot>>;
+#[doc(hidden)]
+pub type JoinBag = HashMap<[u8; 32], Arc<ShJoinSlot>>;
 
 /// Best-chain wire block for Esplora (archived reconstruct; no extra PoW rehash gate).
-fn best_chain_block(
+#[doc(hidden)]
+pub fn best_chain_block(
     query: &Query,
     hash: &[u8; 32],
 ) -> Result<(Height, bitcoin::Block), rbitcoin_query::QueryError> {
@@ -55,7 +59,7 @@ fn best_chain_block(
 }
 
 /// Esplora `GET /block/:hash` JSON for a **best-chain** header hash.
-pub(crate) fn block_summary_json(
+pub fn block_summary_json(
     query: &Query,
     hash: &[u8; 32],
 ) -> Result<Value, rbitcoin_query::QueryError> {
@@ -104,7 +108,8 @@ pub(crate) fn block_summary_json(
 }
 
 /// Median timestamp of the last up to 11 best-chain headers ending at `height` (BIP113 MTP).
-fn median_time_past(query: &Query, height: Height) -> Result<u32, rbitcoin_query::QueryError> {
+#[doc(hidden)]
+pub fn median_time_past(query: &Query, height: Height) -> Result<u32, rbitcoin_query::QueryError> {
     let n = 11u32.min(height.0.saturating_add(1));
     let start = height.0.saturating_sub(n.saturating_sub(1));
     let mut times = Vec::with_capacity(n as usize);
@@ -224,7 +229,8 @@ pub async fn blocks_from_height(State(st): State<AppState>, Path(start): Path<u3
         .unwrap_or_else(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())
 }
 
-fn blocks_from(st: &AppState, start: Option<u32>) -> Response {
+#[doc(hidden)]
+pub fn blocks_from(st: &AppState, start: Option<u32>) -> Response {
     let Some(tip) = st.query.tip_height() else {
         return Json(json!([])).into_response();
     };
@@ -281,7 +287,8 @@ pub async fn block_txs_0(State(st): State<AppState>, Path(hash_hex): Path<String
     spawn_join(move || block_txs_impl(st, &hash_hex, 0)).await
 }
 
-fn block_txs_impl(st: AppState, hash_hex: &str, start: u32) -> Response {
+#[doc(hidden)]
+pub fn block_txs_impl(st: AppState, hash_hex: &str, start: u32) -> Response {
     if !start.is_multiple_of(25) {
         return (
             StatusCode::BAD_REQUEST,
@@ -321,7 +328,8 @@ pub async fn tx_merkle_proof(State(st): State<AppState>, Path(txid_hex): Path<St
     spawn_join(move || tx_merkle_proof_sync(st, txid_hex)).await
 }
 
-fn tx_merkle_proof_sync(st: AppState, txid_hex: String) -> Response {
+#[doc(hidden)]
+pub fn tx_merkle_proof_sync(st: AppState, txid_hex: String) -> Response {
     let Ok(txid) = parse_hash32(&txid_hex) else {
         return not_found();
     };
@@ -389,7 +397,8 @@ pub async fn tx_merkleblock_proof(
     spawn_join(move || tx_merkleblock_proof_sync(st, txid_hex)).await
 }
 
-fn tx_merkleblock_proof_sync(st: AppState, txid_hex: String) -> Response {
+#[doc(hidden)]
+pub fn tx_merkleblock_proof_sync(st: AppState, txid_hex: String) -> Response {
     let Ok(txid) = parse_hash32(&txid_hex) else {
         return not_found();
     };
@@ -523,7 +532,7 @@ pub async fn tx_outspends(
     .await
 }
 
-pub(crate) fn outspend_json(
+pub fn outspend_json(
     query: &Query,
     mempool: Option<&MempoolHub>,
     txid: &[u8; 32],
@@ -574,7 +583,8 @@ pub async fn block_template(State(st): State<AppState>) -> Response {
     spawn_join(move || block_template_sync(&st)).await
 }
 
-fn block_template_sync(st: &AppState) -> Response {
+#[doc(hidden)]
+pub fn block_template_sync(st: &AppState) -> Response {
     let Some(fun) = st.block_template.as_ref() else {
         return not_found();
     };
@@ -611,7 +621,8 @@ fn block_template_sync(st: &AppState) -> Response {
     }
 }
 
-fn gbt_json(body: &Value) -> Response {
+#[doc(hidden)]
+pub fn gbt_json(body: &Value) -> Response {
     (
         StatusCode::OK,
         [
@@ -623,7 +634,7 @@ fn gbt_json(body: &Value) -> Response {
         .into_response()
 }
 
-pub(crate) async fn spawn_join(f: impl FnOnce() -> Response + Send + 'static) -> Response {
+pub async fn spawn_join(f: impl FnOnce() -> Response + Send + 'static) -> Response {
     match tokio::task::spawn_blocking(move || {
         let _g = rbitcoin_net::BlockingRegion::enter();
         f()
@@ -636,7 +647,8 @@ pub(crate) async fn spawn_join(f: impl FnOnce() -> Response + Send + 'static) ->
 }
 
 #[allow(clippy::result_large_err)] // public error enum
-fn sh_pin(
+#[doc(hidden)]
+pub fn sh_pin(
     st: &AppState,
     asof: Option<[u8; 32]>,
 ) -> Result<Option<rbitcoin_query::ChainView>, Response> {
@@ -645,7 +657,8 @@ fn sh_pin(
 
 #[allow(clippy::result_large_err)] // public error enum
 #[allow(clippy::too_many_arguments)] // asof vs live join plus last-1 / last-bulk
-fn sh_at_view<T>(
+#[doc(hidden)]
+pub fn sh_at_view<T>(
     st: &AppState,
     sh: &[u8; 32],
     asof: Option<[u8; 32]>,
@@ -769,7 +782,8 @@ pub async fn scripthash_utxo(
     spawn_join(move || utxo_response(&st, &sh, asof, client.as_deref())).await
 }
 
-fn utxo_response(
+#[doc(hidden)]
+pub fn utxo_response(
     st: &AppState,
     sh: &[u8; 32],
     asof: Option<[u8; 32]>,
@@ -805,13 +819,14 @@ fn utxo_response(
     )
 }
 
-pub(crate) fn resolve_address_sh(addr_s: &str, network: Network) -> Result<[u8; 32], ()> {
+pub fn resolve_address_sh(addr_s: &str, network: Network) -> Result<[u8; 32], ()> {
     let addr = Address::from_str(addr_s).map_err(|_| ())?;
     let addr = addr.require_network(network).map_err(|_| ())?;
     Ok(script_hash(addr.script_pubkey().as_bytes()))
 }
 
-fn sh_stats_json(
+#[doc(hidden)]
+pub fn sh_stats_json(
     st: &AppState,
     sh: &[u8; 32],
     address: Option<&str>,
@@ -968,7 +983,8 @@ pub async fn address_txs(
     }
 }
 
-fn chain_page(
+#[doc(hidden)]
+pub fn chain_page(
     st: &AppState,
     sh_hex: &str,
     after: Option<[u8; 32]>,
@@ -1044,7 +1060,8 @@ pub async fn address_txs_summary_cursor(
     }
 }
 
-fn summary_page(
+#[doc(hidden)]
+pub fn summary_page(
     st: &AppState,
     sh_hex: &str,
     after: Option<[u8; 32]>,
@@ -1057,7 +1074,8 @@ fn summary_page(
     summary_page_sh(st, &sh, after, asof, client)
 }
 
-fn summary_page_sh(
+#[doc(hidden)]
+pub fn summary_page_sh(
     st: &AppState,
     sh: &[u8; 32],
     after: Option<[u8; 32]>,
@@ -1095,7 +1113,8 @@ fn summary_page_sh(
     )
 }
 
-fn summaries_json(
+#[doc(hidden)]
+pub fn summaries_json(
     query: &Query,
     items: &[ScriptHashTxSummary],
 ) -> Result<Value, rbitcoin_query::QueryError> {
@@ -1135,7 +1154,8 @@ fn summaries_json(
     Ok(Value::Array(out))
 }
 
-fn chain_page_sh(
+#[doc(hidden)]
+pub fn chain_page_sh(
     st: &AppState,
     sh: &[u8; 32],
     after: Option<[u8; 32]>,
@@ -1168,7 +1188,8 @@ fn chain_page_sh(
     )
 }
 
-fn combined_txs(
+#[doc(hidden)]
+pub fn combined_txs(
     st: &AppState,
     sh: &[u8; 32],
     asof: Option<[u8; 32]>,
@@ -1231,17 +1252,20 @@ fn combined_txs(
     )
 }
 
-enum MultiKind {
+#[doc(hidden)]
+pub enum MultiKind {
     Address,
     Scripthash,
 }
 
-fn body_too_long() -> Response {
+#[doc(hidden)]
+pub fn body_too_long() -> Response {
     (StatusCode::UNPROCESSABLE_ENTITY, "body too long").into_response()
 }
 
 #[allow(clippy::result_large_err)]
-fn parse_multi_scripts(
+#[doc(hidden)]
+pub fn parse_multi_scripts(
     network: Network,
     kind: MultiKind,
     body: &[u8],
@@ -1271,11 +1295,13 @@ fn parse_multi_scripts(
     Ok(out)
 }
 
-fn tx_row_txid(v: &Value) -> Option<&str> {
+#[doc(hidden)]
+pub fn tx_row_txid(v: &Value) -> Option<&str> {
     v["txid"].as_str()
 }
 
-fn sort_txs_newest_first(rows: &mut [Value]) {
+#[doc(hidden)]
+pub fn sort_txs_newest_first(rows: &mut [Value]) {
     rows.sort_by(|a, b| {
         let ca = a["status"]["confirmed"].as_bool() == Some(true);
         let cb = b["status"]["confirmed"].as_bool() == Some(true);
@@ -1297,7 +1323,8 @@ fn sort_txs_newest_first(rows: &mut [Value]) {
 
 /// `None`: `after` was set and is not in `rows`. The first page is not a
 /// stand-in for a cursor this response does not contain.
-fn skip_rows_after(rows: Vec<Value>, after: Option<[u8; 32]>) -> Option<Vec<Value>> {
+#[doc(hidden)]
+pub fn skip_rows_after(rows: Vec<Value>, after: Option<[u8; 32]>) -> Option<Vec<Value>> {
     let Some(id) = after else {
         return Some(rows);
     };
@@ -1306,14 +1333,16 @@ fn skip_rows_after(rows: Vec<Value>, after: Option<[u8; 32]>) -> Option<Vec<Valu
     Some(rows[i.saturating_add(1)..].to_vec())
 }
 
-fn cursor_page<T>(after: Option<[u8; 32]>) -> rbitcoin_query::FilteredHistory<T> {
+#[doc(hidden)]
+pub fn cursor_page<T>(after: Option<[u8; 32]>) -> rbitcoin_query::FilteredHistory<T> {
     rbitcoin_query::FilteredHistory {
         rows: Vec::new(),
         cursor_missing: after.is_some(),
     }
 }
 
-fn rows_or_cursor_missing<T>(page: rbitcoin_query::FilteredHistory<T>) -> Option<Vec<T>> {
+#[doc(hidden)]
+pub fn rows_or_cursor_missing<T>(page: rbitcoin_query::FilteredHistory<T>) -> Option<Vec<T>> {
     if page.cursor_missing {
         None
     } else {
@@ -1321,7 +1350,8 @@ fn rows_or_cursor_missing<T>(page: rbitcoin_query::FilteredHistory<T>) -> Option
     }
 }
 
-fn dedup_txid(rows: Vec<Value>) -> Vec<Value> {
+#[doc(hidden)]
+pub fn dedup_txid(rows: Vec<Value>) -> Vec<Value> {
     let mut seen = HashSet::new();
     let mut out = Vec::with_capacity(rows.len());
     for v in rows {
@@ -1338,14 +1368,16 @@ fn dedup_txid(rows: Vec<Value>) -> Vec<Value> {
 /// One newest window per script. More than one script keeps a cursor that
 /// is absent from some of them. One script stays the single-address rule:
 /// a foreign cursor is 422.
-fn multi_page_filter(after: Option<[u8; 32]>, script_count: usize) -> HistoryFilter {
+#[doc(hidden)]
+pub fn multi_page_filter(after: Option<[u8; 32]>, script_count: usize) -> HistoryFilter {
     let mut filter = HistoryFilter::esplora_chain_page(after);
     filter.after_absent_keeps_older = after.is_some() && script_count > 1;
     filter
 }
 
 #[allow(clippy::result_large_err)] // public error enum
-fn accept_script_page<T>(
+#[doc(hidden)]
+pub fn accept_script_page<T>(
     page: rbitcoin_query::FilteredHistory<T>,
     keep_absent: bool,
     saw_cursor: &mut bool,
@@ -1359,7 +1391,8 @@ fn accept_script_page<T>(
     Ok(page.rows)
 }
 
-fn truncate_page(rows: &mut Vec<Value>, limit: usize) {
+#[doc(hidden)]
+pub fn truncate_page(rows: &mut Vec<Value>, limit: usize) {
     if rows.len() > limit {
         rows.truncate(limit);
     }
@@ -1368,13 +1401,15 @@ fn truncate_page(rows: &mut Vec<Value>, limit: usize) {
 /// Higher block first, then the larger internal txid. The next page cuts
 /// on that key. Display hex is the byte reverse, so it would pick a
 /// different last row at the same height.
-fn newer_internal_txid(left_hex: &str, right_hex: &str) -> std::cmp::Ordering {
+#[doc(hidden)]
+pub fn newer_internal_txid(left_hex: &str, right_hex: &str) -> std::cmp::Ordering {
     let left = parse_hash32(left_hex).unwrap_or([0u8; 32]);
     let right = parse_hash32(right_hex).unwrap_or([0u8; 32]);
     right.cmp(&left)
 }
 
-fn sort_confirmed_txs(rows: &mut [Value]) {
+#[doc(hidden)]
+pub fn sort_confirmed_txs(rows: &mut [Value]) {
     rows.sort_by(|a, b| {
         let ha = a["status"]["block_height"].as_u64().unwrap_or(0);
         let hb = b["status"]["block_height"].as_u64().unwrap_or(0);
@@ -1387,7 +1422,8 @@ fn sort_confirmed_txs(rows: &mut [Value]) {
     });
 }
 
-fn sort_summaries_newest(rows: &mut [Value]) {
+#[doc(hidden)]
+pub fn sort_summaries_newest(rows: &mut [Value]) {
     rows.sort_by(|a, b| {
         let ha = a["height"].as_i64().unwrap_or(0);
         let hb = b["height"].as_i64().unwrap_or(0);
@@ -1400,7 +1436,8 @@ fn sort_summaries_newest(rows: &mut [Value]) {
     });
 }
 
-fn multi_txs(
+#[doc(hidden)]
+pub fn multi_txs(
     st: &AppState,
     scripts: Vec<[u8; 32]>,
     after: Option<[u8; 32]>,
@@ -1480,7 +1517,8 @@ fn multi_txs(
     Json(mempool_rows).into_response()
 }
 
-fn multi_summary(
+#[doc(hidden)]
+pub fn multi_summary(
     st: &AppState,
     scripts: Vec<[u8; 32]>,
     after: Option<[u8; 32]>,
@@ -1533,7 +1571,8 @@ fn multi_summary(
     Json(rows).into_response()
 }
 
-fn post_multi_body(
+#[doc(hidden)]
+pub fn post_multi_body(
     st: AppState,
     kind: MultiKind,
     q: AfterTxidQuery,
@@ -1600,12 +1639,13 @@ pub async fn mempool_info(State(st): State<AppState>) -> Response {
     spawn_join(move || mempool_info_sync(&st)).await
 }
 
-fn mempool_info_sync(st: &AppState) -> Response {
+#[doc(hidden)]
+pub fn mempool_info_sync(st: &AppState) -> Response {
     Json(mempool_info_json(st.mempool.as_deref())).into_response()
 }
 
 /// `GET /mempool` body. Request path loads published fee-snapshot totals.
-pub(crate) fn mempool_info_json(mp: Option<&MempoolHub>) -> Value {
+pub fn mempool_info_json(mp: Option<&MempoolHub>) -> Value {
     let Some(mp) = mp else {
         return json!({
             "count": 0,
@@ -1637,13 +1677,15 @@ pub async fn fee_estimates(State(st): State<AppState>) -> Response {
 
 /// sat/vB from the estimator's BTC/kvB, keeping its 1 sat/kvB (0.001 sat/vB)
 /// resolution. `None` when the estimator has no answer (negative).
-fn sat_vb(btc_kb: f64) -> Option<f64> {
+#[doc(hidden)]
+pub fn sat_vb(btc_kb: f64) -> Option<f64> {
     (btc_kb >= 0.0).then(|| (btc_kb * 100_000_000.0).round() / 1_000.0)
 }
 
 /// Esplora `/fee-estimates`: confirm target → sat/vB. Targets without an
 /// estimate are left out (electrs); `None` when no target has one.
-fn fee_estimates_from(pairs: &[(u32, f64)]) -> Option<Value> {
+#[doc(hidden)]
+pub fn fee_estimates_from(pairs: &[(u32, f64)]) -> Option<Value> {
     let map: serde_json::Map<String, Value> = pairs
         .iter()
         .filter_map(|(t, btc_kb)| sat_vb(*btc_kb).map(|v| (t.to_string(), json!(v))))
@@ -1651,7 +1693,8 @@ fn fee_estimates_from(pairs: &[(u32, f64)]) -> Option<Value> {
     (!map.is_empty()).then_some(Value::Object(map))
 }
 
-fn fee_estimates_sync(st: &AppState) -> Response {
+#[doc(hidden)]
+pub fn fee_estimates_sync(st: &AppState) -> Response {
     let pairs = st
         .mempool
         .as_ref()
@@ -1667,7 +1710,8 @@ pub async fn mempool_txids(State(st): State<AppState>) -> Response {
     spawn_join(move || mempool_txids_sync(&st)).await
 }
 
-fn mempool_txids_sync(st: &AppState) -> Response {
+#[doc(hidden)]
+pub fn mempool_txids_sync(st: &AppState) -> Response {
     let Some(mp) = st.mempool.as_ref() else {
         return Json(json!([])).into_response();
     };
@@ -1719,7 +1763,8 @@ pub async fn address_txs_mempool(
     }
 }
 
-fn mempool_txs_json(st: &AppState, sh: &[u8; 32]) -> Vec<Value> {
+#[doc(hidden)]
+pub fn mempool_txs_json(st: &AppState, sh: &[u8; 32]) -> Vec<Value> {
     match mempool_page_json(st, sh, None) {
         MempoolPage::OnPage(rows) => rows,
         MempoolPage::Absent | MempoolPage::PastPage => Vec::new(),
@@ -1727,7 +1772,8 @@ fn mempool_txs_json(st: &AppState, sh: &[u8; 32]) -> Vec<Value> {
 }
 
 /// Where `after` sits in this script's mempool index.
-enum MempoolPage {
+#[doc(hidden)]
+pub enum MempoolPage {
     /// Not in the index. The caller keeps `after` as a chain cursor.
     Absent,
     /// Rows that stay on the page. A cursor on the page is already dropped.
@@ -1736,14 +1782,16 @@ enum MempoolPage {
     PastPage,
 }
 
-fn mempool_indexes(st: &AppState, sh: &[u8; 32], id: &[u8; 32]) -> bool {
+#[doc(hidden)]
+pub fn mempool_indexes(st: &AppState, sh: &[u8; 32], id: &[u8; 32]) -> bool {
     let Some(mp) = st.mempool.as_ref() else {
         return false;
     };
     mp.scripthash_indexes_tx(sh, &Txid::from_byte_array(*id))
 }
 
-fn txid_on_chain(st: &AppState, id: &[u8; 32]) -> bool {
+#[doc(hidden)]
+pub fn txid_on_chain(st: &AppState, id: &[u8; 32]) -> bool {
     st.query.get_tx_by_txid(id).ok().flatten().is_some()
 }
 
@@ -1752,7 +1800,8 @@ fn txid_on_chain(st: &AppState, id: &[u8; 32]) -> bool {
 /// A cursor outside the index loads nothing. A cursor on the first page
 /// keeps the tail. A cursor past that page loads nothing and is [`MempoolPage::PastPage`],
 /// so a mempool-only tx is not mistaken for a chain cursor.
-fn mempool_page_json(st: &AppState, sh: &[u8; 32], after: Option<[u8; 32]>) -> MempoolPage {
+#[doc(hidden)]
+pub fn mempool_page_json(st: &AppState, sh: &[u8; 32], after: Option<[u8; 32]>) -> MempoolPage {
     let Some(mp) = st.mempool.as_ref() else {
         return MempoolPage::Absent;
     };
@@ -1776,7 +1825,8 @@ fn mempool_page_json(st: &AppState, sh: &[u8; 32], after: Option<[u8; 32]>) -> M
     MempoolPage::OnPage(out)
 }
 
-fn push_mempool_tx_json(
+#[doc(hidden)]
+pub fn push_mempool_tx_json(
     st: &AppState,
     mp: &MempoolHub,
     txid: [u8; 32],
@@ -1798,21 +1848,24 @@ fn push_mempool_tx_json(
     }
 }
 
-fn mempool_txs_for_sh(st: &AppState, sh: &[u8; 32]) -> Response {
+#[doc(hidden)]
+pub fn mempool_txs_for_sh(st: &AppState, sh: &[u8; 32]) -> Response {
     Json(mempool_txs_json(st, sh)).into_response()
 }
 
 #[derive(Deserialize, Default)]
 pub struct AfterTxidQuery {
-    after_txid: Option<String>,
+    pub after_txid: Option<String>,
 }
 
-fn after_txid_not_found() -> Response {
+#[doc(hidden)]
+pub fn after_txid_not_found() -> Response {
     (StatusCode::UNPROCESSABLE_ENTITY, "after_txid not found").into_response()
 }
 
 #[allow(clippy::result_large_err)] // public error enum
-fn parse_after_txid_query(q: AfterTxidQuery) -> Result<Option<[u8; 32]>, Response> {
+#[doc(hidden)]
+pub fn parse_after_txid_query(q: AfterTxidQuery) -> Result<Option<[u8; 32]>, Response> {
     match q.after_txid {
         None => Ok(None),
         Some(s) if s.is_empty() => Ok(None),
@@ -1822,7 +1875,8 @@ fn parse_after_txid_query(q: AfterTxidQuery) -> Result<Option<[u8; 32]>, Respons
     }
 }
 
-fn txid_is_known(st: &AppState, id: &[u8; 32]) -> bool {
+#[doc(hidden)]
+pub fn txid_is_known(st: &AppState, id: &[u8; 32]) -> bool {
     let tid = Txid::from_byte_array(*id);
     st.mempool.as_ref().is_some_and(|m| m.contains(&tid))
         || st.query.get_tx_by_txid(id).ok().flatten().is_some()
@@ -1830,7 +1884,7 @@ fn txid_is_known(st: &AppState, id: &[u8; 32]) -> bool {
 
 #[derive(Deserialize)]
 pub struct TxidsQuery {
-    txids: Option<String>,
+    pub txids: Option<String>,
 }
 
 pub async fn get_txs_outspends(
@@ -1852,7 +1906,8 @@ pub async fn get_txs_outspends(
 }
 
 #[allow(clippy::result_large_err)] // public error enum
-fn decode_tx_hex_str(hex: &str) -> Result<bitcoin::Transaction, Response> {
+#[doc(hidden)]
+pub fn decode_tx_hex_str(hex: &str) -> Result<bitcoin::Transaction, Response> {
     let hex = hex.trim().trim_matches('"');
     let raw = match rbitcoin_primitives::hex_decode(hex) {
         Ok(r) => r,
@@ -1866,7 +1921,7 @@ fn decode_tx_hex_str(hex: &str) -> Result<bitcoin::Transaction, Response> {
     }
 }
 
-async fn admit_broadcast(st: AppState, tx: bitcoin::Transaction) -> Response {
+pub async fn admit_broadcast(st: AppState, tx: bitcoin::Transaction) -> Response {
     let Some(mp) = st.mempool.as_ref() else {
         return (StatusCode::SERVICE_UNAVAILABLE, "mempool not available").into_response();
     };
@@ -1897,11 +1952,12 @@ pub async fn post_tx(State(st): State<AppState>, body: Bytes) -> Response {
 
 #[derive(Deserialize, Default)]
 pub struct MaxFeeQuery {
-    maxfeerate: Option<String>,
+    pub maxfeerate: Option<String>,
 }
 
 #[allow(clippy::result_large_err)] // public error enum
-fn parse_maxfeerate_btc_kvb(q: MaxFeeQuery) -> Result<u64, Response> {
+#[doc(hidden)]
+pub fn parse_maxfeerate_btc_kvb(q: MaxFeeQuery) -> Result<u64, Response> {
     let Some(s) = q.maxfeerate.filter(|s| !s.is_empty()) else {
         return Ok(10_000);
     };
@@ -1918,7 +1974,8 @@ fn parse_maxfeerate_btc_kvb(q: MaxFeeQuery) -> Result<u64, Response> {
     Ok(sat.max(1))
 }
 
-fn fee_exceeds_sat_vb(fee_sat: u64, weight: u64, max_sat_vb: u64) -> bool {
+#[doc(hidden)]
+pub fn fee_exceeds_sat_vb(fee_sat: u64, weight: u64, max_sat_vb: u64) -> bool {
     if max_sat_vb == 0 {
         return false;
     }
@@ -2097,138 +2154,5 @@ pub async fn post_tx_package(State(st): State<AppState>, body: Bytes) -> Respons
             Json(json!({ "txids": txids })).into_response()
         }
         Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
-    }
-}
-
-#[cfg(test)]
-mod pure_helper_tests {
-    use super::{block_summary_json, fee_estimates_from, outspend_json};
-    use rbitcoin_primitives::{Fk, Height};
-    use rbitcoin_query::testutil::FixtureChain;
-    use rbitcoin_query::{Query, TxApply};
-    use rbitcoin_store::{HeaderRecord, InputRecord, OutputRecord, TxRecord};
-    use serde_json::json;
-
-    fn temp_query() -> (rbitcoin_query::testutil::TempDir, Query) {
-        rbitcoin_query::testutil::tiny_query_labeled("esplora-pure")
-    }
-
-    fn seed_genesis(q: &Query) -> [u8; 32] {
-        let merkle = [0xab; 32];
-        let hash = rbitcoin_store::block_header_hash(1, &[0u8; 32], &merkle, 1, 0x207f_ffff, 0);
-        let header = HeaderRecord {
-            prev_fk: Fk::NULL,
-            version: 1,
-            timestamp: 1,
-            bits: 0x207f_ffff,
-            nonce: 0,
-            merkle_root: merkle,
-            hash,
-            size: 0,
-            weight: 0,
-        };
-        let ta = TxApply {
-            tx: TxRecord {
-                txid: [0xcb; 32],
-                version: 1,
-                locktime: 0,
-                input_start_fk: Fk::NULL,
-                input_count: 1,
-                output_start_fk: Fk::NULL,
-                output_count: 1,
-            },
-            inputs: vec![InputRecord {
-                prev_txid: [0u8; 32],
-                parent: rbitcoin_store::InputParent::Coinbase,
-                sequence: u32::MAX,
-                script_sig: vec![0x00],
-                witness: vec![vec![0u8; 32]],
-            }],
-            outputs: vec![OutputRecord::unspent(50_0000_0000, vec![0x51])],
-        };
-        let _ = q.connect_block(Height(0), &header, &[ta]).unwrap();
-        hash
-    }
-
-    #[test]
-    fn fee_routes_keep_the_estimator_resolution() {
-        // BTC/kvB as the estimator publishes it: whole sat/kvB
-        let pairs = [
-            (1, 0.000_012_34),
-            (3, 0.000_009_87),
-            (6, 0.000_003_1),
-            (144, 0.000_001_01),
-        ];
-        let est = fee_estimates_from(&pairs).expect("estimates");
-        assert_eq!(est["1"], json!(1.234));
-        assert_eq!(est["3"], json!(0.987));
-        assert_eq!(est["144"], json!(0.101));
-    }
-
-    #[test]
-    fn block_summary_bits_u32_and_witness_size_weight() {
-        let (dir, q) = temp_query();
-        let hash = seed_genesis(&q);
-        let summary = block_summary_json(&q, &hash).expect("summary");
-        assert!(
-            summary["bits"].is_u64(),
-            "Esplora bits is u32, not hex: {}",
-            summary["bits"]
-        );
-        assert_eq!(summary["bits"], 0x207f_ffff);
-        let block = q.reconstruct_archived_block(&hash).unwrap().unwrap();
-        assert_eq!(summary["size"], block.total_size() as u64);
-        assert_eq!(summary["weight"], block.weight().to_wu());
-        assert_ne!(
-            summary["weight"].as_u64().unwrap(),
-            summary["size"].as_u64().unwrap().saturating_mul(4),
-            "witness block weight is not 4×stripped size"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn outspend_json_spent_includes_vin() {
-        let (dir, q) = temp_query();
-        let _hash = seed_genesis(&q);
-        let create_fk = q.tx_fk_by_txid(&[0xcb; 32]).unwrap().unwrap();
-        let spend = (
-            TxRecord {
-                txid: [0x11; 32],
-                version: 1,
-                locktime: 0,
-                input_start_fk: Fk::NULL,
-                input_count: 1,
-                output_start_fk: Fk::NULL,
-                output_count: 1,
-            },
-            vec![InputRecord {
-                prev_txid: [0xcb; 32],
-                parent: rbitcoin_store::InputParent::Prevout { create_fk, vout: 0 },
-                sequence: u32::MAX,
-                script_sig: vec![],
-                witness: vec![],
-            }],
-            vec![OutputRecord::unspent(1, vec![0x51])],
-        );
-        let spend_fk = q.store().put_tx_full_batch_indexed(&[spend], true).unwrap()[0];
-        q.store()
-            .put_spend_create(create_fk, 0, spend_fk, 0)
-            .unwrap();
-        let view = q.pin_chain_view().unwrap().expect("tip");
-        q.store()
-            .header_txs
-            .put_range(view.header_fk, create_fk, 2)
-            .unwrap();
-        q.store()
-            .strong_tx
-            .set_strong(spend_fk, view.header_fk)
-            .unwrap();
-        q.store().rebuild_height_fence().unwrap();
-        let v = outspend_json(&q, None, &[0xcb; 32], 0, Some(&view)).unwrap();
-        assert_eq!(v["spent"], true, "{v}");
-        assert!(v.get("txid").is_some(), "{v}");
-        assert_eq!(v["vin"], 0, "outspend vin from spent slot: {v}");
-        let _ = std::fs::remove_dir_all(dir);
     }
 }

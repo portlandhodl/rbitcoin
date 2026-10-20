@@ -12,7 +12,7 @@ use rbitcoin_consensus::{ChainParams, TxTweak};
 use rbitcoin_primitives::Height;
 use rbitcoin_query::tweaks_for_height;
 use rbitcoin_query::{Query, ThinTweakRangeLimits, ThinTweakRow};
-#[cfg(test)]
+#[cfg(debug_assertions)]
 use serde_json::Map;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -28,7 +28,8 @@ pub const SUBSCRIBE_CHUNK: Duration = Duration::from_secs(60);
 /// `sp_min_dust`. Index still stores every eligible tweak.
 pub const DEFAULT_TWEAKS_MIN_DUST: u64 = 1000;
 
-fn keep_p2tr_value(value: u64, min_dust: u64) -> bool {
+#[doc(hidden)]
+pub fn keep_p2tr_value(value: u64, min_dust: u64) -> bool {
     min_dust == 0 || value > min_dust
 }
 
@@ -38,7 +39,7 @@ pub fn seal_subscribe_chunk(elapsed: Duration, budget: Duration, more: bool) -> 
 }
 
 /// Another wave may run: heights remain and the 60s chunk has not elapsed.
-pub(crate) fn chunk_still_open(elapsed: Duration, more: bool) -> bool {
+pub fn chunk_still_open(elapsed: Duration, more: bool) -> bool {
     more && !seal_subscribe_chunk(elapsed, SUBSCRIBE_CHUNK, more)
 }
 
@@ -137,7 +138,8 @@ pub fn height_notify_json(
     Ok(wrap_height_notify(&map))
 }
 
-fn wrap_height_notify(map_json: &str) -> String {
+#[doc(hidden)]
+pub fn wrap_height_notify(map_json: &str) -> String {
     let mut s = String::with_capacity(map_json.len() + 80);
     s.push_str("{\"jsonrpc\":\"2.0\",\"method\":\"blockchain.tweaks.subscribe\",\"params\":[");
     s.push_str(map_json);
@@ -305,11 +307,13 @@ pub fn thin_height_notify_json(h: u32, rows: &[ThinTweakRow], min_dust: u64) -> 
     wrap_height_notify(&encode_thin_height_json(h, rows, min_dust))
 }
 
-fn empty_height_json(h: u32) -> String {
+#[doc(hidden)]
+pub fn empty_height_json(h: u32) -> String {
     empty_heights_json(h, h)
 }
 
-fn empty_heights_json(first: u32, last: u32) -> String {
+#[doc(hidden)]
+pub fn empty_heights_json(first: u32, last: u32) -> String {
     let n = last.saturating_sub(first).saturating_add(1) as usize;
     let mut s = String::with_capacity(n.saturating_mul(12).saturating_add(2));
     s.push('{');
@@ -324,7 +328,8 @@ fn empty_heights_json(first: u32, last: u32) -> String {
     s
 }
 
-fn retain_unspent_taproot(
+#[doc(hidden)]
+pub fn retain_unspent_taproot(
     query: &Query,
     height: Height,
     tweaks: &mut BTreeMap<[u8; 32], TxTweak>,
@@ -354,7 +359,7 @@ fn retain_unspent_taproot(
     Ok(())
 }
 
-pub(crate) fn encode_thin_height_json(
+pub fn encode_thin_height_json(
     h: u32,
     rows: &[rbitcoin_query::ThinTweakRow],
     min_dust: u64,
@@ -502,7 +507,7 @@ fn param_bool(params: &Value, idx: usize) -> Option<bool> {
     })
 }
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 pub fn height_object(tweaks: &std::collections::BTreeMap<[u8; 32], TxTweak>) -> Value {
     let mut txs = Map::new();
     for (txid, t) in tweaks {
@@ -511,7 +516,7 @@ pub fn height_object(tweaks: &std::collections::BTreeMap<[u8; 32], TxTweak>) -> 
     Value::Object(txs)
 }
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 pub fn encode_tx_tweak(t: &TxTweak) -> Value {
     let mut outs = Map::new();
     for o in &t.output_pubkeys {
@@ -526,563 +531,8 @@ pub fn encode_tx_tweak(t: &TxTweak) -> Value {
     })
 }
 
-#[cfg(test)]
-fn txid_display_hex(txid: &[u8; 32]) -> String {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn txid_display_hex(txid: &[u8; 32]) -> String {
     rbitcoin_primitives::display_hash_hex(*(txid))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use rbitcoin_query::testutil::FixtureChain;
-
-    #[test]
-    fn subscribe_serve_limits_matches_query_default() {
-        assert_eq!(
-            subscribe_serve_limits(true),
-            ThinTweakRangeLimits::default()
-        );
-        assert_eq!(subscribe_serve_limits(true).max_eligible, 16384);
-        assert_eq!(subscribe_serve_limits(true).max_heights, 128);
-        assert!(!subscribe_serve_limits(true).cut_through);
-        assert!(subscribe_serve_limits(false).cut_through);
-    }
-
-    #[test]
-    fn parse_req_historical_defaults_false() {
-        let r = parse_req(&json!([10, 3])).unwrap();
-        assert_eq!(
-            r,
-            TweakReq {
-                start: 10,
-                count: 3,
-                historical: false
-            }
-        );
-        let h = parse_req(&json!([10, 3, true])).unwrap();
-        assert!(h.historical);
-        let c = parse_req(&json!([0, 1, false])).unwrap();
-        assert!(!c.historical);
-    }
-
-    #[test]
-    fn last_height_stops_at_tip() {
-        assert_eq!(last_height(880_791, 81_427, Some(962_217)), Some(962_217));
-        assert_eq!(last_height(10, 3, Some(11)), Some(11));
-        assert_eq!(last_height(10, 1, Some(100)), Some(10));
-        assert_eq!(last_height(50, 1, Some(10)), None);
-        assert_eq!(last_height(0, 1, None), None);
-    }
-
-    #[test]
-    fn pre_taproot_wave_covers_1024_then_stops_at_activation() {
-        assert_eq!(pre_taproot_wave_last(0, 10, 709_632), Some(10));
-        assert_eq!(pre_taproot_wave_last(0, 2_000, 709_632), Some(1023));
-        assert_eq!(
-            pre_taproot_wave_last(709_000, 800_000, 709_632),
-            Some(709_631)
-        );
-        assert_eq!(pre_taproot_wave_last(709_632, 800_000, 709_632), None);
-        assert_eq!(pre_taproot_wave_last(0, 100, 0), None);
-    }
-
-    #[test]
-    fn first_subscribe_wave_indexed_shares_batch_and_pre_taproot_is_empty() {
-        use rbitcoin_primitives::{Fk, Height};
-        use rbitcoin_query::{Query, TxApply};
-        use rbitcoin_store::{HeaderRecord, InputRecord, OutputRecord, TxRecord};
-
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-electrum-first-wave-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let q = Query::open_or_create_tiny(&dir).unwrap();
-        q.set_sptweaks_enabled(true, Height(0)).unwrap();
-        let mut prev = Fk::NULL;
-        let mut parent_hash: Option<[u8; 32]> = None;
-        for h in 0..4u32 {
-            let mut merkle = [0u8; 32];
-            merkle[0..4].copy_from_slice(&h.to_le_bytes());
-            merkle[5] = 0xec;
-            let hash = match parent_hash {
-                None => merkle,
-                Some(ph) => {
-                    rbitcoin_store::block_header_hash(1, &ph, &merkle, h + 1, 0x207fffff, h)
-                }
-            };
-            let header = HeaderRecord {
-                prev_fk: prev,
-                version: 1,
-                timestamp: h + 1,
-                bits: 0x207fffff,
-                nonce: h,
-                merkle_root: merkle,
-                hash,
-                size: 0,
-                weight: 0,
-            };
-            let mut txid = [0u8; 32];
-            txid[0..4].copy_from_slice(&h.to_le_bytes());
-            txid[31] = 0xcb;
-            let ta = TxApply {
-                tx: TxRecord {
-                    txid,
-                    version: 1,
-                    locktime: 0,
-                    input_start_fk: Fk::NULL,
-                    input_count: 1,
-                    output_start_fk: Fk::NULL,
-                    output_count: 1,
-                },
-                inputs: vec![InputRecord::coinbase(u32::MAX, vec![h as u8], vec![])],
-                outputs: vec![OutputRecord::unspent(50_0000_0000, vec![0x51])],
-            };
-            prev = q.connect_block(Height(h), &header, &[ta]).unwrap();
-            parent_hash = Some(hash);
-            q.put_sp_tweaks_block(Height(h), prev, &[None]).unwrap();
-        }
-
-        let chain = ChainParams::regtest();
-        let wave = first_subscribe_wave(
-            &q,
-            &chain,
-            1,
-            3,
-            ThinTweakRangeLimits::default(),
-            DEFAULT_TWEAKS_MIN_DUST,
-        )
-        .unwrap();
-        let result: Value = serde_json::from_str(&wave.result_json).unwrap();
-        assert_eq!(result.as_object().unwrap().len(), 1);
-        assert!(result.get("1").unwrap().as_object().unwrap().is_empty());
-        assert_eq!(wave.consumed, 3);
-        assert_eq!(wave.rest_notifies.len(), 2);
-        for (i, line) in wave.rest_notifies.iter().enumerate() {
-            let v: Value = serde_json::from_str(line).unwrap();
-            let h = (i + 2).to_string();
-            assert_eq!(v["method"], "blockchain.tweaks.subscribe");
-            assert!(v["params"][0][&h].as_object().unwrap().is_empty(), "{v}");
-        }
-        let thin1 = q.load_thin_tweaks(Height(1)).unwrap().expect("indexed");
-        assert_eq!(
-            encode_thin_height_json(1, &thin1, DEFAULT_TWEAKS_MIN_DUST),
-            wave.result_json
-        );
-
-        let main = ChainParams::mainnet();
-        let pre = first_subscribe_wave(
-            &q,
-            &main,
-            0,
-            10,
-            ThinTweakRangeLimits::default(),
-            DEFAULT_TWEAKS_MIN_DUST,
-        )
-        .unwrap();
-        assert_eq!(pre.consumed, 1);
-        assert!(pre.rest_notifies.is_empty());
-        let pre_v: Value = serde_json::from_str(&pre.result_json).unwrap();
-        assert!(pre_v["0"].as_object().unwrap().is_empty());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn remaining_lines_pre_taproot_are_one_empty_wave() {
-        use rbitcoin_primitives::{Fk, Height};
-        use rbitcoin_query::{Query, TxApply};
-        use rbitcoin_store::{HeaderRecord, InputRecord, OutputRecord, TxRecord};
-
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-electrum-empty-wave-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let q = Query::open_or_create_tiny(&dir).unwrap();
-        q.set_sptweaks_enabled(true, Height(10_000)).unwrap();
-        let mut prev = Fk::NULL;
-        let mut parent_hash: Option<[u8; 32]> = None;
-        for h in 0..8u32 {
-            let mut merkle = [0u8; 32];
-            merkle[0..4].copy_from_slice(&h.to_le_bytes());
-            merkle[5] = 0xec;
-            let hash = match parent_hash {
-                None => merkle,
-                Some(ph) => {
-                    rbitcoin_store::block_header_hash(1, &ph, &merkle, h + 1, 0x207fffff, h)
-                }
-            };
-            let header = HeaderRecord {
-                prev_fk: prev,
-                version: 1,
-                timestamp: h + 1,
-                bits: 0x207fffff,
-                nonce: h,
-                merkle_root: merkle,
-                hash,
-                size: 0,
-                weight: 0,
-            };
-            let mut txid = [0u8; 32];
-            txid[0..4].copy_from_slice(&h.to_le_bytes());
-            txid[31] = 0xcb;
-            let ta = TxApply {
-                tx: TxRecord {
-                    txid,
-                    version: 1,
-                    locktime: 0,
-                    input_start_fk: Fk::NULL,
-                    input_count: 1,
-                    output_start_fk: Fk::NULL,
-                    output_count: 1,
-                },
-                inputs: vec![InputRecord::coinbase(u32::MAX, vec![h as u8], vec![])],
-                outputs: vec![OutputRecord::unspent(50_0000_0000, vec![0x51])],
-            };
-            prev = q.connect_block(Height(h), &header, &[ta]).unwrap();
-            parent_hash = Some(hash);
-        }
-        let chain = ChainParams::mainnet();
-        let wave = remaining_notify_lines(
-            &q,
-            &chain,
-            1,
-            7,
-            ThinTweakRangeLimits::default(),
-            DEFAULT_TWEAKS_MIN_DUST,
-        )
-        .unwrap();
-        assert_eq!(wave.consumed, 7);
-        assert_eq!(wave.lines.len(), 1);
-        let v: Value = serde_json::from_str(&wave.lines[0]).unwrap();
-        assert_eq!(v["method"], "blockchain.tweaks.subscribe");
-        let map = v["params"][0].as_object().expect("collapsed empty map");
-        assert_eq!(map.len(), 7, "{v}");
-        for h in 1u32..=7 {
-            assert!(
-                map.get(&h.to_string())
-                    .and_then(|x| x.as_object())
-                    .is_some_and(|o| o.is_empty()),
-                "{v}"
-            );
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn height_map_cut_through_omits_spent_p2tr() {
-        use bitcoin::hashes::{hash160, Hash};
-        use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
-        use rbitcoin_primitives::{Fk, Height};
-        use rbitcoin_query::TxApply;
-        use rbitcoin_store::{HeaderRecord, InputRecord, OutputRecord, TxRecord};
-
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-electrum-cut-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let q = Query::open_or_create_tiny(&dir).unwrap();
-        q.set_sptweaks_enabled(true, Height(0)).unwrap();
-        let secp = Secp256k1::new();
-        let sk = SecretKey::from_slice(&[2u8; 32]).unwrap();
-        let pk = PublicKey::from_secret_key(&secp, &sk);
-        let ser = pk.serialize();
-        let h160 = hash160::Hash::hash(&ser);
-        let mut p2wpkh = vec![0x00, 0x14];
-        p2wpkh.extend_from_slice(h160.as_ref());
-        let (xonly, _) = pk.x_only_public_key();
-        let mut p2tr = vec![0x51, 0x20];
-        p2tr.extend_from_slice(&xonly.serialize());
-        let mut genesis_txid = [0u8; 32];
-        genesis_txid[31] = 0xcb;
-        let mut merkle0 = [0u8; 32];
-        merkle0[5] = 0xec;
-        let h0 = HeaderRecord {
-            prev_fk: Fk::NULL,
-            version: 1,
-            timestamp: 1,
-            bits: 0x207fffff,
-            nonce: 0,
-            merkle_root: merkle0,
-            hash: merkle0,
-            size: 0,
-            weight: 0,
-        };
-        let fk0 = q
-            .connect_block(
-                Height(0),
-                &h0,
-                &[TxApply {
-                    tx: TxRecord {
-                        txid: genesis_txid,
-                        version: 1,
-                        locktime: 0,
-                        input_start_fk: Fk::NULL,
-                        input_count: 1,
-                        output_start_fk: Fk::NULL,
-                        output_count: 1,
-                    },
-                    inputs: vec![InputRecord::coinbase(u32::MAX, vec![0x00], vec![])],
-                    outputs: vec![OutputRecord::unspent(50_0000_0000, p2wpkh.clone())],
-                }],
-            )
-            .unwrap();
-        q.put_sp_tweaks_block(Height(0), fk0, &[None]).unwrap();
-        let create0 = q.block_tx_fks(Height(0)).unwrap()[0];
-        let mut spend_txid = [0u8; 32];
-        spend_txid[0] = 0x11;
-        spend_txid[31] = 0xcd;
-        let hash1 = rbitcoin_store::block_header_hash(1, &h0.hash, &[0x11; 32], 2, 0x207fffff, 1);
-        let h1 = HeaderRecord {
-            prev_fk: fk0,
-            version: 1,
-            timestamp: 2,
-            bits: 0x207fffff,
-            nonce: 1,
-            merkle_root: [0x11; 32],
-            hash: hash1,
-            size: 0,
-            weight: 0,
-        };
-        let fk1 = q
-            .connect_block(
-                Height(1),
-                &h1,
-                &[TxApply {
-                    tx: TxRecord {
-                        txid: spend_txid,
-                        version: 2,
-                        locktime: 0,
-                        input_start_fk: Fk::NULL,
-                        input_count: 1,
-                        output_start_fk: Fk::NULL,
-                        output_count: 1,
-                    },
-                    inputs: vec![InputRecord {
-                        prev_txid: genesis_txid,
-                        parent: rbitcoin_store::InputParent::Prevout {
-                            create_fk: create0,
-                            vout: 0,
-                        },
-                        sequence: u32::MAX,
-                        script_sig: vec![],
-                        witness: vec![vec![0u8; 64], ser.to_vec()],
-                    }],
-                    outputs: vec![OutputRecord::unspent(49_0000_0000, p2tr)],
-                }],
-            )
-            .unwrap();
-        let mut tw = [0x02; 33];
-        tw[0] = 0x02;
-        q.put_sp_tweaks_block(Height(1), fk1, &[Some(tw)]).unwrap();
-        let chain = ChainParams::regtest();
-        let live = height_map_json(&q, &chain, 1, true, DEFAULT_TWEAKS_MIN_DUST).unwrap();
-        let live_v: Value = serde_json::from_str(&live).unwrap();
-        assert_eq!(live_v["1"].as_object().unwrap().len(), 1);
-
-        let elig_fk = q.block_tx_fks(Height(1)).unwrap()[0];
-        let mut spend2 = [0u8; 32];
-        spend2[0] = 0x22;
-        let hash2 = rbitcoin_store::block_header_hash(1, &h1.hash, &[0x22; 32], 3, 0x207fffff, 2);
-        let h2 = HeaderRecord {
-            prev_fk: fk1,
-            version: 1,
-            timestamp: 3,
-            bits: 0x207fffff,
-            nonce: 2,
-            merkle_root: [0x22; 32],
-            hash: hash2,
-            size: 0,
-            weight: 0,
-        };
-        q.connect_block(
-            Height(2),
-            &h2,
-            &[TxApply {
-                tx: TxRecord {
-                    txid: spend2,
-                    version: 2,
-                    locktime: 0,
-                    input_start_fk: Fk::NULL,
-                    input_count: 1,
-                    output_start_fk: Fk::NULL,
-                    output_count: 1,
-                },
-                inputs: vec![InputRecord {
-                    prev_txid: spend_txid,
-                    parent: rbitcoin_store::InputParent::Prevout {
-                        create_fk: elig_fk,
-                        vout: 0,
-                    },
-                    sequence: u32::MAX,
-                    script_sig: vec![],
-                    witness: vec![vec![0u8; 64]],
-                }],
-                outputs: vec![OutputRecord::unspent(48_0000_0000, p2wpkh)],
-            }],
-        )
-        .unwrap();
-
-        let cut = height_map_json(&q, &chain, 1, true, DEFAULT_TWEAKS_MIN_DUST).unwrap();
-        let cut_v: Value = serde_json::from_str(&cut).unwrap();
-        assert!(
-            cut_v["1"].as_object().unwrap().is_empty(),
-            "cut-through must omit spent p2tr, got {cut}"
-        );
-        let hist = height_map_json(&q, &chain, 1, false, 0).unwrap();
-        let hist_v: Value = serde_json::from_str(&hist).unwrap();
-        assert_eq!(hist_v["1"].as_object().unwrap().len(), 1, "{hist}");
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn done_notify_is_cake_message() {
-        let v = done_notify();
-        assert_eq!(v["method"], "blockchain.tweaks.subscribe");
-        assert_eq!(v["params"][0]["message"], "done");
-    }
-
-    #[test]
-    fn seal_subscribe_chunk_only_when_more_remain_and_budget_elapsed() {
-        use std::time::Duration;
-        let min = Duration::from_secs(60);
-        assert!(
-            !seal_subscribe_chunk(Duration::from_secs(90), min, false),
-            "natural end of count/tip is not a time seal"
-        );
-        assert!(
-            !seal_subscribe_chunk(Duration::from_secs(59), min, true),
-            "under budget keeps the RPC open"
-        );
-        assert!(
-            seal_subscribe_chunk(min, min, true),
-            "wave boundary at budget with heights left must done"
-        );
-        assert_eq!(SUBSCRIBE_CHUNK, Duration::from_secs(60));
-        assert!(
-            chunk_still_open(Duration::from_secs(59), true),
-            "under 60s with heights left keeps the stream open"
-        );
-        assert!(
-            !chunk_still_open(SUBSCRIBE_CHUNK, true),
-            "60s with heights left seals the chunk"
-        );
-        assert!(!chunk_still_open(SUBSCRIBE_CHUNK, false));
-    }
-
-    #[test]
-    fn thin_json_matches_value_encoder() {
-        let mut tweak = [0u8; 33];
-        tweak[0] = 0x02;
-        tweak[1] = 0xaa;
-        let mut txid = [0u8; 32];
-        txid[0] = 0x11;
-        let row = rbitcoin_query::ThinTweakRow {
-            txid,
-            tweak,
-            p2tr: vec![(1, [0x5f; 32], 5410)],
-        };
-        let s = encode_thin_height_json(850_000, &[row], 0);
-        let v: Value = serde_json::from_str(&s).unwrap();
-        let t = TxTweak {
-            tweak,
-            output_pubkeys: vec![rbitcoin_consensus::TaprootOut {
-                vout: 1,
-                xonly: [0x5f; 32],
-                value: 5410,
-            }],
-        };
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(txid, t);
-        let expect = json!({ "850000": height_object(&map) });
-        assert_eq!(v, expect);
-    }
-
-    fn dust_row(txid0: u8, p2tr: Vec<(u32, [u8; 32], u64)>) -> ThinTweakRow {
-        let mut txid = [0u8; 32];
-        txid[0] = txid0;
-        let mut tweak = [0u8; 33];
-        tweak[0] = 0x02;
-        ThinTweakRow { txid, tweak, p2tr }
-    }
-
-    #[test]
-    fn default_tweaks_min_dust_is_1000() {
-        assert_eq!(DEFAULT_TWEAKS_MIN_DUST, 1000);
-    }
-
-    #[test]
-    fn omit_dust_default_drops_leq_1000_keeps_1001_and_empty_txs() {
-        let rows = vec![
-            dust_row(1, vec![(0, [0x11; 32], 1000), (1, [0x22; 32], 1001)]),
-            dust_row(2, vec![(0, [0x33; 32], 546)]),
-            dust_row(3, vec![(0, [0x44; 32], 0)]),
-        ];
-        let s = encode_thin_height_json(1, &rows, DEFAULT_TWEAKS_MIN_DUST);
-        let v: Value = serde_json::from_str(&s).unwrap();
-        let txs = v["1"].as_object().unwrap();
-        assert_eq!(txs.len(), 1, "dust-only txs must leave the height map");
-        let txid = rbitcoin_primitives::display_hash_hex(rows[0].txid);
-        assert_eq!(txs[&txid]["output_pubkeys"].as_object().unwrap().len(), 1);
-        assert_eq!(txs[&txid]["output_pubkeys"]["1"][1], 1001);
-    }
-
-    #[test]
-    fn omit_dust_546_matches_cake_electrs_leq() {
-        let rows = vec![
-            dust_row(1, vec![(0, [0xaa; 32], 546)]),
-            dust_row(2, vec![(0, [0xbb; 32], 547)]),
-        ];
-        let s = encode_thin_height_json(1, &rows, 546);
-        let v: Value = serde_json::from_str(&s).unwrap();
-        let txs = v["1"].as_object().unwrap();
-        assert_eq!(txs.len(), 1);
-        let txid = rbitcoin_primitives::display_hash_hex(rows[1].txid);
-        assert_eq!(txs[&txid]["output_pubkeys"]["0"][1], 547);
-    }
-
-    #[test]
-    fn omit_dust_zero_serves_every_value_including_zero() {
-        let rows = vec![dust_row(1, vec![(0, [0x11; 32], 0), (1, [0x22; 32], 1)])];
-        let s = encode_thin_height_json(1, &rows, 0);
-        let v: Value = serde_json::from_str(&s).unwrap();
-        let txs = v["1"].as_object().unwrap();
-        assert_eq!(txs.len(), 1);
-        let txid = rbitcoin_primitives::display_hash_hex(rows[0].txid);
-        let outs = txs[&txid]["output_pubkeys"].as_object().unwrap();
-        assert_eq!(outs.len(), 2);
-        assert_eq!(outs["0"][1], 0);
-        assert_eq!(outs["1"][1], 1);
-    }
-
-    #[test]
-    fn encode_after_default_dust_omits_dust_tx_keeps_height_key() {
-        let rows = vec![
-            dust_row(1, vec![(0, [0x11; 32], 1000)]),
-            dust_row(2, vec![(1, [0x22; 32], 5410)]),
-        ];
-        let s = encode_thin_height_json(850_000, &rows, DEFAULT_TWEAKS_MIN_DUST);
-        let v: Value = serde_json::from_str(&s).unwrap();
-        let txs = v["850000"].as_object().unwrap();
-        assert_eq!(txs.len(), 1, "height key stays; dust-only tx is gone");
-        let txid = rbitcoin_primitives::display_hash_hex(rows[1].txid);
-        assert!(txs.contains_key(&txid));
-        assert_eq!(txs[&txid]["output_pubkeys"]["1"][1], 5410);
-    }
 }

@@ -1,14 +1,23 @@
 //! Node lifecycle, configuration, and process orchestration.
 
-mod cli;
-mod config;
-mod error;
-mod health;
-mod inhibit;
-mod lock;
-mod regtest_rpc;
-mod run;
-mod tor_control;
+#[doc(hidden)]
+pub mod cli;
+#[doc(hidden)]
+pub mod config;
+#[doc(hidden)]
+pub mod error;
+#[doc(hidden)]
+pub mod health;
+#[doc(hidden)]
+pub mod inhibit;
+#[doc(hidden)]
+pub mod lock;
+#[doc(hidden)]
+pub mod regtest_rpc;
+#[doc(hidden)]
+pub mod run;
+#[doc(hidden)]
+pub mod tor_control;
 
 pub use cli::cli_main;
 pub use config::{

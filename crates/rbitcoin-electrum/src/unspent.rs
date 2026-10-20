@@ -33,7 +33,8 @@ pub fn scripthash_utxos_with_mempool_slot_in(
     Ok(out)
 }
 
-fn overlay_mempool_utxos(
+#[doc(hidden)]
+pub fn overlay_mempool_utxos(
     out: &mut Vec<ScriptHashUtxo>,
     mempool: Option<&MempoolHub>,
     sh: &[u8; 32],

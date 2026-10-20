@@ -36,7 +36,8 @@ pub fn durable_sh_inclusion_floor(include_hwm: u64, seal: u64) -> u64 {
     }
 }
 
-fn seal_path(runs_dir: &Path) -> PathBuf {
+#[doc(hidden)]
+pub fn seal_path(runs_dir: &Path) -> PathBuf {
     runs_dir.join("SEAL")
 }
 
@@ -69,15 +70,16 @@ pub fn store_seal(runs_dir: &Path, max_fk: u64) -> Result<(), StoreError> {
     Ok(())
 }
 
-struct Inner {
-    ctrl: RunControl,
+#[doc(hidden)]
+pub struct Inner {
+    pub ctrl: RunControl,
 }
 
 /// Post-IBD SH SEAL + leftover-run discard; unsorted collect/pack is the materialize.
 pub struct ShRunBuilder {
-    inner: Arc<Mutex<Inner>>,
-    sealed_fk: Arc<AtomicU64>,
-    runs_dir: PathBuf,
+    pub inner: Arc<Mutex<Inner>>,
+    pub sealed_fk: Arc<AtomicU64>,
+    pub runs_dir: PathBuf,
 }
 
 impl ShRunBuilder {
@@ -122,7 +124,8 @@ impl ShRunBuilder {
     }
 
     /// Wipe leftover catalog runs + SEAL=0 (does not touch durable SH head).
-    fn wipe_catalog_and_seal(&self) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn wipe_catalog_and_seal(&self) -> Result<(), StoreError> {
         clear_runs_dir(&self.runs_dir);
         let _ = std::fs::create_dir_all(&self.runs_dir);
         store_seal(&self.runs_dir, 0)?;
@@ -130,7 +133,8 @@ impl ShRunBuilder {
         Ok(())
     }
 
-    fn clear_cold_progress_and_hwm(store: &Store) {
+    #[doc(hidden)]
+    pub fn clear_cold_progress_and_hwm(store: &Store) {
         ColdProgress::clear(store.path());
         let hwm_path = store.path().join(rbitcoin_store::INCLUDE_HWM_NAME);
         let _ = std::fs::remove_file(&hwm_path);
@@ -227,46 +231,5 @@ impl ShRunBuilder {
             t0.elapsed(),
         );
         Ok(mat.creates)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rbitcoin_store::Store;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[test]
-    fn durable_sh_inclusion_floor_prefers_hwm() {
-        assert_eq!(durable_sh_inclusion_floor(0, 50), 50);
-        assert_eq!(durable_sh_inclusion_floor(99, 50), 99);
-    }
-
-    #[test]
-    fn force_rebuild_resets_seal_and_clears_runs() {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("rbitcoin-sh-force-{n}"));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let store = Store::open_or_create_tiny(&dir).unwrap();
-        let b = ShRunBuilder::new(&dir);
-        let runs_dir = dir.join("scripthash.runs");
-        std::fs::create_dir_all(&runs_dir).unwrap();
-        store_seal(&runs_dir, 1_400_000_000).unwrap();
-        b.refresh_seal();
-        assert_eq!(b.sealed_max_create_fk(), 1_400_000_000);
-        std::fs::write(runs_dir.join("000001.run"), b"leftover").unwrap();
-        assert!(b.on_disk_run_count() > 0);
-
-        b.prepare_force_full_rebuild(&store).unwrap();
-        assert_eq!(b.sealed_max_create_fk(), 0);
-        assert_eq!(b.on_disk_run_count(), 0);
-        assert!(store.scripthash.head_is_empty());
-        assert_eq!(store.scripthash.entry_count(), 0);
-        assert_eq!(store.scripthash.include_hwm(), 0);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

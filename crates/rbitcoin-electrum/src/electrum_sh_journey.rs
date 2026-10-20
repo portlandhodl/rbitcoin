@@ -8,7 +8,8 @@ use rbitcoin_query::{accept_and_connect_block};
 use rbitcoin_query::TxApply;
 use rbitcoin_store::{HeaderRecord, InputRecord, OutputRecord, TxRecord};
 
-fn op_true_apply(tag: u8) -> TxApply {
+#[doc(hidden)]
+pub fn op_true_apply(tag: u8) -> TxApply {
     let mut txid = [0u8; 32];
     txid[0] = tag;
     txid[31] = 0xcb;
@@ -33,7 +34,8 @@ fn op_true_apply(tag: u8) -> TxApply {
     }
 }
 
-fn connect_op_true(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) -> [u8; 32] {
+#[doc(hidden)]
+pub fn connect_op_true(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) -> [u8; 32] {
     let mut merkle = [0u8; 32];
     merkle[0..4].copy_from_slice(&height.to_le_bytes());
     merkle[5] = 0xec;
@@ -54,7 +56,8 @@ fn connect_op_true(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) -> [u8; 3
     hash
 }
 
-fn class_a_op_true(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) -> [u8; 32] {
+#[doc(hidden)]
+pub fn class_a_op_true(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) -> [u8; 32] {
     let merkle = [0x11; 32];
     let hash = rbitcoin_store::block_header_hash(1, &parent, &merkle, height + 1, 0x207fffff, height);
     let hdr = HeaderRecord {
@@ -74,7 +77,8 @@ fn class_a_op_true(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) -> [u8; 3
     hash
 }
 
-fn view_hash(q: &Query) -> ([u8; 32], Height) {
+#[doc(hidden)]
+pub fn view_hash(q: &Query) -> ([u8; 32], Height) {
     let params = ChainParams::regtest();
     let cfg = ElectrumConfig::for_params("127.0.0.1:0".parse().unwrap(), &params);
     let sh = electrum_scripthash_hex(&[0x51]);
@@ -103,7 +107,8 @@ fn view_hash(q: &Query) -> ([u8; 32], Height) {
     (v.hash, v.height)
 }
 
-fn stamp_follows_pending(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) {
+#[doc(hidden)]
+pub fn stamp_follows_pending(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) {
     let indexed = q.sh_indexed_through_height();
     let hash = class_a_op_true(q, height, prev, parent);
     assert_eq!(q.tip_height(), Some(Height(height)));
@@ -117,7 +122,8 @@ fn stamp_follows_pending(q: &Query, height: u32, prev: Fk, parent: [u8; 32]) {
     assert_eq!(durable_h, Height(height));
 }
 
-fn casa_cap_then_balance_history_unspent(q: &Query) {
+#[doc(hidden)]
+pub fn casa_cap_then_balance_history_unspent(q: &Query) {
     let params = ChainParams::regtest();
     let cfg = ElectrumConfig::for_params("127.0.0.1:0".parse().unwrap(), &params);
     let sh = electrum_scripthash_hex(&[0x51]);
@@ -187,7 +193,8 @@ fn casa_cap_then_balance_history_unspent(q: &Query) {
 
 }
 
-fn spend_coinbase(cbtxid: bitcoin::Txid, fee: u64) -> Transaction {
+#[doc(hidden)]
+pub fn spend_coinbase(cbtxid: bitcoin::Txid, fee: u64) -> Transaction {
     Transaction {
         version: TxVersion::TWO,
         lock_time: LockTime::ZERO,
@@ -204,7 +211,8 @@ fn spend_coinbase(cbtxid: bitcoin::Txid, fee: u64) -> Transaction {
     }
 }
 
-fn listunspent_skips_unused(q: &Arc<Query>, hub: &MempoolHub, spent_cb: &bitcoin::Txid) {
+#[doc(hidden)]
+pub fn listunspent_skips_unused(q: &Arc<Query>, hub: &MempoolHub, spent_cb: &bitcoin::Txid) {
     let params = ChainParams::regtest();
     let cfg = ElectrumConfig::for_params("127.0.0.1:0".parse().unwrap(), &params);
     let mut header_sub = false;
@@ -252,7 +260,7 @@ fn listunspent_skips_unused(q: &Arc<Query>, hub: &MempoolHub, spent_cb: &bitcoin
     );
 }
 
-async fn read_push(stream: &mut TcpStream) -> Value {
+pub async fn read_push(stream: &mut TcpStream) -> Value {
     let mut reader = BufReader::new(&mut *stream);
     let mut resp = String::new();
     tokio::time::timeout(std::time::Duration::from_secs(3), reader.read_line(&mut resp))
@@ -262,7 +270,7 @@ async fn read_push(stream: &mut TcpStream) -> Value {
     serde_json::from_str(&resp).unwrap()
 }
 
-async fn tip_push_two_clients_and_late(q: Arc<Query>, hub: Option<Arc<MempoolHub>>) {
+pub async fn tip_push_two_clients_and_late(q: Arc<Query>, hub: Option<Arc<MempoolHub>>) {
     let params = ChainParams::regtest();
     let (tip_tx, _) = broadcast::channel(4);
     let cfg = ElectrumConfig::for_params("127.0.0.1:0".parse().unwrap(), &params);
@@ -293,7 +301,8 @@ async fn tip_push_two_clients_and_late(q: Arc<Query>, hub: Option<Arc<MempoolHub
     handle.shutdown().await;
 }
 
-fn connect_script_block(
+#[doc(hidden)]
+pub fn connect_script_block(
     q: &Query,
     height: u32,
     prev: Fk,
@@ -328,7 +337,8 @@ fn connect_script_block(
 /// `from_height` above 0 is that window and is served above the create cap.
 /// Open history, and a window that still starts at height 0, stay capped.
 #[test]
-fn from_height_window_is_served_above_the_create_cap() {
+#[doc(hidden)]
+pub fn from_height_window_is_served_above_the_create_cap() {
     let (dir, q) = tmp_store();
     let params = ChainParams::regtest();
     let cfg = ElectrumConfig::for_params("127.0.0.1:0".parse().unwrap(), &params);
@@ -424,7 +434,8 @@ fn from_height_window_is_served_above_the_create_cap() {
 /// A later spend of a different output of a payment is not this script's
 /// history. The output that does pay the script still is.
 #[test]
-fn from_height_ignores_a_spend_of_another_output() {
+#[doc(hidden)]
+pub fn from_height_ignores_a_spend_of_another_output() {
     let (dir, q) = tmp_store();
     let params = ChainParams::regtest();
     let cfg = ElectrumConfig::for_params("127.0.0.1:0".parse().unwrap(), &params);
@@ -499,7 +510,7 @@ fn from_height_ignores_a_spend_of_another_output() {
 }
 
 #[tokio::test]
-async fn electrum_sh_join() {
+pub async fn electrum_sh_join() {
     let (dir, q) = tmp_store();
     let params = ChainParams::regtest();
     let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest);

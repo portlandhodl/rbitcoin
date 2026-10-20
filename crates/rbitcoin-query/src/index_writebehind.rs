@@ -21,8 +21,6 @@ use crate::ConfirmError;
 use crate::Query;
 use rbitcoin_consensus::ConsensusError;
 use rbitcoin_log::progress;
-#[cfg(test)]
-use rbitcoin_primitives::Fk;
 use rbitcoin_primitives::Height;
 use rbitcoin_store::IndexWindow;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -32,15 +30,19 @@ use std::time::{Duration, Instant};
 
 /// Heights per window. Bounds how long a disconnect waits and how far the
 /// IO thread reads ahead of commits.
-const WINDOW_HEIGHTS: u32 = 64;
+#[doc(hidden)]
+pub const WINDOW_HEIGHTS: u32 = 64;
 /// Creates per window. RAM trade: a window holds its blocks' outputs, input
 /// edges, P2TR-output witnesses, and spent parents (tens of MB at mainnet
 /// sizes); at most two windows wait for the CPU worker.
-const WINDOW_TXS: u64 = 50_000;
-const PROGRESS_EVERY: Duration = Duration::from_secs(10);
+#[doc(hidden)]
+pub const WINDOW_TXS: u64 = 50_000;
+#[doc(hidden)]
+pub const PROGRESS_EVERY: Duration = Duration::from_secs(10);
 
 /// Lowest height either index still needs, if any index is on.
-fn next_needed(query: &Query) -> Option<u32> {
+#[doc(hidden)]
+pub fn next_needed(query: &Query) -> Option<u32> {
     match (query.filter_index_next(), query.tweak_index_next()) {
         (Some(f), Some(t)) => Some(f.min(t)),
         (f, t) => f.or(t),
@@ -56,15 +58,17 @@ fn next_needed(query: &Query) -> Option<u32> {
 /// per block, and ends when the watermark passes the target or the index is
 /// turned off.
 #[derive(Default)]
-struct IndexStages {
-    filters: Option<progress::Stage>,
-    tweaks: Option<progress::Stage>,
+#[doc(hidden)]
+pub struct IndexStages {
+    pub filters: Option<progress::Stage>,
+    pub tweaks: Option<progress::Stage>,
 }
 
 impl IndexStages {
     /// Refresh from the watermarks. `filters` / `tweaks` false leave that
     /// index untracked (a startup repair that skips it).
-    fn observe(&mut self, query: &Query, target: Option<u32>, filters: bool, tweaks: bool) {
+    #[doc(hidden)]
+    pub fn observe(&mut self, query: &Query, target: Option<u32>, filters: bool, tweaks: bool) {
         if filters {
             track_index(
                 &mut self.filters,
@@ -86,7 +90,8 @@ impl IndexStages {
     }
 }
 
-fn track_index(
+#[doc(hidden)]
+pub fn track_index(
     slot: &mut Option<progress::Stage>,
     stage: &'static str,
     next: Option<u32>,
@@ -148,10 +153,7 @@ pub fn prepare_live_indexes(query: &Query) -> Result<(), ConfirmError> {
     prepare_live_indexes_limited(query, INDEX_STARTUP_GAP_HEIGHTS)
 }
 
-pub(crate) fn prepare_live_indexes_limited(
-    query: &Query,
-    max_heights: u32,
-) -> Result<(), ConfirmError> {
+pub fn prepare_live_indexes_limited(query: &Query, max_heights: u32) -> Result<(), ConfirmError> {
     let tip_h = query.tip_height().map(|h| h.0);
     if let Some(tip) = tip_h {
         let repair_f = repair_from(query.filter_index_next(), tip, max_heights);
@@ -170,7 +172,8 @@ pub(crate) fn prepare_live_indexes_limited(
     Ok(())
 }
 
-fn repair_from(next: Option<u32>, tip: u32, max_heights: u32) -> Option<u32> {
+#[doc(hidden)]
+pub fn repair_from(next: Option<u32>, tip: u32, max_heights: u32) -> Option<u32> {
     let next = next?;
     if next > tip {
         return None;
@@ -179,7 +182,8 @@ fn repair_from(next: Option<u32>, tip: u32, max_heights: u32) -> Option<u32> {
     (gap <= max_heights).then_some(next)
 }
 
-fn index_caught_up(next: Option<u32>, tip: Option<u32>) -> bool {
+#[doc(hidden)]
+pub fn index_caught_up(next: Option<u32>, tip: Option<u32>) -> bool {
     match (next, tip) {
         (None, _) => true,
         (Some(_), None) => true,
@@ -189,7 +193,8 @@ fn index_caught_up(next: Option<u32>, tip: Option<u32>) -> bool {
 
 /// Read and commit `start..=tip` for the indexes in `filter_from` / `tweak_from`.
 /// `None` means that index is not part of this repair.
-fn seal_through(
+#[doc(hidden)]
+pub fn seal_through(
     query: &Query,
     filter_from: Option<u32>,
     tweak_from: Option<u32>,
@@ -229,7 +234,8 @@ fn seal_through(
     Ok(())
 }
 
-fn plan_window(query: &Query, start: u32, target: u32) -> Result<u32, ConfirmError> {
+#[doc(hidden)]
+pub fn plan_window(query: &Query, start: u32, target: u32) -> Result<u32, ConfirmError> {
     let mut end = start;
     let mut txs = 0u64;
     while end < target && end - start + 1 < WINDOW_HEIGHTS {
@@ -250,11 +256,13 @@ fn plan_window(query: &Query, start: u32, target: u32) -> Result<u32, ConfirmErr
     Ok(end)
 }
 
-fn read_window(query: &Query, start: u32, end: u32) -> Result<IndexWindow, ConfirmError> {
+#[doc(hidden)]
+pub fn read_window(query: &Query, start: u32, end: u32) -> Result<IndexWindow, ConfirmError> {
     read_window_from(query, start, end, query.tweak_index_next())
 }
 
-fn read_window_from(
+#[doc(hidden)]
+pub fn read_window_from(
     query: &Query,
     start: u32,
     end: u32,
@@ -268,19 +276,22 @@ fn read_window_from(
     Ok(window)
 }
 
-struct IndexHeightJob {
-    window: Arc<IndexWindow>,
-    index: usize,
-    want_filter: bool,
-    want_tweaks: bool,
-    out: Arc<Mutex<Option<IndexHeightOut>>>,
+#[doc(hidden)]
+pub struct IndexHeightJob {
+    pub window: Arc<IndexWindow>,
+    pub index: usize,
+    pub want_filter: bool,
+    pub want_tweaks: bool,
+    pub out: Arc<Mutex<Option<IndexHeightOut>>>,
 }
 
-fn assemble_index_height_pool(job: &IndexHeightJob) -> Result<(), ConsensusError> {
+#[doc(hidden)]
+pub fn assemble_index_height_pool(job: &IndexHeightJob) -> Result<(), ConsensusError> {
     assemble_index_height(job).map_err(ConfirmError::into_pool)
 }
 
-fn assemble_index_height(job: &IndexHeightJob) -> Result<(), ConfirmError> {
+#[doc(hidden)]
+pub fn assemble_index_height(job: &IndexHeightJob) -> Result<(), ConfirmError> {
     let block = &job.window.blocks[job.index];
     let filter = if job.want_filter {
         Some((
@@ -306,11 +317,16 @@ fn assemble_index_height(job: &IndexHeightJob) -> Result<(), ConfirmError> {
 
 /// One job per height that still needs a filter or tweaks. The wave joins
 /// before return, so the `Arc` is only shared for that call.
-fn assemble_window(query: &Query, window: &Arc<IndexWindow>) -> Result<IndexRows, ConfirmError> {
+#[doc(hidden)]
+pub fn assemble_window(
+    query: &Query,
+    window: &Arc<IndexWindow>,
+) -> Result<IndexRows, ConfirmError> {
     assemble_window_from(window, query.filter_index_next(), query.tweak_index_next())
 }
 
-fn assemble_window_from(
+#[doc(hidden)]
+pub fn assemble_window_from(
     window: &Arc<IndexWindow>,
     filter_from: Option<u32>,
     tweak_from: Option<u32>,
@@ -339,41 +355,48 @@ fn assemble_window_from(
 
 /// Milliseconds of one interval, or of one tip window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct IndexStageSample {
-    read_ms: u64,
-    build_ms: u64,
-    commit_ms: u64,
+#[doc(hidden)]
+pub struct IndexStageSample {
+    pub read_ms: u64,
+    pub build_ms: u64,
+    pub commit_ms: u64,
 }
 
 /// Interval sums for `index: build` / `index: apply`. Not an `ibd: perf` token.
 #[derive(Debug, Default)]
-struct IndexStageMs {
-    read_ns: AtomicU64,
-    build_ns: AtomicU64,
-    commit_ns: AtomicU64,
+#[doc(hidden)]
+pub struct IndexStageMs {
+    pub read_ns: AtomicU64,
+    pub build_ns: AtomicU64,
+    pub commit_ns: AtomicU64,
 }
 
 impl IndexStageMs {
-    fn add_ns(slot: &AtomicU64, ns: u64) {
+    #[doc(hidden)]
+    pub fn add_ns(slot: &AtomicU64, ns: u64) {
         if ns > 0 {
             slot.fetch_add(ns, Ordering::Relaxed);
         }
     }
 
-    fn add_read(&self, ns: u64) {
+    #[doc(hidden)]
+    pub fn add_read(&self, ns: u64) {
         Self::add_ns(&self.read_ns, ns);
     }
 
-    fn add_build(&self, ns: u64) {
+    #[doc(hidden)]
+    pub fn add_build(&self, ns: u64) {
         Self::add_ns(&self.build_ns, ns);
     }
 
-    fn add_commit(&self, ns: u64) {
+    #[doc(hidden)]
+    pub fn add_commit(&self, ns: u64) {
         Self::add_ns(&self.commit_ns, ns);
     }
 
     /// Take the interval and reset. Sub-millisecond leftovers truncate.
-    fn take_ms(&self) -> IndexStageSample {
+    #[doc(hidden)]
+    pub fn take_ms(&self) -> IndexStageSample {
         IndexStageSample {
             read_ms: self.read_ns.swap(0, Ordering::Relaxed) / 1_000_000,
             build_ms: self.build_ns.swap(0, Ordering::Relaxed) / 1_000_000,
@@ -382,15 +405,17 @@ impl IndexStageMs {
     }
 }
 
-struct IndexBuildProgress {
-    next: u32,
-    tip: u32,
-    from: u32,
-    elapsed: Duration,
-    stages: IndexStageSample,
+#[doc(hidden)]
+pub struct IndexBuildProgress {
+    pub next: u32,
+    pub tip: u32,
+    pub from: u32,
+    pub elapsed: Duration,
+    pub stages: IndexStageSample,
 }
 
-fn format_index_build_progress(p: &IndexBuildProgress) -> String {
+#[doc(hidden)]
+pub fn format_index_build_progress(p: &IndexBuildProgress) -> String {
     let secs = p.elapsed.as_secs_f64();
     let rate = f64::from(p.next.saturating_sub(p.from)) / secs.max(0.001);
     format!(
@@ -406,22 +431,25 @@ fn format_index_build_progress(p: &IndexBuildProgress) -> String {
     )
 }
 
-fn format_index_apply(start: u32, end: u32, stages: IndexStageSample) -> String {
+#[doc(hidden)]
+pub fn format_index_apply(start: u32, end: u32, stages: IndexStageSample) -> String {
     format!(
         "index: apply h={start}..={end} read={}ms build={}ms commit={}ms",
         stages.read_ms, stages.build_ms, stages.commit_ms
     )
 }
 
-struct CommitTimes {
-    ok: bool,
-    build_ns: u64,
-    commit_ns: u64,
+#[doc(hidden)]
+pub struct CommitTimes {
+    pub ok: bool,
+    pub build_ns: u64,
+    pub commit_ns: u64,
 }
 
 /// Build and commit what each index still needs from `window`. `ok` is false
 /// when a commit found the watermark or a `confirmed[h]` moved.
-fn commit_window(
+#[doc(hidden)]
+pub fn commit_window(
     query: &Query,
     window: &Arc<IndexWindow>,
     stages: &IndexStageMs,
@@ -471,16 +499,18 @@ pub fn build_indexes_released(query: &Query) -> Result<(), ConfirmError> {
     Ok(())
 }
 
-struct ReadyWindow {
-    window: IndexWindow,
-    start: u32,
-    end: u32,
-    read_ns: u64,
+#[doc(hidden)]
+pub struct ReadyWindow {
+    pub window: IndexWindow,
+    pub start: u32,
+    pub end: u32,
+    pub read_ns: u64,
     /// Tip path: one height, logged after commit with this window's times.
-    log_apply: bool,
+    pub log_apply: bool,
 }
 
-fn cpu_worker(
+#[doc(hidden)]
+pub fn cpu_worker(
     query: &Query,
     rx: Receiver<ReadyWindow>,
     resync: &AtomicBool,
@@ -534,7 +564,8 @@ pub fn spawn_index_writebehind(
         .expect("spawn index write-behind")
 }
 
-fn run_writebehind(
+#[doc(hidden)]
+pub fn run_writebehind(
     query: &Query,
     stop: &AtomicBool,
     on_filters_caught_up: impl FnOnce(),
@@ -566,13 +597,15 @@ fn run_writebehind(
     })
 }
 
-struct Pass {
-    from: u32,
-    started: Instant,
-    last_log: Instant,
+#[doc(hidden)]
+pub struct Pass {
+    pub from: u32,
+    pub started: Instant,
+    pub last_log: Instant,
 }
 
-fn io_loop(
+#[doc(hidden)]
+pub fn io_loop(
     query: &Query,
     stop: &AtomicBool,
     resync: &AtomicBool,
@@ -669,700 +702,4 @@ fn io_loop(
         cursor = Some(end + 1);
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Info lines from one `io_loop`. A loop that waits out `budget` is the
-    /// height equal to the target being skipped.
-    fn io_loop_lines(
-        query: &Query,
-        stop: &AtomicBool,
-        resync: &AtomicBool,
-        stages: &IndexStageMs,
-        tx: &std::sync::mpsc::SyncSender<ReadyWindow>,
-        budget: Duration,
-        on_caught: impl FnOnce(),
-    ) -> Vec<String> {
-        let forced = AtomicBool::new(false);
-        let started = Instant::now();
-        let logs = std::thread::scope(|scope| {
-            scope.spawn(|| {
-                while !stop.load(Ordering::Relaxed) {
-                    if started.elapsed() >= budget {
-                        forced.store(true, Ordering::Relaxed);
-                        stop.store(true, Ordering::Relaxed);
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-            });
-            rbitcoin_log::capture_logs(false);
-            rbitcoin_log::capture_logs(true);
-            io_loop(query, stop, resync, stages, tx, PROGRESS_EVERY, on_caught).unwrap();
-            let logs = rbitcoin_log::take_logs();
-            rbitcoin_log::capture_logs(false);
-            stop.store(true, Ordering::Relaxed);
-            logs
-        });
-        assert!(
-            !forced.load(Ordering::Relaxed),
-            "io_loop waited instead of sealing the height that equals the target"
-        );
-        logs.into_iter().map(|(_, line)| line).collect()
-    }
-
-    /// Seal from the current watermarks through the released tip.
-    /// `hold_first` blocks the first window so a later window in the same
-    /// pass can cross `progress_every`.
-    fn drive_index_pass(
-        query: &Query,
-        hold_first: Duration,
-        progress_every: Duration,
-    ) -> Vec<String> {
-        let stop = AtomicBool::new(false);
-        let resync = AtomicBool::new(false);
-        let stages = IndexStageMs::default();
-        let (tx, rx) = sync_channel(0);
-        let (worker_tx, worker_rx) = sync_channel(2);
-        let forced = AtomicBool::new(false);
-        let started = Instant::now();
-        let logs = std::thread::scope(|scope| {
-            scope.spawn(|| {
-                while !stop.load(Ordering::Relaxed) {
-                    if started.elapsed() >= Duration::from_secs(120) {
-                        forced.store(true, Ordering::Relaxed);
-                        stop.store(true, Ordering::Relaxed);
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-            });
-            let worker = scope.spawn(|| {
-                rbitcoin_log::capture_logs(false);
-                rbitcoin_log::capture_logs(true);
-                cpu_worker(query, worker_rx, &resync, &stages).unwrap();
-                rbitcoin_log::take_logs()
-            });
-            let forward = scope.spawn(move || {
-                if !hold_first.is_zero() {
-                    std::thread::sleep(hold_first);
-                }
-                while let Ok(window) = rx.recv() {
-                    if worker_tx.send(window).is_err() {
-                        break;
-                    }
-                }
-            });
-            rbitcoin_log::capture_logs(false);
-            rbitcoin_log::capture_logs(true);
-            io_loop(query, &stop, &resync, &stages, &tx, progress_every, || {
-                stop.store(true, Ordering::Relaxed);
-            })
-            .unwrap();
-            let mut logs = rbitcoin_log::take_logs();
-            rbitcoin_log::capture_logs(false);
-            stop.store(true, Ordering::Relaxed);
-            drop(tx);
-            forward.join().unwrap();
-            logs.extend(worker.join().unwrap());
-            logs
-        });
-        assert!(
-            !forced.load(Ordering::Relaxed),
-            "io_loop waited instead of sealing the height that equals the target"
-        );
-        logs.into_iter().map(|(_, line)| line).collect()
-    }
-
-    fn connect_coinbases(
-        q: &Query,
-        from: u32,
-        to: u32,
-        prev_fk: &mut Fk,
-        prev_hash: &mut Option<[u8; 32]>,
-    ) {
-        use crate::testutil::FixtureChain;
-        use rbitcoin_store::{InputRecord, OutputRecord};
-
-        for height in from..=to {
-            let header = header_rec(height, *prev_fk, *prev_hash);
-            let mut txid = [0u8; 32];
-            txid[..4].copy_from_slice(&height.to_le_bytes());
-            txid[31] = 0xcb;
-            *prev_fk = q
-                .connect_block(
-                    Height(height),
-                    &header,
-                    &[tx_apply(
-                        txid,
-                        vec![InputRecord::coinbase(u32::MAX, vec![0x01], vec![])],
-                        vec![OutputRecord::unspent(1, vec![0x51])],
-                    )],
-                )
-                .unwrap();
-            *prev_hash = Some(header.hash);
-        }
-    }
-
-    #[test]
-    fn index_build_progress_names_stage_ms() {
-        let line = format_index_build_progress(&IndexBuildProgress {
-            next: 800_000,
-            tip: 900_000,
-            from: 700_000,
-            elapsed: Duration::from_secs(100),
-            stages: IndexStageSample {
-                read_ms: 4_000,
-                build_ms: 5_500,
-                commit_ms: 12,
-            },
-        });
-        assert!(line.contains("next=800000"), "{line}");
-        assert!(line.contains("tip=900000"), "{line}");
-        assert!(line.contains("rate=1000/s"), "{line}");
-        assert!(line.contains("remain=100001"), "{line}");
-        assert!(line.contains("elapsed=100s"), "{line}");
-        assert!(line.contains("read=4000ms"), "{line}");
-        assert!(line.contains("build=5500ms"), "{line}");
-        assert!(line.contains("commit=12ms"), "{line}");
-    }
-
-    #[test]
-    fn index_apply_names_stage_ms() {
-        let line = format_index_apply(
-            5,
-            5,
-            IndexStageSample {
-                read_ms: 20,
-                build_ms: 30,
-                commit_ms: 4,
-            },
-        );
-        assert_eq!(line, "index: apply h=5..=5 read=20ms build=30ms commit=4ms");
-    }
-
-    #[test]
-    fn stage_sample_take_resets() {
-        let s = IndexStageMs::default();
-        s.add_read(2_500_000);
-        s.add_build(1_500_000);
-        s.add_commit(500_000);
-        let a = s.take_ms();
-        assert_eq!((a.read_ms, a.build_ms, a.commit_ms), (2, 1, 0));
-        let b = s.take_ms();
-        assert_eq!((b.read_ms, b.build_ms, b.commit_ms), (0, 0, 0));
-    }
-
-    /// Three heights: coinbase (ineligible), a same-window spend into P2TR,
-    /// and a later coinbase that is also ineligible. Pooled assemble matches
-    /// the serial window walk.
-    #[test]
-    fn per_height_jobs_match_serial_window() {
-        use crate::testutil::FixtureChain;
-        use bitcoin::hashes::{hash160, Hash};
-        use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
-        use rbitcoin_store::{InputRecord, OutputRecord};
-
-        let _gate = rbitcoin_consensus::script_pool::steal_test_gate();
-        let (dir, q) = crate::testutil::tiny_query_labeled("idx-jobs");
-        q.set_block_filter_index(true).unwrap();
-        q.set_sptweaks_enabled(true, Height(0)).unwrap();
-
-        let secp = Secp256k1::new();
-        let sk = SecretKey::from_slice(&[2u8; 32]).unwrap();
-        let pk = PublicKey::from_secret_key(&secp, &sk);
-        let ser = pk.serialize();
-        let h160 = hash160::Hash::hash(&ser);
-        let mut p2wpkh = vec![0x00, 0x14];
-        p2wpkh.extend_from_slice(h160.as_ref());
-        let (xonly, _) = pk.x_only_public_key();
-        let mut p2tr = vec![0x51, 0x20];
-        p2tr.extend_from_slice(&xonly.serialize());
-
-        let mut genesis_txid = [0u8; 32];
-        genesis_txid[31] = 0xcb;
-        let h0 = header_rec(0, Fk::NULL, None);
-        let fk0 = q
-            .connect_block(
-                Height(0),
-                &h0,
-                &[tx_apply(
-                    genesis_txid,
-                    vec![InputRecord::coinbase(u32::MAX, vec![0x00], vec![])],
-                    vec![OutputRecord::unspent(50_0000_0000, p2wpkh.clone())],
-                )],
-            )
-            .unwrap();
-        let create_fk = q.block_tx_fks(Height(0)).unwrap()[0];
-
-        let mut spend_txid = [0u8; 32];
-        spend_txid[0] = 0x11;
-        spend_txid[31] = 0xcd;
-        let h1 = header_rec(1, fk0, Some(h0.hash));
-        let fk1 = q
-            .connect_block(
-                Height(1),
-                &h1,
-                &[tx_apply(
-                    spend_txid,
-                    vec![InputRecord {
-                        prev_txid: genesis_txid,
-                        parent: rbitcoin_store::InputParent::Prevout { create_fk, vout: 0 },
-                        sequence: u32::MAX,
-                        script_sig: vec![],
-                        witness: vec![vec![0u8; 64], ser.to_vec()],
-                    }],
-                    vec![OutputRecord::unspent(49_0000_0000, p2tr)],
-                )],
-            )
-            .unwrap();
-
-        let mut later_txid = [0u8; 32];
-        later_txid[31] = 0xee;
-        let h2 = header_rec(2, fk1, Some(h1.hash));
-        q.connect_block(
-            Height(2),
-            &h2,
-            &[tx_apply(
-                later_txid,
-                vec![InputRecord::coinbase(u32::MAX, vec![0x01], vec![])],
-                vec![OutputRecord::unspent(50_0000_0000, p2wpkh)],
-            )],
-        )
-        .unwrap();
-
-        let window = Arc::new(read_window(&q, 0, 2).unwrap());
-        assert_eq!(window.blocks.len(), 3);
-        let got = assemble_window(&q, &window).unwrap();
-        assert_eq!(got.filters.len(), 3);
-        assert_eq!(got.tweaks.len(), 3);
-        for (i, block) in window.blocks.iter().enumerate() {
-            let serial_f = q.basic_filter_from_window(&window, i).unwrap();
-            assert_eq!(got.filters[i].1.content, serial_f.content, "filter {i}");
-            assert_eq!(got.filters[i].2, block.header_fk);
-            let serial_t = crate::sp_read::tweak_records_from_window(&window, i).unwrap();
-            assert_eq!(got.tweaks[i].2, serial_t, "tweaks {i}");
-        }
-        assert!(got.tweaks[0].2.iter().all(|t| t.is_none()), "coinbase");
-        assert!(
-            got.tweaks[1].2.iter().any(|t| t.is_some()),
-            "same-window P2TR spend"
-        );
-        assert!(
-            got.tweaks[2].2.iter().all(|t| t.is_none()),
-            "no P2TR output"
-        );
-
-        let resync = AtomicBool::new(true);
-        let stages = IndexStageMs::default();
-        let (tx, rx) = std::sync::mpsc::channel();
-        tx.send(ReadyWindow {
-            window: read_window(&q, 0, 2).unwrap(),
-            start: 0,
-            end: 2,
-            read_ns: 0,
-            log_apply: false,
-        })
-        .unwrap();
-        drop(tx);
-        cpu_worker(&q, rx, &resync, &stages).unwrap();
-        assert_eq!(
-            q.filter_index_next(),
-            Some(0),
-            "resync drops queued filters"
-        );
-        assert_eq!(q.tweak_index_next(), Some(0), "resync drops queued tweaks");
-
-        let stale = Arc::new(read_window(&q, 0, 2).unwrap());
-        q.disconnect_tip().unwrap();
-        assert!(
-            !commit_window(&q, &stale, &stages).unwrap().ok,
-            "a window whose confirmed tip moved must request resync"
-        );
-        let _ = std::fs::remove_dir_all(dir.path());
-    }
-
-    #[test]
-    fn released_builder_crosses_a_full_window_and_success_does_not_resync() {
-        use crate::testutil::FixtureChain;
-        use rbitcoin_store::{InputRecord, OutputRecord};
-
-        let (dir, q) = crate::testutil::tiny_query_labeled("idx-full-window");
-        q.set_block_filter_index(true).unwrap();
-        q.set_sptweaks_enabled(true, Height(0)).unwrap();
-
-        let mut prev_fk = Fk::NULL;
-        let mut prev_hash = None;
-        for height in 0..=WINDOW_HEIGHTS {
-            let header = header_rec(height, prev_fk, prev_hash);
-            let mut txid = [0u8; 32];
-            txid[..4].copy_from_slice(&height.to_le_bytes());
-            txid[31] = 0xcb;
-            prev_fk = q
-                .connect_block(
-                    Height(height),
-                    &header,
-                    &[tx_apply(
-                        txid,
-                        vec![InputRecord::coinbase(u32::MAX, vec![0x01], vec![])],
-                        vec![OutputRecord::unspent(1, vec![0x51])],
-                    )],
-                )
-                .unwrap();
-            prev_hash = Some(header.hash);
-        }
-        q.release_index_writebehind(Height(WINDOW_HEIGHTS));
-
-        build_indexes_released(&q).unwrap();
-        assert_eq!(q.filter_index_next(), Some(WINDOW_HEIGHTS + 1));
-        assert_eq!(q.tweak_index_next(), Some(WINDOW_HEIGHTS + 1));
-
-        let resync = AtomicBool::new(false);
-        let stages = IndexStageMs::default();
-        let (tx, rx) = std::sync::mpsc::channel();
-        tx.send(ReadyWindow {
-            window: read_window(&q, WINDOW_HEIGHTS, WINDOW_HEIGHTS).unwrap(),
-            start: WINDOW_HEIGHTS,
-            end: WINDOW_HEIGHTS,
-            read_ns: 0,
-            log_apply: false,
-        })
-        .unwrap();
-        drop(tx);
-        cpu_worker(&q, rx, &resync, &stages).unwrap();
-        assert!(
-            !resync.load(Ordering::Acquire),
-            "a successful commit stays synced"
-        );
-
-        let resume = q.filter_index_next().unwrap();
-        let pass_tip = resume + WINDOW_HEIGHTS;
-        connect_coinbases(&q, resume, pass_tip, &mut prev_fk, &mut prev_hash);
-        q.release_index_writebehind(Height(pass_tip));
-        assert_eq!(PROGRESS_EVERY.as_secs(), 10);
-        let progress_every = Duration::from_secs(1);
-        let lines = drive_index_pass(
-            &q,
-            progress_every + Duration::from_millis(50),
-            progress_every,
-        );
-        let heights = pass_tip + 1 - resume;
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains(&format!("heights={heights} elapsed"))),
-            "{lines:?}"
-        );
-        let progress: Vec<_> = lines
-            .iter()
-            .filter(|line| line.contains("index: build next="))
-            .collect();
-        assert_eq!(progress.len(), 1, "{lines:?}");
-        assert!(
-            progress[0].contains(&format!("next={pass_tip} tip=")),
-            "{lines:?}"
-        );
-        assert_eq!(q.filter_index_next(), Some(pass_tip + 1));
-        assert_eq!(q.tweak_index_next(), Some(pass_tip + 1));
-
-        let short_from = q.filter_index_next().unwrap();
-        let short_tip = short_from + 10;
-        connect_coinbases(&q, short_from, short_tip, &mut prev_fk, &mut prev_hash);
-        q.release_index_writebehind(Height(short_tip));
-        let lines = drive_index_pass(&q, Duration::ZERO, PROGRESS_EVERY);
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("index: build from=")),
-            "{lines:?}"
-        );
-        assert_eq!(
-            lines
-                .iter()
-                .filter(|line| line.contains("index: apply h="))
-                .count(),
-            1,
-            "{lines:?}"
-        );
-        assert_eq!(q.filter_index_next(), Some(short_tip + 1));
-        assert_eq!(q.tweak_index_next(), Some(short_tip + 1));
-
-        let _ = std::fs::remove_dir_all(dir.path());
-    }
-
-    #[test]
-    fn filter_catchup_callback_fires_only_after_the_released_tip() {
-        use crate::testutil::FixtureChain;
-        use rbitcoin_store::{InputRecord, OutputRecord};
-
-        let (dir, q) = crate::testutil::tiny_query_labeled("idx-filter-catchup");
-        q.set_block_filter_index(true).unwrap();
-        let mut prev_fk = Fk::NULL;
-        let mut prev_hash = None;
-        for height in 0..=1 {
-            let header = header_rec(height, prev_fk, prev_hash);
-            let mut txid = [0u8; 32];
-            txid[0] = height as u8 + 1;
-            txid[31] = 0xcb;
-            prev_fk = q
-                .connect_block(
-                    Height(height),
-                    &header,
-                    &[tx_apply(
-                        txid,
-                        vec![InputRecord::coinbase(u32::MAX, vec![0x01], vec![])],
-                        vec![OutputRecord::unspent(1, vec![0x51])],
-                    )],
-                )
-                .unwrap();
-            prev_hash = Some(header.hash);
-        }
-
-        let first = Arc::new(read_window(&q, 0, 0).unwrap());
-        let filter = q.basic_filter_from_window(&first, 0).unwrap();
-        q.commit_window_filters(0, &[(filter, first.blocks[0].header_fk)])
-            .unwrap();
-        assert_eq!(q.filter_index_next(), Some(1));
-
-        let called = AtomicU64::new(0);
-        let stop = AtomicBool::new(false);
-        let resync = AtomicBool::new(false);
-        let stages = IndexStageMs::default();
-        let (tx, rx) = sync_channel(1);
-        drop(rx);
-        let lines = io_loop_lines(
-            &q,
-            &stop,
-            &resync,
-            &stages,
-            &tx,
-            Duration::from_secs(8),
-            || {
-                called.fetch_add(1, Ordering::Relaxed);
-            },
-        );
-        assert_eq!(called.load(Ordering::Relaxed), 0, "next equals the tip");
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("index: build from=")),
-            "{lines:?}"
-        );
-
-        let last = Arc::new(read_window(&q, 1, 1).unwrap());
-        let filter = q.basic_filter_from_window(&last, 0).unwrap();
-        q.commit_window_filters(1, &[(filter, last.blocks[0].header_fk)])
-            .unwrap();
-        let stop = AtomicBool::new(false);
-        let lines = io_loop_lines(
-            &q,
-            &stop,
-            &resync,
-            &stages,
-            &tx,
-            Duration::from_secs(8),
-            || {
-                called.fetch_add(1, Ordering::Relaxed);
-                stop.store(true, Ordering::Relaxed);
-            },
-        );
-        assert_eq!(called.load(Ordering::Relaxed), 1, "next is past the tip");
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("blockfilter: caught up through=1;")),
-            "{lines:?}"
-        );
-
-        let _ = std::fs::remove_dir_all(dir.path());
-    }
-
-    /// Heights `0..=through`, one coinbase each.
-    fn coinbase_chain(q: &Query, through: u32) {
-        let (mut prev_fk, mut prev_hash) = (Fk::NULL, None);
-        connect_coinbases(q, 0, through, &mut prev_fk, &mut prev_hash);
-    }
-
-    /// `(stage, base, done, total)` of the index stages that ended on this
-    /// thread since [`progress::capture_finished`].
-    fn finished_index_stages() -> Vec<(&'static str, u64, u64, u64)> {
-        progress::take_finished()
-            .into_iter()
-            .filter(|s| s.stage == "blockfilter build" || s.stage == "sp_tweaks build")
-            .map(|s| (s.stage, s.base, s.done, s.total))
-            .collect()
-    }
-
-    #[test]
-    fn index_stage_begins_a_window_behind_and_ends_past_the_target() {
-        progress::capture_finished(true);
-        let mut slot = None;
-        track_index(
-            &mut slot,
-            "blockfilter build",
-            Some(0),
-            0,
-            Some(WINDOW_HEIGHTS - 1),
-        );
-        assert!(slot.is_none(), "less than a window behind");
-        track_index(
-            &mut slot,
-            "blockfilter build",
-            Some(0),
-            0,
-            Some(WINDOW_HEIGHTS),
-        );
-        assert!(slot.is_some(), "a full window behind");
-        track_index(&mut slot, "blockfilter build", Some(40), 0, Some(100));
-        track_index(&mut slot, "blockfilter build", Some(90), 0, Some(100));
-        assert!(slot.is_some(), "short of the target");
-        track_index(&mut slot, "blockfilter build", Some(102), 0, Some(101));
-        assert!(slot.is_none(), "past a target that moved");
-        assert_eq!(
-            finished_index_stages(),
-            [("blockfilter build", 0, 102, 102)]
-        );
-
-        track_index(&mut slot, "sp_tweaks build", Some(1_000), 900, Some(1_100));
-        track_index(&mut slot, "sp_tweaks build", Some(1_050), 900, Some(1_100));
-        track_index(&mut slot, "sp_tweaks build", None, 900, Some(1_100));
-        assert!(slot.is_none(), "index turned off");
-        assert_eq!(
-            finished_index_stages(),
-            [("sp_tweaks build", 100, 150, 201)],
-            "counted from the origin, stopped where it was"
-        );
-        track_index(&mut slot, "sp_tweaks build", Some(5), 0, None);
-        assert!(slot.is_none(), "no target, nothing to build");
-        progress::capture_finished(false);
-    }
-
-    /// Filters already sealed at height 0, tweaks from origin 1: each stage
-    /// counts from its own start and ends at its own total.
-    #[test]
-    fn released_builder_reports_each_index_from_its_start() {
-        let (dir, q) = crate::testutil::tiny_query_labeled("idx-progress-released");
-        q.set_block_filter_index(true).unwrap();
-        let tip = WINDOW_HEIGHTS + 1;
-        coinbase_chain(&q, tip);
-        let first = Arc::new(read_window(&q, 0, 0).unwrap());
-        let filter = q.basic_filter_from_window(&first, 0).unwrap();
-        q.commit_window_filters(0, &[(filter, first.blocks[0].header_fk)])
-            .unwrap();
-        q.set_sptweaks_enabled(true, Height(1)).unwrap();
-        q.release_index_writebehind(Height(tip));
-
-        progress::capture_finished(true);
-        build_indexes_released(&q).unwrap();
-        let fin = finished_index_stages();
-        progress::capture_finished(false);
-        assert_eq!(q.filter_index_next(), Some(tip + 1));
-        assert_eq!(q.tweak_index_next(), Some(tip + 1));
-        let total = u64::from(tip) + 1;
-        assert_eq!(
-            fin,
-            [
-                ("blockfilter build", 1, total, total),
-                ("sp_tweaks build", 0, total - 1, total - 1),
-            ]
-        );
-        let _ = std::fs::remove_dir_all(dir.path());
-    }
-
-    #[test]
-    fn startup_repair_reports_only_the_indexes_it_seals() {
-        let (dir, q) = crate::testutil::tiny_query_labeled("idx-progress-repair");
-        q.set_block_filter_index(true).unwrap();
-        q.set_sptweaks_enabled(true, Height(0)).unwrap();
-        let tip = WINDOW_HEIGHTS + 1;
-        coinbase_chain(&q, tip);
-        let first = Arc::new(read_window(&q, 0, 0).unwrap());
-        let filter = q.basic_filter_from_window(&first, 0).unwrap();
-        q.commit_window_filters(0, &[(filter, first.blocks[0].header_fk)])
-            .unwrap();
-
-        // Tweaks are one height further behind than the cap: only filters
-        // are repaired here.
-        progress::capture_finished(true);
-        prepare_live_indexes_limited(&q, tip).unwrap();
-        let fin = finished_index_stages();
-        progress::capture_finished(false);
-        assert_eq!(q.filter_index_next(), Some(tip + 1));
-        assert_eq!(q.tweak_index_next(), Some(0));
-        let total = u64::from(tip) + 1;
-        assert_eq!(fin, [("blockfilter build", 1, total, total)]);
-        let _ = std::fs::remove_dir_all(dir.path());
-    }
-
-    /// The write-behind IO thread registers the stage from the watermark
-    /// before it reads; with no CPU worker nothing commits, so it ends where
-    /// it began.
-    #[test]
-    fn writebehind_registers_a_stage_for_a_wide_gap() {
-        let (dir, q) = crate::testutil::tiny_query_labeled("idx-progress-wb");
-        q.set_block_filter_index(true).unwrap();
-        let tip = WINDOW_HEIGHTS + 1;
-        coinbase_chain(&q, tip);
-        q.release_index_writebehind(Height(tip));
-
-        progress::capture_finished(true);
-        let stop = AtomicBool::new(false);
-        let resync = AtomicBool::new(false);
-        let stages = IndexStageMs::default();
-        let (tx, rx) = sync_channel(1);
-        drop(rx);
-        io_loop(&q, &stop, &resync, &stages, &tx, PROGRESS_EVERY, || {}).unwrap();
-        let fin = finished_index_stages();
-        progress::capture_finished(false);
-        assert_eq!(fin, [("blockfilter build", 0, 0, u64::from(tip) + 1)]);
-        let _ = std::fs::remove_dir_all(dir.path());
-    }
-
-    fn header_rec(
-        h: u32,
-        prev_fk: Fk,
-        prev_hash: Option<[u8; 32]>,
-    ) -> rbitcoin_store::HeaderRecord {
-        let mut merkle = [0u8; 32];
-        merkle[0..4].copy_from_slice(&h.to_le_bytes());
-        merkle[5] = 0xec;
-        let hash = match prev_hash {
-            None => merkle,
-            Some(ph) => rbitcoin_store::block_header_hash(1, &ph, &merkle, h + 1, 0x207f_ffff, h),
-        };
-        rbitcoin_store::HeaderRecord {
-            prev_fk,
-            version: 1,
-            timestamp: h + 1,
-            bits: 0x207f_ffff,
-            nonce: h,
-            merkle_root: merkle,
-            hash,
-            size: 0,
-            weight: 0,
-        }
-    }
-
-    fn tx_apply(
-        txid: [u8; 32],
-        inputs: Vec<rbitcoin_store::InputRecord>,
-        outputs: Vec<rbitcoin_store::OutputRecord>,
-    ) -> crate::TxApply {
-        crate::TxApply {
-            tx: rbitcoin_store::TxRecord {
-                txid,
-                version: 2,
-                locktime: 0,
-                input_start_fk: Fk::NULL,
-                input_count: inputs.len() as u32,
-                output_start_fk: Fk::NULL,
-                output_count: outputs.len() as u32,
-            },
-            inputs,
-            outputs,
-        }
-    }
 }

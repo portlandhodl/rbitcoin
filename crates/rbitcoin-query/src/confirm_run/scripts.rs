@@ -15,9 +15,11 @@ use std::time::Instant;
 
 /// In-flight waves the stage thread will publish while steal is empty.
 /// Matches `scriptq` cap so load→scripts retain stays bounded.
-const SCRIPT_WAVES_MAX: usize = 4;
+#[doc(hidden)]
+pub const SCRIPT_WAVES_MAX: usize = 4;
 
-fn take_script_jobs(
+#[doc(hidden)]
+pub fn take_script_jobs(
     prepared: &mut [Prepared],
     preverified: &ScriptPreverified,
     stats: &crate::ConfirmStats,
@@ -46,7 +48,8 @@ fn take_script_jobs(
     jobs
 }
 
-fn outcome_from(
+#[doc(hidden)]
+pub fn outcome_from(
     batch: LoadedBatch,
     work_ns: u64,
     index_done_ns: u64,
@@ -72,26 +75,29 @@ fn outcome_from(
     }
 }
 
-fn apply_script(job: &ScriptCheckJob) -> Result<(), ConsensusError> {
+#[doc(hidden)]
+pub fn apply_script(job: &ScriptCheckJob) -> Result<(), ConsensusError> {
     verify_one_script_job(job)
 }
 
-struct Inflight {
-    batch: LoadedBatch,
-    t0: Instant,
+#[doc(hidden)]
+pub struct Inflight {
+    pub batch: LoadedBatch,
+    pub t0: Instant,
     /// Older wave. Workers claim it before the index wave.
-    script_wave: Option<OwnedWave<ScriptCheckJob>>,
-    index_wave: Option<OwnedWave<IndexJob>>,
-    slots: Vec<index::HeightSlots>,
-    index_started: Arc<OnceLock<Instant>>,
-    script_done: OnceLock<u64>,
-    index_done: OnceLock<u64>,
-    idx_asm: OnceLock<u64>,
-    meta: ScriptsBatchMeta,
+    pub script_wave: Option<OwnedWave<ScriptCheckJob>>,
+    pub index_wave: Option<OwnedWave<IndexJob>>,
+    pub slots: Vec<index::HeightSlots>,
+    pub index_started: Arc<OnceLock<Instant>>,
+    pub script_done: OnceLock<u64>,
+    pub index_done: OnceLock<u64>,
+    pub idx_asm: OnceLock<u64>,
+    pub meta: ScriptsBatchMeta,
 }
 
 impl Inflight {
-    fn start(
+    #[doc(hidden)]
+    pub fn start(
         mut batch: LoadedBatch,
         mat_ns: u64,
     ) -> Result<Self, (ConfirmError, ScriptsBatchMeta)> {
@@ -128,7 +134,8 @@ impl Inflight {
         Ok(inf)
     }
 
-    fn note_clocks(&self) {
+    #[doc(hidden)]
+    pub fn note_clocks(&self) {
         let scripts_done = self.script_wave.as_ref().is_none_or(|w| w.is_complete());
         if scripts_done {
             let _ = self.script_done.set(self.t0.elapsed().as_nanos() as u64);
@@ -138,7 +145,8 @@ impl Inflight {
         }
     }
 
-    fn stamp_index(&self) {
+    #[doc(hidden)]
+    pub fn stamp_index(&self) {
         let now = Instant::now();
         let _ = self
             .index_done
@@ -151,14 +159,16 @@ impl Inflight {
         let _ = self.idx_asm.set(asm);
     }
 
-    fn is_complete(&self) -> bool {
+    #[doc(hidden)]
+    pub fn is_complete(&self) -> bool {
         self.note_clocks();
         let scripts_done = self.script_wave.as_ref().is_none_or(|w| w.is_complete());
         let index_done = self.index_wave.as_ref().is_none_or(|w| w.is_complete());
         scripts_done && index_done
     }
 
-    fn finish(mut self) -> Result<(ConfirmScriptOutcome, ScriptsBatchMeta), ConfirmError> {
+    #[doc(hidden)]
+    pub fn finish(mut self) -> Result<(ConfirmScriptOutcome, ScriptsBatchMeta), ConfirmError> {
         let script_res = match self.script_wave.take() {
             Some(w) => w.finish(),
             None => Ok(()),
@@ -244,14 +254,16 @@ pub fn drive_script_waves_with(
     }
 }
 
-enum DriveStart {
+#[doc(hidden)]
+pub enum DriveStart {
     Continue,
     Idle,
     Stop,
     Abort,
 }
 
-fn drop_inflight_tail(inflight: &mut VecDeque<Inflight>) -> Vec<ScriptsBatchMeta> {
+#[doc(hidden)]
+pub fn drop_inflight_tail(inflight: &mut VecDeque<Inflight>) -> Vec<ScriptsBatchMeta> {
     let mut dropped = Vec::with_capacity(inflight.len());
     while let Some(rest) = inflight.pop_front() {
         dropped.push(rest.meta.clone());
@@ -260,7 +272,8 @@ fn drop_inflight_tail(inflight: &mut VecDeque<Inflight>) -> Vec<ScriptsBatchMeta
     dropped
 }
 
-fn drive_drain_complete(
+#[doc(hidden)]
+pub fn drive_drain_complete(
     inflight: &mut VecDeque<Inflight>,
     on_ok: &mut impl FnMut(ConfirmScriptOutcome, ScriptsBatchMeta) -> bool,
     on_err: &mut impl FnMut(ConfirmError, ScriptsBatchMeta, &[ScriptsBatchMeta]) -> bool,
@@ -285,7 +298,8 @@ fn drive_drain_complete(
     false
 }
 
-fn drive_try_start(
+#[doc(hidden)]
+pub fn drive_try_start(
     inflight: &mut VecDeque<Inflight>,
     mat_rx: &std::sync::mpsc::Receiver<(LoadedBatch, u64)>,
     on_take: &mut impl FnMut(&LoadedBatch, Duration),
@@ -323,7 +337,8 @@ fn drive_try_start(
     }
 }
 
-fn drive_blocking_start(
+#[doc(hidden)]
+pub fn drive_blocking_start(
     inflight: &mut VecDeque<Inflight>,
     mat_rx: &std::sync::mpsc::Receiver<(LoadedBatch, u64)>,
     on_take: &mut impl FnMut(&LoadedBatch, Duration),

@@ -25,12 +25,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Bytes before first body cell (TableFile header 16 + pad to 32).
 pub const TXSTAT_BODY_HEADER: u64 = 32;
 pub const TXSTAT_ENTRY_LEN: u64 = 8;
-const BLK_HEADER: u64 = 32;
-const BLK_SLOT: u64 = 16;
+#[doc(hidden)]
+pub const BLK_HEADER: u64 = 32;
+#[doc(hidden)]
+pub const BLK_SLOT: u64 = 16;
 /// Overflow blob ceiling. A longer on-disk length is corrupt, not an allocation.
-const TXSTAT_BLOB_CEILING: usize = 16 * 1024 * 1024;
+#[doc(hidden)]
+pub const TXSTAT_BLOB_CEILING: usize = 16 * 1024 * 1024;
 
-fn checked_blob_len(len: usize, remain: u64) -> Result<usize, StoreError> {
+#[doc(hidden)]
+pub fn checked_blob_len(len: usize, remain: u64) -> Result<usize, StoreError> {
     if len > TXSTAT_BLOB_CEILING || (len as u64) > remain {
         return Err(StoreError::Corrupt("invariant: txstat blob length"));
     }
@@ -81,7 +85,8 @@ pub fn pack_cell(row: &TxStatRow) -> Result<([u8; 8], Option<Vec<u8>>), StoreErr
     }
 }
 
-fn read_canonical_uleb(buf: &[u8]) -> Result<(u64, usize), StoreError> {
+#[doc(hidden)]
+pub fn read_canonical_uleb(buf: &[u8]) -> Result<(u64, usize), StoreError> {
     let (v, n) = read_uleb128(buf).map_err(|e| StoreError::Corrupt(e.0))?;
     if n != uleb128_len(v) {
         return Err(StoreError::Corrupt("txstat uleb overlong"));
@@ -106,12 +111,14 @@ pub fn parse_cell(cell: [u8; 8]) -> Result<CellParse, StoreError> {
     }
 }
 
-enum StreamParse {
+#[doc(hidden)]
+pub enum StreamParse {
     Complete(TxStatRow),
     NeedMore,
 }
 
-fn parse_stream(buf: &[u8], allow_trunc: bool) -> Result<StreamParse, StoreError> {
+#[doc(hidden)]
+pub fn parse_stream(buf: &[u8], allow_trunc: bool) -> Result<StreamParse, StoreError> {
     let mut off = 0usize;
     let mut fields = [0u64; 3];
     for slot in &mut fields {
@@ -190,7 +197,8 @@ pub fn decode_ovf_blob(raw: &[u8]) -> Result<Vec<(u16, Vec<u8>)>, StoreError> {
     Ok(out)
 }
 
-fn tail_for_index(tails: &[(u16, Vec<u8>)], idx: u16) -> Result<&[u8], StoreError> {
+#[doc(hidden)]
+pub fn tail_for_index(tails: &[(u16, Vec<u8>)], idx: u16) -> Result<&[u8], StoreError> {
     match tails.binary_search_by_key(&idx, |(i, _)| *i) {
         Ok(p) => Ok(tails[p].1.as_slice()),
         Err(_) => Err(StoreError::Corrupt("invariant: txstat overflow missing")),
@@ -199,29 +207,29 @@ fn tail_for_index(tails: &[(u16, Vec<u8>)], idx: u16) -> Result<&[u8], StoreErro
 
 /// Dense 8 B/create body plus per-header overflow tails.
 pub struct TxStat {
-    body: TableFile,
-    ovf: TableFile,
-    blk: TableFile,
-    count: AtomicU64,
-    ovf_len: AtomicU64,
+    pub body: TableFile,
+    pub ovf: TableFile,
+    pub blk: TableFile,
+    pub count: AtomicU64,
+    pub ovf_len: AtomicU64,
 }
 
 impl TxStat {
-    pub(crate) fn flush(&self) -> Result<(), StoreError> {
+    pub fn flush(&self) -> Result<(), StoreError> {
         self.body.flush()?;
         self.ovf.flush()?;
         self.blk.flush()?;
         Ok(())
     }
 
-    pub(crate) fn sync_data_only(&self) -> Result<(), StoreError> {
+    pub fn sync_data_only(&self) -> Result<(), StoreError> {
         self.body.sync_data_only()?;
         self.ovf.sync_data_only()?;
         self.blk.sync_data_only()
     }
 
-    #[cfg(test)]
-    pub(crate) fn pending_sync(&self) -> bool {
+    #[cfg(debug_assertions)]
+    pub fn pending_sync(&self) -> bool {
         self.body.pending_sync() || self.ovf.pending_sync() || self.blk.pending_sync()
     }
 
@@ -304,13 +312,16 @@ impl TxStat {
         })
     }
 
-    fn body_path(dir: &Path) -> PathBuf {
+    #[doc(hidden)]
+    pub fn body_path(dir: &Path) -> PathBuf {
         dir.join("txstat.body")
     }
-    fn ovf_path(dir: &Path) -> PathBuf {
+    #[doc(hidden)]
+    pub fn ovf_path(dir: &Path) -> PathBuf {
         dir.join("txstat.ovf")
     }
-    fn blk_path(dir: &Path) -> PathBuf {
+    #[doc(hidden)]
+    pub fn blk_path(dir: &Path) -> PathBuf {
         dir.join("txstat.blk")
     }
 
@@ -588,98 +599,5 @@ impl TxStat {
         let mut buf = vec![0u8; len];
         self.ovf.read_at(off, &mut buf)?;
         Ok(buf)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::testutil::TempDir;
-
-    fn tiny(fee: u64, base: u32, wit: u32) -> TxStatRow {
-        TxStatRow {
-            fee_sat: fee,
-            base,
-            wit_extra: wit,
-        }
-    }
-
-    #[test]
-    fn txstat_blob_longer_than_the_file_is_corrupt() {
-        let err = checked_blob_len(1 << 30, 32).expect_err("huge len");
-        match err {
-            StoreError::Corrupt(msg) => assert!(msg.contains("txstat"), "{msg}"),
-            other => panic!("{other:?}"),
-        }
-        assert_eq!(checked_blob_len(4, 32).unwrap(), 4);
-    }
-
-    #[test]
-    fn create_empty_then_extend_zeros() {
-        let dir = TempDir::labeled("txstat-extend").unwrap();
-        let t = TxStat::create(&dir).unwrap();
-        assert_eq!(t.count(), 0);
-        t.extend_or_truncate_to(2).unwrap();
-        assert_eq!(t.count(), 2);
-        assert_eq!(t.get_cell(Fk(1)).unwrap(), [0u8; 8]);
-        assert_eq!(t.get_cell(Fk(2)).unwrap(), [0u8; 8]);
-        t.truncate_to_count(1).unwrap();
-        assert_eq!(t.count(), 1);
-        assert!(t.get_cell(Fk(2)).is_err());
-    }
-
-    #[test]
-    fn uleb_typical_fits_in_cell() {
-        let row = tiny(1000, 110, 112);
-        let (cell, tail) = pack_cell(&row).unwrap();
-        assert!(tail.is_none());
-        assert_eq!(parse_cell(cell).unwrap(), CellParse::Complete(row));
-        assert_eq!(row.size(), 222);
-        assert_eq!(row.weight(), 4 * 110 + 112);
-    }
-
-    #[test]
-    fn former_n_in_byte_no_longer_forces_a_tail() {
-        let row = tiny(50_000, 200, 200_000);
-        let (cell, tail) = pack_cell(&row).unwrap();
-        assert!(tail.is_none(), "three fields of this row fit in 8 B");
-        assert_eq!(parse_cell(cell).unwrap(), CellParse::Complete(row));
-    }
-
-    #[test]
-    fn overflow_is_remaining_bytes_only() {
-        let row = tiny(u64::from(u32::MAX), 4_000_000, 4_000_000);
-        let stream = encode_stream(&row).unwrap();
-        assert!(stream.len() > 8, "wide fee and sizes must miss 8 B");
-        let (cell, tail) = pack_cell(&row).unwrap();
-        let tail = tail.expect("tail");
-        assert_eq!(tail.as_slice(), &stream[8..]);
-        assert_eq!(parse_cell(cell).unwrap(), CellParse::NeedTail);
-        assert_eq!(parse_with_tail(cell, &tail).unwrap(), row);
-    }
-
-    #[test]
-    fn header_blob_roundtrip() {
-        let dir = TempDir::labeled("txstat-ovf").unwrap();
-        let t = TxStat::create(&dir).unwrap();
-        let small = tiny(1000, 110, 0);
-        let fat = tiny(u64::from(u32::MAX), 4_000_000, 4_000_000);
-        t.append_batch(0, &[small, fat]).unwrap();
-        t.write_block_rows(Fk(1), 1, &[small, fat]).unwrap();
-        let blob = t.header_blob(Fk(1)).unwrap();
-        assert!(!blob.is_empty());
-        let got = t.get_range(1, 2, Some(&blob)).unwrap();
-        assert_eq!(got[0], Some(small));
-        assert_eq!(got[1], Some(fat));
-        assert_eq!(t.get_row_merged(Fk(2), 1, &blob).unwrap(), Some(fat));
-    }
-
-    #[test]
-    fn leftover_txfixed_body_unlinked_on_open() {
-        let dir = TempDir::labeled("txstat-leftover").unwrap();
-        std::fs::write(dir.join("txfixed.body"), b"junk").unwrap();
-        let _t = TxStat::open(&dir).unwrap();
-        assert!(!dir.join("txfixed.body").exists());
-        assert!(dir.join("txstat.body").is_file());
     }
 }

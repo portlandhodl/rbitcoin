@@ -8,10 +8,14 @@
 //! substring `electrs` before it will probe `blockchain.tweaks.subscribe`.
 //! Other tweaks clients (kiss-bdk) use the same stream without that probe.
 
-mod server;
-mod silent_scan;
-mod tweaks;
-mod unspent;
+#[doc(hidden)]
+pub mod server;
+#[doc(hidden)]
+pub mod silent_scan;
+#[doc(hidden)]
+pub mod tweaks;
+#[doc(hidden)]
+pub mod unspent;
 
 pub use server::{
     electrum_scripthash_hex, parse_electrum_request_line, perf_totals, run_electrum,

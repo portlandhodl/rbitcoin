@@ -1,0 +1,421 @@
+use bitcoin::absolute::LockTime;
+use bitcoin::hashes::Hash;
+use bitcoin::transaction::Version;
+use bitcoin::{Amount, OutPoint, ScriptBuf, Sequence, TxIn, TxOut, Witness};
+use bitcoin::{Transaction, Txid, Wtxid};
+use rbitcoin_mempool::orphanage::*;
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+
+fn txid_n(n: u8) -> Txid {
+    Txid::from_byte_array([n; 32])
+}
+
+fn make_orphan(parent: Txid, mark: u8) -> Transaction {
+    Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: OutPoint {
+                txid: parent,
+                vout: 0,
+            },
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+            witness: Witness::new(),
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat(1000 + mark as u64),
+            script_pubkey: ScriptBuf::new_p2wpkh(&bitcoin::WPubkeyHash::from_byte_array(
+                [mark; 20],
+            )),
+        }],
+    }
+}
+
+#[test]
+fn one_peer_cannot_fill_the_orphanage() {
+    let mut o = Orphanage::new();
+    let parent = txid_n(8);
+    let tx2 = {
+        let mut tx = make_orphan(parent, 1);
+        tx.input[0].witness = Witness::from_slice(&[vec![2u8; 64]]);
+        tx
+    };
+    let mut miss = BTreeSet::new();
+    miss.insert(parent);
+    assert!(o.insert_from(tx2.clone(), miss.clone(), Some(2)));
+    let mut first_peer = None;
+    let mut last_peer = None;
+    for i in 0..80u8 {
+        let mut tx = make_orphan(parent, i.wrapping_add(3));
+        tx.input[0].witness = Witness::from_slice(&[vec![i.wrapping_add(3); 20_000]]);
+        tx.lock_time = LockTime::from_height(i as u32).unwrap();
+        let tid = tx.compute_txid();
+        if first_peer.is_none() {
+            first_peer = Some(tid);
+        }
+        last_peer = Some(tid);
+        o.insert_from(tx, miss.clone(), Some(1));
+    }
+    assert!(
+        o.peer_orphan_weight(1) <= ORPHAN_RESERVED_WEIGHT_PER_PEER,
+        "peer weight {}",
+        o.peer_orphan_weight(1)
+    );
+    assert!(o.contains(&last_peer.expect("inserted")));
+    assert!(!o.contains(&first_peer.expect("inserted")));
+    let mut exact = make_orphan(txid_n(4), 1);
+    let base = exact.weight().to_wu();
+    let mut pad = ORPHAN_RESERVED_WEIGHT_PER_PEER.saturating_sub(base) as usize;
+    for _ in 0..6 {
+        exact.input[0].witness = Witness::from_slice(&[vec![1u8; pad]]);
+        let got = exact.weight().to_wu();
+        if got == ORPHAN_RESERVED_WEIGHT_PER_PEER {
+            break;
+        }
+        if got > ORPHAN_RESERVED_WEIGHT_PER_PEER {
+            pad = pad.saturating_sub((got - ORPHAN_RESERVED_WEIGHT_PER_PEER) as usize);
+        } else {
+            pad = pad.saturating_add((ORPHAN_RESERVED_WEIGHT_PER_PEER - got) as usize);
+        }
+    }
+    assert_eq!(exact.weight().to_wu(), ORPHAN_RESERVED_WEIGHT_PER_PEER);
+    let mut alone = Orphanage::new();
+    let mut exact_miss = BTreeSet::new();
+    exact_miss.insert(txid_n(4));
+    assert!(alone.insert_from(exact, exact_miss, Some(9)));
+    let peer2_kept = o.announcers_of(&tx2.compute_txid()).contains(&2);
+    assert!(peer2_kept, "peer 2 must keep its orphan");
+}
+
+/// Peer B re-announces peer A's orphan, then overflows its own reserve.
+/// The eviction drops B only. The parent still delivers A's orphan.
+#[test]
+fn shared_announcer_eviction_keeps_the_other_peer() {
+    let mut o = Orphanage::new();
+    let parent = txid_n(8);
+    let mut miss = BTreeSet::new();
+    miss.insert(parent);
+    let tx_a = make_orphan(parent, 1);
+    let tid = tx_a.compute_txid();
+    assert!(o.insert_from(tx_a, miss.clone(), Some(1)));
+    assert!(o.add_announcer(&tid, 2));
+    for i in 0..80u8 {
+        let mut tx = make_orphan(parent, i.wrapping_add(3));
+        tx.input[0].witness = Witness::from_slice(&[vec![i.wrapping_add(3); 20_000]]);
+        tx.lock_time = LockTime::from_height(i as u32).unwrap();
+        o.insert_from(tx, miss.clone(), Some(2));
+    }
+    assert!(o.peer_orphan_weight(2) <= ORPHAN_RESERVED_WEIGHT_PER_PEER);
+    assert!(
+        o.contains(&tid),
+        "peer 1's orphan must survive peer 2's reserve"
+    );
+    assert!(o.announcers_of(&tid).contains(&1));
+    let kids = o.take_children_of(&parent);
+    assert!(
+        kids.iter().any(|tx| tx.compute_txid() == tid),
+        "the parent still delivers peer 1's orphan"
+    );
+}
+
+#[test]
+fn insert_and_take_by_parent() {
+    let mut o = Orphanage::new();
+    let p = txid_n(1);
+    let tx = make_orphan(p, 2);
+    let tid = tx.compute_txid();
+    let mut miss = BTreeSet::new();
+    miss.insert(p);
+    let wtxid = tx.compute_wtxid();
+    assert!(o.insert_from(tx, miss, None));
+    assert!(o.contains(&tid));
+    assert!(o.contains_wtxid(&wtxid));
+    assert_eq!(o.missing_of(&tid).map(|s| s.len()), Some(1));
+    assert_eq!(o.len(), 1);
+    let kids = o.take_children_of(&p);
+    assert_eq!(kids.len(), 1);
+    assert!(o.is_empty());
+    assert!(!o.contains_wtxid(&wtxid));
+}
+
+#[test]
+fn fifo_evicts_under_count_cap() {
+    let mut o = Orphanage::with_limits(DEFAULT_ORPHAN_MAX_WEIGHT, 2);
+    let p = txid_n(9);
+    for i in 0..3u8 {
+        let tx = make_orphan(p, i + 1);
+        let mut miss = BTreeSet::new();
+        miss.insert(p);
+        o.insert_from(tx, miss, None);
+    }
+    assert!(o.len() <= 2);
+    assert!(o.total_weight() <= DEFAULT_ORPHAN_MAX_WEIGHT);
+}
+
+#[test]
+fn core_like_budget_constants() {
+    assert_eq!(ORPHAN_RESERVED_WEIGHT_PER_PEER, 404_000);
+    assert_eq!(DEFAULT_ORPHAN_MAX_WEIGHT, 404_000 * 25);
+    // ~10 MiB class weight budget for unique orphans.
+    const {
+        assert!(DEFAULT_ORPHAN_MAX_WEIGHT > 10_000_000);
+        assert!(DEFAULT_ORPHAN_MAX_WEIGHT < 11_000_000);
+    }
+}
+
+#[test]
+fn reject_oversize_duplicate_and_remove() {
+    let mut o = Orphanage::with_limits(DEFAULT_ORPHAN_MAX_WEIGHT, 100);
+    let p = txid_n(3);
+    // Empty missing parents → refuse.
+    let tx = make_orphan(p, 1);
+    assert!(!o.insert_from(tx.clone(), BTreeSet::new(), None));
+    let mut miss = BTreeSet::new();
+    miss.insert(p);
+    assert!(o.insert_from(tx.clone(), miss.clone(), None));
+    assert!(!o.insert_from(tx.clone(), miss.clone(), None));
+    let tid = tx.compute_txid();
+    o.remove_txid(&tid);
+    assert!(!o.contains(&tid));
+    // take_children on unknown parent is empty.
+    assert!(o.take_children_of(&txid_n(99)).is_empty());
+    // Count-cap eviction (with_limits floors max_weight at MAX_ORPHAN_TX_WEIGHT).
+    let mut o2 = Orphanage::with_limits(DEFAULT_ORPHAN_MAX_WEIGHT, 3);
+    for i in 0..8u8 {
+        let t = make_orphan(p, i + 1);
+        let mut m = BTreeSet::new();
+        m.insert(p);
+        o2.insert_from(t, m, None);
+    }
+    assert!(o2.len() <= 3);
+    // erase_for_block drops matching orphans.
+    let t3 = make_orphan(p, 50);
+    let tid3 = t3.compute_txid();
+    let mut m = BTreeSet::new();
+    m.insert(p);
+    o2.insert_from(t3, m, None);
+    o2.erase_for_block(&[tid3]);
+    assert!(!o2.contains(&tid3));
+}
+
+#[test]
+fn announcers_and_erase_for_peer() {
+    let mut o = Orphanage::new();
+    let p = txid_n(4);
+    let tx = make_orphan(p, 7);
+    let tid = tx.compute_txid();
+    let wtxid = tx.compute_wtxid();
+    let mut miss = BTreeSet::new();
+    miss.insert(p);
+    assert!(o.insert_from(tx.clone(), miss, Some(3)));
+    assert!(o.has_announcer(3));
+    assert!(!o.has_announcer(9));
+    assert_eq!(o.announcers_of(&tid), vec![3]);
+    assert!(o.add_announcer_wtxid(&wtxid, 9));
+    assert_eq!(o.announcers_of(&tid), vec![3, 9]);
+    o.erase_for_peer(3);
+    assert_eq!(o.announcers_of(&tid), vec![9]);
+    assert!(o.contains(&tid));
+    o.erase_for_peer(9);
+    assert!(!o.contains(&tid));
+    assert!(o.is_empty());
+}
+#[test]
+fn mempool_under_pressure() {
+    assert_eq!(ORPHAN_EXPIRE_MS, 1_200_000);
+    assert!(unix_ms() > 1_700_000_000_000);
+
+    let mut o = Orphanage::with_limits(DEFAULT_ORPHAN_MAX_WEIGHT, 2);
+    let parent = txid_n(11);
+    let mut miss = BTreeSet::new();
+    miss.insert(parent);
+
+    let first = make_orphan(parent, 1);
+    let second = make_orphan(parent, 2);
+    assert!(o.insert_from_at(first, miss.clone(), Some(7), 0));
+    let one = o.peer_orphan_weight(7);
+    assert!(one > 0);
+    assert!(o.insert_from_at(second.clone(), miss.clone(), Some(7), 0));
+    assert!(o.peer_orphan_weight(7) > one);
+    o.erase_for_block(&[second.compute_txid()]);
+    assert_eq!(o.peer_orphan_weight(7), one);
+
+    let filler = make_orphan(parent, 4);
+    assert!(o.insert_from_at(filler, miss.clone(), Some(2), 0));
+    assert_eq!(o.len(), 2);
+    let later = make_orphan(parent, 3);
+    let later_id = later.compute_txid();
+    assert!(
+        o.insert_from_at(later, miss.clone(), Some(3), 0),
+        "a full per-peer reserve must still admit a newer orphan"
+    );
+    assert!(o.contains(&later_id));
+    assert!(o.len() <= 2);
+
+    let held = make_orphan(parent, 5);
+    let held_id = held.compute_txid();
+    assert!(o.insert_from_at(held, miss.clone(), Some(7), ORPHAN_EXPIRE_MS));
+    assert!(
+        !o.contains(&later_id),
+        "an orphan parked for ORPHAN_EXPIRE_MS is gone"
+    );
+    assert!(o.contains(&held_id));
+    let tail = make_orphan(parent, 6);
+    assert!(o.insert_from_at(tail, miss, Some(7), ORPHAN_EXPIRE_MS + ORPHAN_EXPIRE_MS));
+    assert!(
+        !o.contains(&held_id),
+        "the next expiry bound drops the orphan that survived the first"
+    );
+}
+
+/// Orphan count, the per-peer reserve, and taking children of one parent.
+/// A peer tx parks an orphan. The reserve choice (drop the unannounced
+/// tx, keep the peer's) is not a field `getmempoolinfo` returns.
+#[test]
+fn orphan_counters_limits_and_child_take() {
+    let parent = txid_n(21);
+    let other = txid_n(22);
+    let tx = make_orphan(parent, 1);
+    let w = tx.weight().to_wu();
+    assert!(w > 1);
+    let mut miss = BTreeSet::new();
+    miss.insert(parent);
+    miss.insert(other);
+
+    let mut empty = Orphanage::with_limits(w, 4);
+    assert!(empty.is_empty());
+    assert_eq!(empty.total_weight(), 0);
+    assert!(empty.insert_from_at(tx.clone(), miss.clone(), None, 0));
+    assert!(!empty.is_empty());
+    assert_eq!(empty.total_weight(), w);
+
+    let mut counted = Orphanage::with_limits(DEFAULT_ORPHAN_MAX_WEIGHT, 1);
+    assert!(counted.insert_from_at(tx.clone(), miss.clone(), None, 0));
+    let extra = make_orphan(parent, 3);
+    assert!(
+        counted.insert_from_at(extra, miss_one_parent(parent), None, 0),
+        "count cap evicts the older orphan"
+    );
+    assert_eq!(counted.len(), 1);
+
+    let mut linked = Orphanage::with_limits(DEFAULT_ORPHAN_MAX_WEIGHT, 4);
+    let body = make_orphan(parent, 4);
+    let id = body.compute_txid();
+    assert!(linked.insert_from_at(body, miss.clone(), None, 0));
+    let taken = linked.take_children_of(&parent);
+    assert_eq!(taken.len(), 1);
+    assert!(
+        !linked
+            .by_parent
+            .get(&other)
+            .is_some_and(|set| set.contains(&id)),
+        "the other missing parent drops the taken child"
+    );
+
+    let mut reserved = Orphanage::with_limits(DEFAULT_ORPHAN_MAX_WEIGHT, 2);
+    let protected = make_orphan(parent, 5);
+    let protected_id = protected.compute_txid();
+    let loose = make_orphan(parent, 6);
+    let loose_id = loose.compute_txid();
+    assert!(reserved.insert_from_at(protected, miss_one_parent(parent), Some(1), 0));
+    assert!(reserved.insert_from_at(loose, miss_one_parent(parent), None, 0));
+    let newer = make_orphan(parent, 7);
+    let newer_id = newer.compute_txid();
+    assert!(reserved.insert_from_at(newer, miss_one_parent(parent), Some(2), 0));
+    assert!(
+        reserved.contains(&protected_id),
+        "peer reserve keeps the older announcer"
+    );
+    assert!(reserved.contains(&newer_id));
+    assert!(
+        !reserved.contains(&loose_id),
+        "the unannounced orphan is the one evicted"
+    );
+}
+
+/// `with_limits` floors the weight cap at one max-size orphan. A tx that
+/// lands on that cap is admitted. One past it evicts a single orphan.
+/// The default orphan pool is far above one max-size tx. A journey cannot
+/// fill it. Every orphan a peer sends still runs this compare.
+#[test]
+fn weight_cap_admits_exact_and_evicts_one_past() {
+    let parent = txid_n(21);
+    let cap = MAX_ORPHAN_TX_WEIGHT;
+    let mut exact = Orphanage::with_limits(cap, 100_000);
+    let seed = make_orphan(parent, 1);
+    let seed_w = seed.weight().to_wu();
+    assert!(exact.insert_from_at(seed, miss_one_parent(parent), None, 0));
+    let filler = orphan_of_weight(parent, cap - seed_w);
+    assert_eq!(filler.weight().to_wu(), cap - seed_w);
+    assert!(
+        exact.insert_from_at(filler, miss_one_parent(parent), None, 0),
+        "a tx that lands on the weight cap still fits"
+    );
+    assert_eq!(exact.len(), 2);
+    assert_eq!(exact.total_weight(), cap);
+    let spill = make_orphan(parent, 2);
+    assert!(exact.total_weight().saturating_add(spill.weight().to_wu()) > cap);
+    assert_ne!(
+        exact.total_weight().saturating_add(spill.weight().to_wu()),
+        cap
+    );
+    assert!(
+        exact.insert_from_at(spill, miss_one_parent(parent), None, 0),
+        "one eviction makes room past the cap"
+    );
+    assert_eq!(exact.len(), 2);
+    assert!(exact.total_weight() <= cap);
+
+    // Dropping only the oldest still leaves the new tx over the cap.
+    let mut twice = Orphanage::with_limits(cap, 100_000);
+    let mut oldest = orphan_of_weight(parent, 50_000);
+    oldest.lock_time = LockTime::from_height(1).unwrap();
+    let oldest_id = oldest.compute_txid();
+    let mut second = orphan_of_weight(parent, 300_000);
+    second.lock_time = LockTime::from_height(2).unwrap();
+    let second_id = second.compute_txid();
+    let mut incoming = orphan_of_weight(parent, 200_000);
+    incoming.lock_time = LockTime::from_height(3).unwrap();
+    assert!(twice.insert_from_at(oldest, miss_one_parent(parent), None, 0));
+    assert!(twice.insert_from_at(second, miss_one_parent(parent), None, 0));
+    assert_eq!(twice.total_weight(), 350_000);
+    assert!(twice.total_weight().saturating_add(200_000) > cap);
+    assert!(300_000u64.saturating_add(200_000) > cap);
+    assert!(
+        twice.insert_from_at(incoming.clone(), miss_one_parent(parent), None, 0),
+        "the weight cap evicts until the incoming orphan fits"
+    );
+    assert_eq!(twice.len(), 1);
+    assert_eq!(twice.total_weight(), incoming.weight().to_wu());
+    assert!(twice.contains(&incoming.compute_txid()));
+    assert!(!twice.contains(&oldest_id));
+    assert!(!twice.contains(&second_id));
+}
+
+fn miss_one_parent(parent: Txid) -> BTreeSet<Txid> {
+    let mut miss = BTreeSet::new();
+    miss.insert(parent);
+    miss
+}
+
+/// Pad a witness until the tx weighs `target` wu. Witness bytes move the
+/// weight by one, so every target above the bare orphan is reachable.
+fn orphan_of_weight(parent: Txid, target: u64) -> Transaction {
+    let mut n = 1usize;
+    for _ in 0..8 {
+        let mut tx = make_orphan(parent, 9);
+        tx.lock_time = LockTime::from_height(50_000).unwrap();
+        tx.input[0].witness = Witness::from_slice(&[vec![0x11; n]]);
+        let got = tx.weight().to_wu();
+        if got == target {
+            return tx;
+        }
+        if got > target {
+            n -= (got - target) as usize;
+        } else {
+            n += (target - got) as usize;
+        }
+    }
+    panic!("no witness length weighs {target}");
+}

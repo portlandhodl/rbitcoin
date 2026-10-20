@@ -8,7 +8,7 @@ use crate::block::ScriptCheckJob;
 use crate::error::ConsensusError;
 use crate::TxPrecompute;
 
-pub(crate) fn verify(
+pub fn verify(
     job: &ScriptCheckJob,
     input_index: usize,
     tx: &Transaction,
@@ -38,7 +38,7 @@ pub(crate) fn verify(
 }
 
 /// Nested P2SH-P2WPKH: `witness_program` is the 22-byte redeem (not outer P2SH spk).
-pub(crate) fn verify_with_keyhash(
+pub fn verify_with_keyhash(
     job: &ScriptCheckJob,
     input_index: usize,
     tx: &Transaction,
@@ -84,7 +84,8 @@ pub(crate) fn verify_with_keyhash(
 
 /// Core `ExecuteWitnessScript`: every initial witness stack element is at
 /// most MAX_SCRIPT_ELEMENT_SIZE.
-fn check_element_sizes(sig_raw: &[u8], pubkey_raw: &[u8]) -> Result<(), ConsensusError> {
+#[doc(hidden)]
+pub fn check_element_sizes(sig_raw: &[u8], pubkey_raw: &[u8]) -> Result<(), ConsensusError> {
     if sig_raw.len() > interpreter::MAX_SCRIPT_ELEMENT_SIZE
         || pubkey_raw.len() > interpreter::MAX_SCRIPT_ELEMENT_SIZE
     {
@@ -96,7 +97,7 @@ fn check_element_sizes(sig_raw: &[u8], pubkey_raw: &[u8]) -> Result<(), Consensu
 /// P2WPKH through the interpreter: Core `ExecuteWitnessScript` on
 /// `DUP HASH160 <keyhash> EQUALVERIFY CHECKSIG`. Used when LOW_S, STRICTENC,
 /// or NULLFAIL is set; the typed paths above do not apply those flags.
-pub(crate) fn verify_interpreted(
+pub fn verify_interpreted(
     job: &ScriptCheckJob,
     input_index: usize,
     tx: &Transaction,
@@ -117,87 +118,4 @@ pub(crate) fn verify_interpreted(
         Script::from_bytes(&script_code),
         witness.iter(),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::block::ScriptCheckJob;
-    use bitcoin::absolute::LockTime;
-    use bitcoin::script::ScriptBuf;
-    use bitcoin::{Amount, OutPoint, Sequence, TxIn, TxOut, Witness};
-
-    fn job_with_witness(items: &[&[u8]]) -> ScriptCheckJob {
-        let mut spk = vec![0x00, 0x14];
-        spk.extend([0u8; 20]);
-        ScriptCheckJob {
-            txid: [0u8; 32],
-            prevouts: crate::block::JobPrevouts::owned(vec![TxOut {
-                value: Amount::from_sat(10),
-                script_pubkey: ScriptBuf::from_bytes(spk),
-            }]),
-            tx: crate::block::JobTx::owned(Transaction {
-                version: bitcoin::transaction::Version::TWO,
-                lock_time: LockTime::ZERO,
-                input: vec![TxIn {
-                    previous_output: OutPoint::null(),
-                    script_sig: ScriptBuf::new(),
-                    sequence: Sequence::MAX,
-                    witness: Witness::from_slice(items),
-                }],
-                output: vec![TxOut {
-                    value: Amount::from_sat(1),
-                    script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-                }],
-            }),
-            flags: crate::block::ScriptVerifyFlags {
-                bip65_active: true,
-                bip112_active: true,
-                bip66_active: true,
-                bip16_active: true,
-                taproot_active: true,
-                minimal_if: false,
-                nullfail: false,
-                low_s: false,
-                strictenc: false,
-                null_dummy: false,
-                minimal_data: false,
-                witness_pubkeytype: false,
-                witness_active: true,
-                discourage_upgradable_witness: false,
-                const_scriptcode: false,
-                cleanstack: false,
-            },
-            pre: std::sync::OnceLock::new(),
-        }
-    }
-
-    #[test]
-    fn witness_shape_errors() {
-        let job = job_with_witness(&[]);
-        let pre = crate::TxPrecompute::from_tx(&job.tx);
-        assert!(verify(&job, 0, &job.tx, &pre).is_err());
-
-        let job = job_with_witness(&[&[0x01]]);
-        let pre = crate::TxPrecompute::from_tx(&job.tx);
-        assert!(verify(&job, 0, &job.tx, &pre).is_err());
-
-        let job = job_with_witness(&[&[], &[0x02; 33]]);
-        let pre = crate::TxPrecompute::from_tx(&job.tx);
-        assert!(verify(&job, 0, &job.tx, &pre).is_err());
-
-        let job = job_with_witness(&[&[0x30, 0x01, 0x01, 0x01], &[0x02; 33]]);
-        let pre = crate::TxPrecompute::from_tx(&job.tx);
-        let err = verify(&job, 0, &job.tx, &pre).unwrap_err();
-        assert!(format!("{err}").contains("p2wpkh"));
-
-        let redeem = {
-            let mut r = vec![0x00, 0x14];
-            r.extend([0u8; 20]);
-            r
-        };
-        let job = job_with_witness(&[&[0x01]]);
-        let pre = crate::TxPrecompute::from_tx(&job.tx);
-        assert!(verify_with_keyhash(&job, 0, &job.tx, &[0u8; 20], &redeem, &pre).is_err());
-    }
 }

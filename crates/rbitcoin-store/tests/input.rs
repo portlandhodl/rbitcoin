@@ -1,0 +1,155 @@
+use rbitcoin_primitives::{Fk, TableKind};
+use rbitcoin_store::delta_loc::{loc_window, loc_within, LOC_WINDOW};
+use rbitcoin_store::error::StoreError;
+use rbitcoin_store::file::{TableFile, FILE_HEADER_LEN};
+use rbitcoin_store::input::*;
+use rbitcoin_store::testutil::TempDir;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
+
+fn edge(parent: u64, vout: u32) -> InputEdge {
+    InputEdge {
+        parent: Fk(parent),
+        vout,
+    }
+}
+
+#[test]
+fn pack_rejects_wide_fk_and_vout() {
+    let err = InputEdge {
+        parent: Fk(FK_LIMIT),
+        vout: 0,
+    }
+    .pack();
+    assert!(matches!(err, Err(StoreError::Corrupt("input create_fk"))));
+    let err = InputEdge {
+        parent: Fk(1),
+        vout: VOUT_LIMIT,
+    }
+    .pack();
+    assert!(matches!(err, Err(StoreError::Corrupt("input vout"))));
+    let err = InputEdge {
+        parent: Fk::NULL,
+        vout: 1,
+    }
+    .pack();
+    assert!(matches!(
+        err,
+        Err(StoreError::Corrupt("input coinbase vout"))
+    ));
+}
+
+#[test]
+fn roundtrip_coinbase_and_parents_across_reopen() {
+    let dir = TempDir::labeled("input-rt").unwrap();
+    let t = Input::create(dir.path()).unwrap();
+    t.append(&[
+        vec![InputEdge::coinbase()],
+        vec![edge(1, 0), edge(1, 3)],
+        vec![],
+    ])
+    .unwrap();
+    assert_eq!(t.n_in(Fk(1)).unwrap(), Some(1));
+    assert_eq!(
+        t.edges(Fk(1)).unwrap().unwrap(),
+        vec![InputEdge::coinbase()]
+    );
+    assert_eq!(
+        t.edges(Fk(2)).unwrap().unwrap(),
+        vec![edge(1, 0), edge(1, 3)]
+    );
+    assert_eq!(t.n_in(Fk(3)).unwrap(), None);
+    assert!(t.edges(Fk(3)).unwrap().is_none());
+    drop(t);
+    let t = Input::open(dir.path()).unwrap();
+    assert_eq!(t.count(), 3);
+    assert_eq!(
+        t.edges(Fk(2)).unwrap().unwrap(),
+        vec![edge(1, 0), edge(1, 3)]
+    );
+    t.truncate_to_count(1).unwrap();
+    assert_eq!(t.count(), 1);
+    assert!(matches!(t.edges(Fk(2)), Err(StoreError::NotFound)));
+    assert_eq!(
+        t.edges(Fk(1)).unwrap().unwrap(),
+        vec![InputEdge::coinbase()]
+    );
+}
+
+#[test]
+fn window_checkpoint_serves_create_1025() {
+    let dir = TempDir::labeled("input-win").unwrap();
+    let t = Input::create(dir.path()).unwrap();
+    let one = vec![edge(7, 1)];
+    let batch = vec![one; 1025];
+    t.append(&batch).unwrap();
+    assert_eq!(t.edges(Fk(1)).unwrap().unwrap(), vec![edge(7, 1)]);
+    assert_eq!(t.edges(Fk(1024)).unwrap().unwrap(), vec![edge(7, 1)]);
+    assert_eq!(t.edges(Fk(1025)).unwrap().unwrap(), vec![edge(7, 1)]);
+    drop(t);
+    let t = Input::open(dir.path()).unwrap();
+    assert_eq!(t.edges(Fk(1025)).unwrap().unwrap(), vec![edge(7, 1)]);
+    assert_eq!(t.n_in(Fk(1025)).unwrap(), Some(1));
+}
+
+#[test]
+fn edges_span_bounds_and_mid_create() {
+    let dir = TempDir::labeled("input-span-bounds").unwrap();
+    let t = Input::create(dir.path()).unwrap();
+    t.append(&[
+        vec![edge(1, 0)],
+        vec![edge(4, 1), edge(4, 2)],
+        vec![edge(7, 3)],
+    ])
+    .unwrap();
+    assert!(matches!(t.edges_span(0, 1), Err(StoreError::InvalidFk)));
+    assert!(matches!(t.edges_span(3, 1), Err(StoreError::InvalidFk)));
+    assert!(matches!(t.edges_span(1, 4), Err(StoreError::NotFound)));
+    assert_eq!(
+        t.edges_span(2, 2).unwrap(),
+        vec![Some(vec![edge(4, 1), edge(4, 2)])]
+    );
+    assert_eq!(
+        t.edges_span(1, 2).unwrap(),
+        vec![Some(vec![edge(1, 0)]), Some(vec![edge(4, 1), edge(4, 2)]),]
+    );
+}
+
+#[test]
+fn input_append_reopen_reads_last_edges() {
+    let dir = TempDir::labeled("input-reopen-last").unwrap();
+    let t = Input::create(dir.path()).unwrap();
+    let mut batch = Vec::with_capacity(1025);
+    for i in 0..1024u32 {
+        batch.push(vec![edge(1, i)]);
+    }
+    batch.push(vec![edge(9, 3), edge(9, 4)]);
+    t.append(&batch).unwrap();
+    drop(t);
+    let t = Input::open(dir.path()).unwrap();
+    assert_eq!(t.n_in(Fk(1025)).unwrap(), Some(2));
+    assert_eq!(
+        t.edges(Fk(1025)).unwrap().unwrap(),
+        vec![edge(9, 3), edge(9, 4)]
+    );
+    assert_eq!(t.edges(Fk(1)).unwrap().unwrap(), vec![edge(1, 0)]);
+}
+
+#[test]
+fn new_store_creates_inputs_stems() {
+    let (dir, _store) = rbitcoin_store::testutil::tiny_store_labeled("input-files");
+    assert!(dir.path().join("input.loc").is_file());
+    assert!(dir.path().join("input.off").is_file());
+    assert!(dir.path().join("input.body").is_file());
+}
+
+#[test]
+fn append_rejects_n_in_past_u16() {
+    let dir = TempDir::labeled("input-wide").unwrap();
+    let t = Input::create(dir.path()).unwrap();
+    let edges = vec![edge(1, 0); usize::from(u16::MAX) + 1];
+    let err = t.append(&[edges]).unwrap_err();
+    assert!(matches!(err, StoreError::Corrupt("input n_in")));
+    assert_eq!(t.count(), 0);
+}

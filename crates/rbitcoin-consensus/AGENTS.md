@@ -24,4 +24,4 @@ Open the row that matches the change. Leave the other owners closed.
 
 ## Verify
 
-`cargo test -p rbitcoin-consensus --lib`
+`cargo test -p rbitcoin-consensus --test suite`

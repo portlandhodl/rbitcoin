@@ -20,32 +20,32 @@ pub const TX_HEAD_REBUILD_WORKER_FREE_RAM_BYTES: u64 = 1024 * 1024 * 1024;
 pub const SCRIPT_HASH_COLLECT_SPAN: u64 = 16 * 1024 * 1024;
 
 /// Stamp short-circuit row: txid → optional (create fk, txout body range).
-pub(crate) type TxidFkRange = ([u8; 32], Option<(Fk, crate::create_loc::CreateLocPair)>);
+pub type TxidFkRange = ([u8; 32], Option<(Fk, crate::create_loc::CreateLocPair)>);
 /// Sparse denserels-load row: meta + live outs + spender rels.
-pub(crate) type SparseOutsRow = (TxRecord, Vec<(u32, OutputRecord)>, Vec<(u32, u32)>);
+pub type SparseOutsRow = (TxRecord, Vec<(u32, OutputRecord)>, Vec<(u32, u32)>);
 /// Full Class A body: meta + inputs + outputs.
-pub(crate) type PackedTx = (TxRecord, Vec<InputRecord>, Vec<OutputRecord>);
+pub type PackedTx = (TxRecord, Vec<InputRecord>, Vec<OutputRecord>);
 /// Packed txout decode including spender rels.
-pub(crate) type PackedTxRels = (TxRecord, Vec<InputRecord>, Vec<OutputRecord>, Vec<u32>);
+pub type PackedTxRels = (TxRecord, Vec<InputRecord>, Vec<OutputRecord>, Vec<u32>);
 /// Prep denserels job: create fk, body range, known txid, loc n_out, need-vouts.
-pub(crate) type OutsByRangeJob = (Fk, (u64, u64), [u8; 32], u32, Vec<u32>);
+pub type OutsByRangeJob = (Fk, (u64, u64), [u8; 32], u32, Vec<u32>);
 /// `(rows, body_ns, decode_ns, extend_n, body_sqe_n, guess_full_n)` from [`TxTable::get_outs_by_range_batch`].
-pub(crate) type OutsByRangeOut = (Vec<Option<SparseOutsRow>>, u64, u64, u64, u64, u64);
+pub type OutsByRangeOut = (Vec<Option<SparseOutsRow>>, u64, u64, u64, u64, u64);
 /// `spent.body` slot: spender fk + flags + vin.
-pub(crate) type SpenderSlot = (Fk, u8, u32);
+pub type SpenderSlot = (Fk, u8, u32);
 
-pub(crate) fn parse_rebuild_seal_bits(raw: Option<&str>) -> u32 {
+pub fn parse_rebuild_seal_bits(raw: Option<&str>) -> u32 {
     raw.and_then(|s| s.parse::<u32>().ok())
         .map(|b| b.clamp(6, 26))
         .unwrap_or(25)
 }
 
-pub(crate) fn parse_rebuild_workers(raw: Option<&str>) -> Option<usize> {
+pub fn parse_rebuild_workers(raw: Option<&str>) -> Option<usize> {
     raw.and_then(|s| s.parse::<usize>().ok())
         .map(|n| n.clamp(1, 256))
 }
 
-pub(crate) fn tx_head_rebuild_workers_for_free_ram(cpus: usize, free_bytes: u64) -> usize {
+pub fn tx_head_rebuild_workers_for_free_ram(cpus: usize, free_bytes: u64) -> usize {
     crate::sorted_run::workers_for_free_ram(cpus, free_bytes, TX_HEAD_REBUILD_WORKER_FREE_RAM_BYTES)
 }
 
@@ -110,19 +110,27 @@ impl TxRecord {
 
 /// Schema-17 thin `txout` meta flags (codec only until Class A cutover).
 /// Bit 7 must be set so a v1 schema-15 prefix (`01 00 00 00`) cannot decode.
-const BODY_META_V17_LAYOUT17: u8 = 1 << 7;
-const BODY_META_V17_VER_1: u8 = 1 << 0;
-const BODY_META_V17_VER_2: u8 = 1 << 1;
-const BODY_META_V17_VER_3: u8 = 1 << 2;
-const BODY_META_V17_LOCKTIME_ZERO: u8 = 1 << 3;
+#[doc(hidden)]
+pub const BODY_META_V17_LAYOUT17: u8 = 1 << 7;
+#[doc(hidden)]
+pub const BODY_META_V17_VER_1: u8 = 1 << 0;
+#[doc(hidden)]
+pub const BODY_META_V17_VER_2: u8 = 1 << 1;
+#[doc(hidden)]
+pub const BODY_META_V17_VER_3: u8 = 1 << 2;
+#[doc(hidden)]
+pub const BODY_META_V17_LOCKTIME_ZERO: u8 = 1 << 3;
 /// `n_in` lives on `txstat.body`; no uleb `input_count` follows locktime.
-pub(crate) const BODY_META_V17_N_IN_TXSTAT: u8 = 1 << 4;
-const BODY_META_V17_RESERVED: u8 = 0x60;
-const BODY_META_V17_VER_MASK: u8 = BODY_META_V17_VER_1 | BODY_META_V17_VER_2 | BODY_META_V17_VER_3;
+pub const BODY_META_V17_N_IN_TXSTAT: u8 = 1 << 4;
+#[doc(hidden)]
+pub const BODY_META_V17_RESERVED: u8 = 0x60;
+#[doc(hidden)]
+pub const BODY_META_V17_VER_MASK: u8 =
+    BODY_META_V17_VER_1 | BODY_META_V17_VER_2 | BODY_META_V17_VER_3;
 
 /// Encode schema-17 thin meta. New writes set [`BODY_META_V17_N_IN_TXSTAT`]
 /// and omit the `input_count` uleb (`n_in` is on `txstat.body`).
-pub(crate) fn encode_body_meta_v17(rec: &TxRecord, out: &mut Vec<u8>) {
+pub fn encode_body_meta_v17(rec: &TxRecord, out: &mut Vec<u8>) {
     let mut flags = BODY_META_V17_LAYOUT17 | BODY_META_V17_N_IN_TXSTAT;
     match rec.version {
         1 => flags |= BODY_META_V17_VER_1,
@@ -143,7 +151,7 @@ pub(crate) fn encode_body_meta_v17(rec: &TxRecord, out: &mut Vec<u8>) {
 }
 
 /// Decode schema-17 thin meta. Rejects schema-15 16-byte prefixes (no LAYOUT17 bit).
-pub(crate) fn decode_body_meta_v17(buf: &[u8]) -> Result<(TxRecord, usize), StoreError> {
+pub fn decode_body_meta_v17(buf: &[u8]) -> Result<(TxRecord, usize), StoreError> {
     if buf.is_empty() {
         return Err(StoreError::Corrupt("short v17 txout meta"));
     }
@@ -209,7 +217,10 @@ pub(crate) fn decode_body_meta_v17(buf: &[u8]) -> Result<(TxRecord, usize), Stor
     ))
 }
 
-fn edges_from_seqsigwit_payload(raw: &[u8]) -> Result<Vec<crate::input::InputEdge>, StoreError> {
+#[doc(hidden)]
+pub fn edges_from_seqsigwit_payload(
+    raw: &[u8],
+) -> Result<Vec<crate::input::InputEdge>, StoreError> {
     let mut off = 0usize;
     let mut edges = Vec::new();
     while off < raw.len() && raw[off..].iter().any(|&b| b != 0) {
@@ -228,31 +239,38 @@ fn edges_from_seqsigwit_payload(raw: &[u8]) -> Result<Vec<crate::input::InputEdg
 }
 
 /// How many creates to locate per input-backfill step.
-const INPUT_BACKFILL_FKS: u64 = 16_384;
+#[doc(hidden)]
+pub const INPUT_BACKFILL_FKS: u64 = 16_384;
 /// Coalesced `seqsigwit.body` pread. Same bound as [`SCRIPT_HASH_COLLECT_SPAN`].
-const INPUT_BACKFILL_SPAN: u64 = SCRIPT_HASH_COLLECT_SPAN;
+#[doc(hidden)]
+pub const INPUT_BACKFILL_SPAN: u64 = SCRIPT_HASH_COLLECT_SPAN;
 
-fn backfill_chunk_end(id: u64, n: u64) -> u64 {
+#[doc(hidden)]
+pub fn backfill_chunk_end(id: u64, n: u64) -> u64 {
     (id + INPUT_BACKFILL_FKS - 1).min(n)
 }
 
-fn backfill_progress_due(end: u64, id: u64) -> bool {
+#[doc(hidden)]
+pub fn backfill_progress_due(end: u64, id: u64) -> bool {
     end / 1_000_000 != (id - 1) / 1_000_000
 }
 
-fn unstamped_tail(n_bodies: u64, have: u64) -> u64 {
+#[doc(hidden)]
+pub fn unstamped_tail(n_bodies: u64, have: u64) -> u64 {
     n_bodies.saturating_sub(have)
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum InputOpenTail {
+#[doc(hidden)]
+pub enum InputOpenTail {
     Backfill { from: u64 },
     Unstamped { n: u64 },
     Ahead,
     Ready,
 }
 
-fn input_open_tail(input_count: u64, n_bodies: u64, seq_count: u64) -> InputOpenTail {
+#[doc(hidden)]
+pub fn input_open_tail(input_count: u64, n_bodies: u64, seq_count: u64) -> InputOpenTail {
     if n_bodies > 0 && seq_count == n_bodies && input_count < n_bodies {
         InputOpenTail::Backfill {
             from: input_count + 1,
@@ -268,9 +286,12 @@ fn input_open_tail(input_count: u64, n_bodies: u64, seq_count: u64) -> InputOpen
     }
 }
 
-type ReadSeqsigwitSpan<'a> = &'a mut dyn FnMut(u64, u64, &mut Vec<u8>) -> Result<(), StoreError>;
+#[doc(hidden)]
+pub type ReadSeqsigwitSpan<'a> =
+    &'a mut dyn FnMut(u64, u64, &mut Vec<u8>) -> Result<(), StoreError>;
 
-fn edges_from_seqsigwit_ranges(
+#[doc(hidden)]
+pub fn edges_from_seqsigwit_ranges(
     read: ReadSeqsigwitSpan<'_>,
     ranges: &[Option<(u64, u64)>],
     span_max: u64,
@@ -340,7 +361,8 @@ fn edges_from_seqsigwit_ranges(
     Ok(out)
 }
 
-fn input_edges(ins: &[InputRecord]) -> Vec<crate::input::InputEdge> {
+#[doc(hidden)]
+pub fn input_edges(ins: &[InputRecord]) -> Vec<crate::input::InputEdge> {
     ins.iter()
         .map(|inp| match inp.parent() {
             InputParent::Coinbase => crate::input::InputEdge::coinbase(),
@@ -361,7 +383,8 @@ fn input_edges(ins: &[InputRecord]) -> Vec<crate::input::InputEdge> {
         .collect()
 }
 
-fn txstat_placeholder() -> crate::txstat::TxStatRow {
+#[doc(hidden)]
+pub fn txstat_placeholder() -> crate::txstat::TxStatRow {
     crate::txstat::TxStatRow {
         fee_sat: 0,
         base: 0,
@@ -369,7 +392,8 @@ fn txstat_placeholder() -> crate::txstat::TxStatRow {
     }
 }
 
-fn txstat_placeholders(
+#[doc(hidden)]
+pub fn txstat_placeholders(
     items: &[(TxRecord, Vec<InputRecord>, Vec<OutputRecord>)],
 ) -> Vec<crate::txstat::TxStatRow> {
     items.iter().map(|_| txstat_placeholder()).collect()
@@ -515,12 +539,20 @@ impl OutputRecord {
     pub const SPENT_SLOT_LEN: usize = 8;
 }
 
-mod packed;
-mod pending_head;
+#[doc(hidden)]
+pub mod packed;
+#[doc(hidden)]
+pub mod pending_head;
 pub use packed::*;
-pub(crate) use pending_head::PENDING_HEAD_CAP;
+pub use pending_head::PENDING_HEAD_CAP;
 
-fn span_rec(span: &[u8], span_off: u64, rec_off: u64, rec_len: u64) -> Result<&[u8], StoreError> {
+#[doc(hidden)]
+pub fn span_rec(
+    span: &[u8],
+    span_off: u64,
+    rec_off: u64,
+    rec_len: u64,
+) -> Result<&[u8], StoreError> {
     let start = rec_off
         .checked_sub(span_off)
         .ok_or(StoreError::Corrupt("span record before span"))?;
@@ -533,7 +565,8 @@ fn span_rec(span: &[u8], span_off: u64, rec_off: u64, rec_len: u64) -> Result<&[
         .ok_or(StoreError::Corrupt("span record OOB"))
 }
 
-fn pread_two_spans(
+#[doc(hidden)]
+pub fn pread_two_spans(
     a: &VarTable,
     a_off: u64,
     a_len: u64,
@@ -562,7 +595,8 @@ fn pread_two_spans(
 ///
 /// A chunk is at most [`crate::uring_session::DEFAULT_ENTRIES`] groups, so a
 /// merged 256 KiB bounce is not allocated for every group in a megakey.
-fn read_spend_peek_chunk(
+#[doc(hidden)]
+pub fn read_spend_peek_chunk(
     chunk: &[crate::idx_body_pipeline::SpendSlotPeek],
     live: &[u64],
     orig: &[usize],
@@ -632,38 +666,38 @@ fn read_spend_peek_chunk(
 
 pub struct TxTable {
     /// `txout.body` — meta + outputs (hot).
-    pub(crate) body: VarTable,
+    pub body: VarTable,
     /// `seqsigwit.body` — inputs + witness (cold).
-    pub(crate) seqsigwit: VarTable,
+    pub seqsigwit: VarTable,
     /// `spent.body` — 8 B × n_out sole-spender slots.
-    pub(crate) spent: VarTable,
-    pub(crate) create_loc: crate::create_loc::CreateLoc,
-    pub(crate) seqsigwit_loc: crate::delta_loc::DeltaLoc,
+    pub spent: VarTable,
+    pub create_loc: crate::create_loc::CreateLoc,
+    pub seqsigwit_loc: crate::delta_loc::DeltaLoc,
     /// Segmented fixed-bits heads + seal-time fuse8.
     /// Segmented fixed-bits heads + seal-time fuse8.
-    pub(crate) head: SegmentedTxHead,
+    pub head: SegmentedTxHead,
     /// Dense create_fk-ordered txids (schema 13+).
-    pub(crate) txids: crate::txid_body::TxidBody,
+    pub txids: crate::txid_body::TxidBody,
     /// Dense create_fk-ordered confirm-time econ (schema 25).
-    pub(crate) txstat: crate::txstat::TxStat,
+    pub txstat: crate::txstat::TxStat,
     /// Spender → parent edges (`input.loc` / `input.body`).
-    pub(crate) input: crate::input::Input,
+    pub input: crate::input::Input,
     /// Datadir secret: keyed head probes + script XOR (schema 12+).
-    pub(crate) secret: crate::store_secret::StoreSecret,
+    pub secret: crate::store_secret::StoreSecret,
     /// Unflushed head inserts (write-behind). Readers see published snapshot.
-    pending_head: pending_head::PendingHeadInserts,
-    rebuild_seal_bits: u32,
-    rebuild_workers: usize,
-    prune_seqsigwit_mode: std::sync::atomic::AtomicBool,
+    pub pending_head: pending_head::PendingHeadInserts,
+    pub rebuild_seal_bits: u32,
+    pub rebuild_workers: usize,
+    pub prune_seqsigwit_mode: std::sync::atomic::AtomicBool,
     /// `--datadir-hdd`: Class A body stems are one pwrite wave each.
-    datadir_hdd: std::sync::atomic::AtomicBool,
+    pub datadir_hdd: std::sync::atomic::AtomicBool,
     /// Per-fk packed `txout` decodes for an outs reader
     /// ([`Self::get_meta_and_outputs`], and [`Self::get`] through it), the
     /// decode the mempool and block-proposal pins count. [`Self::get_full`] is
     /// the confirm write stage's decoder and is not counted; span and pin
     /// machines decode raw spans and are not counted. One Relaxed add per
     /// decode.
-    body_decodes: std::sync::atomic::AtomicU64,
+    pub body_decodes: std::sync::atomic::AtomicU64,
 }
 
 /// Structural-meta backend from env hierarchy.
@@ -671,7 +705,8 @@ pub fn spend_meta_backend() -> crate::io_backend::ReadIoBackend {
     crate::io_backend::read_io_backend()
 }
 
-fn class_a_body_occupied(dir: &Path, stem: &str) -> bool {
+#[doc(hidden)]
+pub fn class_a_body_occupied(dir: &Path, stem: &str) -> bool {
     let p = dir.join(format!("{stem}.body"));
     match std::fs::metadata(&p) {
         Ok(m) => m.len() > crate::file::FILE_HEADER_LEN as u64,
@@ -679,7 +714,8 @@ fn class_a_body_occupied(dir: &Path, stem: &str) -> bool {
     }
 }
 
-fn open_or_create_create_loc(dir: &Path) -> Result<crate::create_loc::CreateLoc, StoreError> {
+#[doc(hidden)]
+pub fn open_or_create_create_loc(dir: &Path) -> Result<crate::create_loc::CreateLoc, StoreError> {
     if dir.join("create.loc").exists() {
         crate::create_loc::CreateLoc::open(dir)
     } else if class_a_body_occupied(dir, "txout") {
@@ -689,7 +725,8 @@ fn open_or_create_create_loc(dir: &Path) -> Result<crate::create_loc::CreateLoc,
     }
 }
 
-fn open_or_create_seqsigwit_loc(
+#[doc(hidden)]
+pub fn open_or_create_seqsigwit_loc(
     seqsigwit_dir: &Path,
 ) -> Result<crate::delta_loc::DeltaLoc, StoreError> {
     if seqsigwit_dir.join("seqsigwit.loc").exists() {
@@ -701,7 +738,8 @@ fn open_or_create_seqsigwit_loc(
     }
 }
 
-fn unlink_leftover_class_a_idx(dir: &Path) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn unlink_leftover_class_a_idx(dir: &Path) -> Result<(), StoreError> {
     for stem in ["txout", "spent", "seqsigwit"] {
         let p = dir.join(format!("{stem}.idx"));
         if p.exists() {
@@ -718,18 +756,20 @@ fn unlink_leftover_class_a_idx(dir: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
-struct ClassASkewStems<'a> {
-    create_loc: &'a crate::create_loc::CreateLoc,
-    seqsigwit_loc: &'a crate::delta_loc::DeltaLoc,
-    body: &'a VarTable,
-    spent: &'a VarTable,
-    seqsigwit: &'a VarTable,
-    txids: &'a crate::txid_body::TxidBody,
-    txstat: &'a crate::txstat::TxStat,
-    input: &'a crate::input::Input,
+#[doc(hidden)]
+pub struct ClassASkewStems<'a> {
+    pub create_loc: &'a crate::create_loc::CreateLoc,
+    pub seqsigwit_loc: &'a crate::delta_loc::DeltaLoc,
+    pub body: &'a VarTable,
+    pub spent: &'a VarTable,
+    pub seqsigwit: &'a VarTable,
+    pub txids: &'a crate::txid_body::TxidBody,
+    pub txstat: &'a crate::txstat::TxStat,
+    pub input: &'a crate::input::Input,
 }
 
-fn class_a_skew_target_count(
+#[doc(hidden)]
+pub fn class_a_skew_target_count(
     n_loc: u64,
     n_txids: u64,
     n_seqsigwit_loc: u64,
@@ -749,7 +789,8 @@ fn class_a_skew_target_count(
     })
 }
 
-fn stem_min(n_loc: u64, n_txids: u64, n_seqsigwit_loc: u64, prune_seqsigwit_mode: bool) -> u64 {
+#[doc(hidden)]
+pub fn stem_min(n_loc: u64, n_txids: u64, n_seqsigwit_loc: u64, prune_seqsigwit_mode: bool) -> u64 {
     if prune_seqsigwit_mode {
         n_loc.min(n_txids)
     } else {
@@ -758,7 +799,8 @@ fn stem_min(n_loc: u64, n_txids: u64, n_seqsigwit_loc: u64, prune_seqsigwit_mode
 }
 
 /// `true` when create `fk` stores its parent edge on `input.body`.
-fn create_prevout_on_inputs(stems: &ClassASkewStems<'_>, fk: Fk) -> Result<bool, StoreError> {
+#[doc(hidden)]
+pub fn create_prevout_on_inputs(stems: &ClassASkewStems<'_>, fk: Fk) -> Result<bool, StoreError> {
     let Some(Some((off, len))) = stems.seqsigwit_loc.range_batch(&[fk])?.into_iter().next() else {
         return Ok(false);
     };
@@ -773,7 +815,8 @@ fn create_prevout_on_inputs(stems: &ClassASkewStems<'_>, fk: Fk) -> Result<bool,
 ///
 /// Legacy inline prevouts stay out of this floor so open can still backfill
 /// them. A fresh `Input::create` this open is not a power-loss tail.
-fn short_new_layout_input(
+#[doc(hidden)]
+pub fn short_new_layout_input(
     stems: &ClassASkewStems<'_>,
     n_loc: u64,
     n_txids: u64,
@@ -797,7 +840,8 @@ fn short_new_layout_input(
     }
 }
 
-fn class_a_skew_stem_ends(
+#[doc(hidden)]
+pub fn class_a_skew_stem_ends(
     stems: &ClassASkewStems<'_>,
     n: u64,
     prune_seqsigwit_mode: bool,
@@ -834,7 +878,8 @@ fn class_a_skew_stem_ends(
     ))
 }
 
-fn class_a_skew_apply_truncate(
+#[doc(hidden)]
+pub fn class_a_skew_apply_truncate(
     stems: &ClassASkewStems<'_>,
     n: u64,
     n_txids: u64,
@@ -864,7 +909,8 @@ fn class_a_skew_apply_truncate(
     Ok(())
 }
 
-fn class_a_skew_assert_aligned(
+#[doc(hidden)]
+pub fn class_a_skew_assert_aligned(
     stems: &ClassASkewStems<'_>,
     prune_seqsigwit_mode: bool,
 ) -> Result<(), StoreError> {
@@ -882,7 +928,8 @@ fn class_a_skew_assert_aligned(
     Ok(())
 }
 
-fn repair_class_a_count_skew(
+#[doc(hidden)]
+pub fn repair_class_a_count_skew(
     stems: ClassASkewStems<'_>,
     prune_seqsigwit_mode: bool,
     input_existed: bool,
@@ -956,7 +1003,7 @@ impl TxTable {
     }
 
     /// Create Class A stems; `seqsigwit` may live in a different directory.
-    pub(crate) fn create_with_head_layout_seqsigwit(
+    pub fn create_with_head_layout_seqsigwit(
         dir: &Path,
         seqsigwit_dir: &Path,
         layout: HeadLayout,
@@ -988,7 +1035,8 @@ impl TxTable {
         })
     }
 
-    fn resolve_open_opts(opts: HeadOpenOpts) -> (u32, usize) {
+    #[doc(hidden)]
+    pub fn resolve_open_opts(opts: HeadOpenOpts) -> (u32, usize) {
         let seal_bits = opts
             .rebuild_seal_bits
             .map(|b| b.clamp(6, 26))
@@ -1032,7 +1080,7 @@ impl TxTable {
     }
 
     /// Open Class A stems; `seqsigwit` may live in a different directory.
-    pub(crate) fn open_seqsigwit(
+    pub fn open_seqsigwit(
         dir: &Path,
         seqsigwit_dir: &Path,
         opts: HeadOpenOpts,
@@ -1310,7 +1358,8 @@ impl TxTable {
     }
 
     /// Seal unsealed non-tails from Class A (crash/restart). Keys are not retained.
-    fn seal_unsealed_nontail_from_body(&self) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn seal_unsealed_nontail_from_body(&self) -> Result<(), StoreError> {
         let n_body = self.count();
         for (file_id, first_fk, count) in self.head.unsealed_nontail_ranges() {
             if count == 0 {
@@ -1335,7 +1384,8 @@ impl TxTable {
     }
 
     /// `(fuse_key, rel)` pairs for a create fk range (1-based `first_fk`, `count`).
-    fn fuse_pairs_for_range(
+    #[doc(hidden)]
+    pub fn fuse_pairs_for_range(
         &self,
         first_fk: u64,
         count: u64,
@@ -1370,7 +1420,8 @@ impl TxTable {
 
     /// Sidecar collect: libc pread of `[first_fk, first_fk+count)` (already
     /// published on `txid.body` before head insert).
-    fn fuse_pairs_from_txid_pread(
+    #[doc(hidden)]
+    pub fn fuse_pairs_from_txid_pread(
         fd: crate::io_handle::IoHandle,
         path: &Path,
         secret: &crate::store_secret::StoreSecret,
@@ -1457,10 +1508,7 @@ impl TxTable {
         self.create_loc.truncate_to_count(n)
     }
 
-    pub(crate) fn fill_txout_job_ranges(
-        &self,
-        jobs: &mut [crate::IdxBodyJob],
-    ) -> Result<(), StoreError> {
+    pub fn fill_txout_job_ranges(&self, jobs: &mut [crate::IdxBodyJob]) -> Result<(), StoreError> {
         let mut need = Vec::new();
         let mut slots = Vec::new();
         for (i, j) in jobs.iter().enumerate() {
@@ -1486,7 +1534,7 @@ impl TxTable {
         Ok(())
     }
 
-    pub(crate) fn fill_seqsigwit_job_ranges(
+    pub fn fill_seqsigwit_job_ranges(
         &self,
         jobs: &mut [crate::IdxBodyJob],
     ) -> Result<(), StoreError> {
@@ -1595,7 +1643,7 @@ impl TxTable {
         Ok((tx, prevs))
     }
 
-    pub(crate) fn overlay_stamped_n_in(&self, fk: Fk, tx: &mut TxRecord) -> Result<(), StoreError> {
+    pub fn overlay_stamped_n_in(&self, fk: Fk, tx: &mut TxRecord) -> Result<(), StoreError> {
         let Some(n_in) = self.input.n_in(fk)? else {
             return Ok(());
         };
@@ -1780,7 +1828,8 @@ impl TxTable {
             .collect())
     }
 
-    fn seqsigwit_has_inline_prevout(&self, fk: Fk) -> Result<bool, StoreError> {
+    #[doc(hidden)]
+    pub fn seqsigwit_has_inline_prevout(&self, fk: Fk) -> Result<bool, StoreError> {
         let (off, len) = self.seqsigwit_range(fk)?;
         if len == 0 {
             return Ok(false);
@@ -1789,7 +1838,8 @@ impl TxTable {
         Ok(flags & input_flags::PREV_ON_INPUTS == 0)
     }
 
-    fn backfill_inputs_from_seqsigwit(&self, from: u64) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn backfill_inputs_from_seqsigwit(&self, from: u64) -> Result<(), StoreError> {
         let n = self.create_loc.count();
         let mut id = from.max(1);
         rbitcoin_log::info!("store: input backfill from seqsigwit n={n} start={id}");
@@ -1896,7 +1946,8 @@ impl TxTable {
     ///
     /// Same slot bytes and cold list as the uring helper. Slots that share a
     /// 4 KiB page are one read and one write.
-    fn put_spend_batch_by_abs_meta_pwrite(
+    #[doc(hidden)]
+    pub fn put_spend_batch_by_abs_meta_pwrite(
         &self,
         spenders: &crate::spender_table::SpenderTable,
         abs_edges: &[(u64, Fk, u32, Fk, u32)],
@@ -1944,7 +1995,8 @@ impl TxTable {
     }
 
     /// io_uring pread_batch 9B peeks.
-    fn get_spender_meta_at_abs_batch_uring(
+    #[doc(hidden)]
+    pub fn get_spender_meta_at_abs_batch_uring(
         &self,
         abs_offs: &[u64],
     ) -> Result<Vec<Option<SpenderSlot>>, StoreError> {
@@ -1952,14 +2004,16 @@ impl TxTable {
     }
 
     /// libc pread_batch 9B peeks (no ring).
-    fn get_spender_meta_at_abs_batch_pread(
+    #[doc(hidden)]
+    pub fn get_spender_meta_at_abs_batch_pread(
         &self,
         abs_offs: &[u64],
     ) -> Result<Vec<Option<SpenderSlot>>, StoreError> {
         self.get_spender_meta_at_abs_batch_fd(abs_offs, crate::io_backend::ReadIoBackend::Pread)
     }
 
-    fn get_spender_meta_at_abs_batch_fd(
+    #[doc(hidden)]
+    pub fn get_spender_meta_at_abs_batch_fd(
         &self,
         abs_offs: &[u64],
         backend: crate::io_backend::ReadIoBackend,
@@ -2149,7 +2203,7 @@ impl TxTable {
         Ok((tx, ins, outs))
     }
 
-    pub(crate) fn stamp_seqsigwit_prevouts(
+    pub fn stamp_seqsigwit_prevouts(
         &self,
         fk: Fk,
         ins: &mut [InputRecord],
@@ -2486,7 +2540,8 @@ impl TxTable {
     }
 
     #[allow(clippy::too_many_arguments)] // same wave as append_stems_one_wave
-    fn put_pins_with_edges<P: PackedCreate>(
+    #[doc(hidden)]
+    pub fn put_pins_with_edges<P: PackedCreate>(
         &self,
         pins: &[&P],
         index: bool,
@@ -2574,7 +2629,8 @@ impl TxTable {
     ///
     /// Order is still body → loc → HWM per stem. Not the spend-annotate machine.
     /// Loc pairs are the append starts (write keeps them in RAM; no loc pread).
-    fn append_stems_one_wave(
+    #[doc(hidden)]
+    pub fn append_stems_one_wave(
         &self,
         n: usize,
         est_out: usize,
@@ -2668,7 +2724,7 @@ impl TxTable {
     /// Order is **newest-first** (deepest probe match first), matching
     /// [`Self::probe_body_match_fk`]. Verifies `txid.body` only; no packed
     /// decode.
-    pub(crate) fn fks_by_txid(&self, txid: &[u8; 32]) -> Result<Vec<Fk>, StoreError> {
+    pub fn fks_by_txid(&self, txid: &[u8; 32]) -> Result<Vec<Fk>, StoreError> {
         let mut out: Vec<Fk> = Vec::new();
         let mixed = self.secret.mix_txid(txid);
         // probe_candidates already open-first then sealed newest→oldest, deep-first within.
@@ -2838,7 +2894,8 @@ impl TxTable {
         Ok(inserted)
     }
 
-    fn seal_rebuild_range(
+    #[doc(hidden)]
+    pub fn seal_rebuild_range(
         &self,
         file_id: u32,
         first: u64,
@@ -2864,7 +2921,7 @@ impl TxTable {
 }
 
 /// Class A cuts for a cold MPHF rebuild (`2^bits` keys, last range short).
-pub(crate) fn plan_rebuild_ranges(n: u64, seal_bits: u32) -> Vec<(u64, u64)> {
+pub fn plan_rebuild_ranges(n: u64, seal_bits: u32) -> Vec<(u64, u64)> {
     if n == 0 {
         return Vec::new();
     }
@@ -2887,7 +2944,8 @@ impl TxTable {
         Ok(plan_rebuild_ranges(self.count(), self.rebuild_seal_bits()))
     }
 
-    fn backfill_head_inner(
+    #[doc(hidden)]
+    pub fn backfill_head_inner(
         &self,
         force_all: bool,
         mut on_progress: impl FnMut(u64, u64, u64),
@@ -2957,7 +3015,7 @@ impl TxTable {
     }
 
     /// See [`crate::segmented_head::SegmentedTxHead::unsynced_first_fk`].
-    pub(crate) fn head_unsynced_first_fk(&self) -> u64 {
+    pub fn head_unsynced_first_fk(&self) -> u64 {
         self.head.unsynced_first_fk()
     }
 
@@ -3075,7 +3133,7 @@ impl TxTable {
     }
 
     /// Bodies the tip-window check and spend replay read. Not `tx.head`.
-    pub(crate) fn sync_replay_bodies(&self) -> Result<(), StoreError> {
+    pub fn sync_replay_bodies(&self) -> Result<(), StoreError> {
         self.body.flush()?;
         self.seqsigwit.flush()?;
         self.spent.flush()?;
@@ -3086,7 +3144,7 @@ impl TxTable {
     }
 
     /// Device barrier for those bodies. Does not publish their high-water marks.
-    pub(crate) fn sync_replay_data(&self) -> Result<(), StoreError> {
+    pub fn sync_replay_data(&self) -> Result<(), StoreError> {
         self.body.sync_data_only()?;
         self.seqsigwit.sync_data_only()?;
         self.spent.sync_data_only()?;
@@ -3104,6 +3162,3 @@ impl TxTable {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;

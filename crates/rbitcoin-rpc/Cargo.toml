@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-rpc"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "Core-class JSON-RPC HTTP server (subset; not full Core parity)"
+
+[lib]
+test = false
 
 [features]
 mutants = []
@@ -26,8 +30,11 @@ getrandom = "0.4"
 base64 = "0.23"
 
 [dev-dependencies]
-rbitcoin-test = { workspace = true }
 rbitcoin-consensus = { workspace = true }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

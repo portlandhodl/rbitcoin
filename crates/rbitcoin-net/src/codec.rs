@@ -87,7 +87,8 @@ impl FramedMessage {
     }
 
     #[inline]
-    fn is_inv_like(&self) -> bool {
+    #[doc(hidden)]
+    pub fn is_inv_like(&self) -> bool {
         self.command == *b"inv\0\0\0\0\0\0\0\0\0"
             || self.command == *b"getdata\0\0\0\0\0"
             || self.is_notfound()
@@ -177,7 +178,7 @@ impl FramedMessage {
 /// Digits are required — long-form commands include `sendaddrv2` (and short-id
 /// names like `addrv2` when encoded long). Restricting to a–z rejected those
 /// and killed post-handshake IBD peers that send `sendaddrv2`.
-pub(crate) fn command_bytes_ok(cmd12: &[u8]) -> bool {
+pub fn command_bytes_ok(cmd12: &[u8]) -> bool {
     if cmd12.len() != 12 {
         return false;
     }
@@ -200,13 +201,17 @@ pub(crate) fn command_bytes_ok(cmd12: &[u8]) -> bool {
 }
 
 /// Outpoint, empty script compact-size, and sequence.
-const MIN_INPUT_BYTES: u64 = 41;
+#[doc(hidden)]
+pub const MIN_INPUT_BYTES: u64 = 41;
 /// Value plus an empty script compact-size.
-const MIN_OUTPUT_BYTES: u64 = 9;
+#[doc(hidden)]
+pub const MIN_OUTPUT_BYTES: u64 = 9;
 /// Marker, flag, empty input list, empty output list, and locktime.
-const MIN_TX_BYTES: u64 = 12;
+#[doc(hidden)]
+pub const MIN_TX_BYTES: u64 = 12;
 
-enum Bound {
+#[doc(hidden)]
+pub enum Bound {
     Fits,
     /// Compact-size count cannot fit in the bytes still unread.
     TooLarge(usize),
@@ -214,15 +219,18 @@ enum Bound {
     Undecided,
 }
 
-fn too_large_n(n: u64) -> usize {
+#[doc(hidden)]
+pub fn too_large_n(n: u64) -> usize {
     usize::try_from(n).unwrap_or(usize::MAX)
 }
 
-fn exceeds(count: u64, min_each: u64, remaining: usize) -> bool {
+#[doc(hidden)]
+pub fn exceeds(count: u64, min_each: u64, remaining: usize) -> bool {
     count.saturating_mul(min_each) > u64::try_from(remaining).unwrap_or(u64::MAX)
 }
 
-fn skip(data: &mut &[u8], n: usize) -> bool {
+#[doc(hidden)]
+pub fn skip(data: &mut &[u8], n: usize) -> bool {
     if data.len() < n {
         return false;
     }
@@ -230,7 +238,8 @@ fn skip(data: &mut &[u8], n: usize) -> bool {
     true
 }
 
-fn read_compact_size(data: &mut &[u8]) -> Option<u64> {
+#[doc(hidden)]
+pub fn read_compact_size(data: &mut &[u8]) -> Option<u64> {
     let mut cur = *data;
     match bitcoin::consensus::encode::VarInt::consensus_decode(&mut cur) {
         Ok(n) => {
@@ -241,7 +250,8 @@ fn read_compact_size(data: &mut &[u8]) -> Option<u64> {
     }
 }
 
-fn take_len_bytes(data: &mut &[u8]) -> Bound {
+#[doc(hidden)]
+pub fn take_len_bytes(data: &mut &[u8]) -> Bound {
     let Some(n) = read_compact_size(data) else {
         return Bound::Undecided;
     };
@@ -258,7 +268,8 @@ fn take_len_bytes(data: &mut &[u8]) -> Bound {
     }
 }
 
-fn walk_input(data: &mut &[u8]) -> Bound {
+#[doc(hidden)]
+pub fn walk_input(data: &mut &[u8]) -> Bound {
     if !skip(data, 36) {
         return Bound::Undecided;
     }
@@ -273,14 +284,16 @@ fn walk_input(data: &mut &[u8]) -> Bound {
     }
 }
 
-fn walk_output(data: &mut &[u8]) -> Bound {
+#[doc(hidden)]
+pub fn walk_output(data: &mut &[u8]) -> Bound {
     if !skip(data, 8) {
         return Bound::Undecided;
     }
     take_len_bytes(data)
 }
 
-fn walk_counted(
+#[doc(hidden)]
+pub fn walk_counted(
     data: &mut &[u8],
     count: u64,
     min_each: u64,
@@ -304,7 +317,8 @@ fn walk_counted(
 /// Witness stack. Each element is at least one byte, so a count past the
 /// remaining bytes is rejected before `Witness::consensus_decode` allocates
 /// `count * 4 + 128`.
-fn walk_witness(data: &mut &[u8]) -> Bound {
+#[doc(hidden)]
+pub fn walk_witness(data: &mut &[u8]) -> Bound {
     let Some(count) = read_compact_size(data) else {
         return Bound::Undecided;
     };
@@ -323,7 +337,8 @@ fn walk_witness(data: &mut &[u8]) -> Bound {
     Bound::Fits
 }
 
-fn walk_tx(data: &mut &[u8]) -> Bound {
+#[doc(hidden)]
+pub fn walk_tx(data: &mut &[u8]) -> Bound {
     if !skip(data, 4) {
         return Bound::Undecided;
     }
@@ -374,7 +389,8 @@ fn walk_tx(data: &mut &[u8]) -> Bound {
     }
 }
 
-fn walk_tx_list(data: &mut &[u8], count: u64) -> Bound {
+#[doc(hidden)]
+pub fn walk_tx_list(data: &mut &[u8], count: u64) -> Bound {
     if exceeds(count, MIN_TX_BYTES, data.len()) {
         return Bound::TooLarge(too_large_n(count));
     }
@@ -390,7 +406,8 @@ fn walk_tx_list(data: &mut &[u8], count: u64) -> Bound {
     Bound::Fits
 }
 
-fn walk_cmpctblock(data: &mut &[u8]) -> Bound {
+#[doc(hidden)]
+pub fn walk_cmpctblock(data: &mut &[u8]) -> Bound {
     if !skip(data, 88) {
         return Bound::Undecided;
     }
@@ -429,7 +446,8 @@ fn walk_cmpctblock(data: &mut &[u8]) -> Bound {
 
 /// `Some(count)` when a transaction-carrying payload declares a compact-size
 /// count the remaining bytes cannot hold. `None` lets `decode` run.
-fn tx_family_too_large(command: &[u8; 12], payload: &[u8]) -> Option<usize> {
+#[doc(hidden)]
+pub fn tx_family_too_large(command: &[u8; 12], payload: &[u8]) -> Option<usize> {
     let mut data = payload;
     let bound = if command == b"tx\0\0\0\0\0\0\0\0\0\0" {
         walk_tx(&mut data)
@@ -456,7 +474,8 @@ fn tx_family_too_large(command: &[u8; 12], payload: &[u8]) -> Option<usize> {
     }
 }
 
-fn decode_cmd_payload(
+#[doc(hidden)]
+pub fn decode_cmd_payload(
     cmd: &str,
     d: &mut &[u8],
 ) -> Result<Option<NetworkMessage>, bitcoin::consensus::encode::Error> {
@@ -539,580 +558,10 @@ fn decode_cmd_payload(
     }))
 }
 
-fn command_from_header(cmd12: &[u8]) -> CommandString {
+#[doc(hidden)]
+pub fn command_from_header(cmd12: &[u8]) -> CommandString {
     let end = cmd12.iter().position(|&b| b == 0).unwrap_or(12);
     let s = std::str::from_utf8(&cmd12[..end]).unwrap_or("unknown");
     CommandString::try_from(s)
         .unwrap_or_else(|_| CommandString::try_from("unknown").expect("literal command string"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bitcoin::blockdata::constants::genesis_block;
-    use bitcoin::consensus::serialize;
-    use bitcoin::Network;
-
-    fn signet_magic() -> Magic {
-        Magic::from(Network::Signet)
-    }
-
-    #[test]
-    fn frame_decode_verack_ignores_checksum() {
-        let frame = FramedMessage {
-            magic: signet_magic(),
-            command: *b"verack\0\0\0\0\0\0",
-            payload: Vec::new(),
-        };
-        assert!(!frame.decode_is_cpu_heavy());
-        assert!(matches!(frame.decode().payload(), NetworkMessage::Verack));
-    }
-
-    #[test]
-    fn block_hash_from_header_matches_full_block() {
-        let magic = Magic::from(Network::Bitcoin);
-        let genesis = genesis_block(Network::Bitcoin);
-        let want = genesis.block_hash();
-        let payload = serialize(&genesis);
-        let frame = FramedMessage {
-            magic,
-            command: *b"block\0\0\0\0\0\0\0",
-            payload,
-        };
-        assert!(frame.is_block());
-        assert_eq!(frame.block_hash_from_header().expect("header hash"), want);
-        match frame.decode().payload() {
-            NetworkMessage::Block(b) => assert_eq!(b.block_hash(), want),
-            _ => panic!("expected block"),
-        }
-    }
-
-    /// Post-IBD `FramedMessage::decode` rejects a trailing byte. The same
-    /// bytes without it are a block. Decode does not touch the invalid-hash set.
-    #[test]
-    fn trailing_byte_on_a_regtest_block_is_unknown() {
-        let genesis = genesis_block(Network::Regtest);
-        let payload = serialize(&genesis);
-        let clean = FramedMessage {
-            magic: Magic::from(Network::Regtest),
-            command: *b"block\0\0\0\0\0\0\0",
-            payload: payload.clone(),
-        };
-        match clean.decode().payload() {
-            NetworkMessage::Block(b) => assert_eq!(b.block_hash(), genesis.block_hash()),
-            other => panic!("expected block, got {other:?}"),
-        }
-        let mut extra = payload;
-        extra.push(0);
-        let trailed = FramedMessage {
-            magic: Magic::from(Network::Regtest),
-            command: *b"block\0\0\0\0\0\0\0",
-            payload: extra,
-        };
-        match trailed.decode().payload() {
-            NetworkMessage::Unknown { command, .. } => {
-                assert_eq!(command.to_string(), "block");
-            }
-            other => panic!("expected Unknown, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn command_bytes_ok_accepts_null_padded() {
-        assert!(command_bytes_ok(b"version\0\0\0\0\0"));
-        assert!(command_bytes_ok(b"ping\0\0\0\0\0\0\0\0"));
-        // Digits: BIP155 sendaddrv2 / addrv2 (long form).
-        assert!(command_bytes_ok(b"sendaddrv2\0\0"));
-        assert!(command_bytes_ok(b"addrv2\0\0\0\0\0\0"));
-        assert!(!command_bytes_ok(b"\xff\xfe\0\0\0\0\0\0\0\0\0\0"));
-        assert!(!command_bytes_ok(b"ping\0x\0\0\0\0\0\0\0")); // non-zero after null
-        assert!(!command_bytes_ok(b"\x01ping\0\0\0\0\0\0\0")); // control char
-    }
-
-    #[test]
-    fn core_limits_documented() {
-        assert_eq!(MAX_PROTOCOL_MESSAGE_LENGTH, 4_000_000);
-        assert_eq!(MAX_INV_SIZE, 50_000);
-        let mut payload = vec![0xfd];
-        payload.extend_from_slice(&50_001u16.to_le_bytes());
-        let frame = FramedMessage {
-            magic: Magic::from(bitcoin::Network::Regtest),
-            command: *b"inv\0\0\0\0\0\0\0\0\0",
-            payload: payload.clone(),
-        };
-        match frame.try_decode() {
-            Err(crate::error::NetError::MessageTooLarge(n)) => assert_eq!(n, 50_001),
-            other => panic!("oversize inv must fail decode, got {other:?}"),
-        }
-        let mut at_cap = vec![0xfd];
-        at_cap.extend_from_slice(&50_000u16.to_le_bytes());
-        let at_cap = FramedMessage {
-            magic: Magic::from(bitcoin::Network::Regtest),
-            command: *b"inv\0\0\0\0\0\0\0\0\0",
-            payload: at_cap,
-        };
-        assert!(
-            !matches!(
-                at_cap.try_decode(),
-                Err(crate::error::NetError::MessageTooLarge(_))
-            ),
-            "exactly 50_000 inv entries is still a message"
-        );
-        for command in [*b"getdata\0\0\0\0\0", *b"notfound\0\0\0\0"] {
-            let over = FramedMessage {
-                magic: Magic::from(bitcoin::Network::Regtest),
-                command,
-                payload: payload.clone(),
-            };
-            match over.try_decode() {
-                Err(crate::error::NetError::MessageTooLarge(n)) => assert_eq!(n, 50_001),
-                other => panic!("oversize {command:?} must fail decode, got {other:?}"),
-            }
-        }
-        let tx = FramedMessage {
-            magic: Magic::from(bitcoin::Network::Regtest),
-            command: *b"tx\0\0\0\0\0\0\0\0\0\0",
-            payload,
-        };
-        assert!(
-            !matches!(
-                tx.try_decode(),
-                Err(crate::error::NetError::MessageTooLarge(_))
-            ),
-            "a tx payload is not an inv count"
-        );
-        assert_eq!(MAX_HEADERS_RESULTS, 2_000);
-        assert_eq!(MAX_LOCATOR_SZ, 101);
-        // Stricter than rust-bitcoin's 5MB
-        const {
-            assert!(MAX_PROTOCOL_MESSAGE_LENGTH < bitcoin::p2p::message::MAX_MSG_SIZE);
-        }
-    }
-
-    #[test]
-    fn headers_count_over_2000_is_message_too_large() {
-        use crate::error::NetError;
-        use bitcoin::consensus::encode::{Encodable, VarInt};
-
-        fn count_payload(n: u64) -> Vec<u8> {
-            let mut v = Vec::new();
-            VarInt(n).consensus_encode(&mut v).unwrap();
-            v
-        }
-
-        let over = FramedMessage {
-            magic: signet_magic(),
-            command: *b"headers\0\0\0\0\0",
-            payload: count_payload((MAX_HEADERS_RESULTS as u64) + 1),
-        };
-        match over.try_decode() {
-            Err(NetError::MessageTooLarge(n)) => assert_eq!(n, MAX_HEADERS_RESULTS + 1),
-            other => panic!("expected MessageTooLarge, got {other:?}"),
-        }
-
-        let at_cap = FramedMessage {
-            magic: signet_magic(),
-            command: *b"headers\0\0\0\0\0",
-            payload: count_payload(MAX_HEADERS_RESULTS as u64),
-        };
-        assert!(
-            !matches!(at_cap.try_decode(), Err(NetError::MessageTooLarge(_))),
-            "n=2000 must not be MessageTooLarge"
-        );
-    }
-
-    #[test]
-    fn frame_helpers_ping_headers_notfound_and_encode_cost() {
-        let magic = signet_magic();
-        let nonce: u64 = 0x1122_3344_5566_7788;
-        let payload = nonce.to_le_bytes().to_vec();
-        let ping = FramedMessage {
-            magic,
-            command: *b"ping\0\0\0\0\0\0\0\0",
-            payload: payload.clone(),
-        };
-        assert!(ping.is_ping());
-        assert_eq!(ping.ping_nonce(), Some(nonce));
-        assert!(!ping.decode_is_cpu_heavy());
-
-        let short = FramedMessage {
-            magic,
-            command: *b"ping\0\0\0\0\0\0\0\0",
-            payload: vec![1, 2, 3],
-        };
-        assert!(short.ping_nonce().is_none());
-
-        let headers = FramedMessage {
-            magic,
-            command: *b"headers\0\0\0\0\0",
-            payload: vec![],
-        };
-        assert!(headers.is_headers());
-        assert!(headers.decode_is_cpu_heavy());
-        assert!(headers.block_hash_from_header().is_none());
-
-        let nf = FramedMessage {
-            magic,
-            command: *b"notfound\0\0\0\0",
-            payload: vec![],
-        };
-        assert!(nf.is_notfound());
-        assert!(nf.decode_is_cpu_heavy());
-
-        // Corrupt payload → Unknown path (not a panic).
-        let bad = FramedMessage {
-            magic,
-            command: *b"block\0\0\0\0\0\0\0",
-            payload: vec![0u8; 10],
-        };
-        match bad.decode().payload() {
-            NetworkMessage::Unknown { command, .. } => {
-                assert_eq!(command.to_string(), "block");
-            }
-            other => panic!("expected Unknown, got {other:?}"),
-        }
-
-        assert!(!encode_is_cpu_heavy(&NetworkMessage::Verack));
-        assert!(encode_is_cpu_heavy(&NetworkMessage::Headers(vec![])));
-        // Small inv is cheap; large is heavy.
-        use bitcoin::hashes::Hash as _;
-        use bitcoin::p2p::message_blockdata::Inventory;
-        let small = NetworkMessage::Inv(vec![Inventory::Block(
-            bitcoin::BlockHash::from_byte_array([0; 32]),
-        )]);
-        assert!(!encode_is_cpu_heavy(&small));
-        let large = NetworkMessage::Inv(vec![
-            Inventory::Block(bitcoin::BlockHash::from_byte_array(
-                [0; 32]
-            ));
-            65
-        ]);
-        assert!(encode_is_cpu_heavy(&large));
-    }
-
-    fn padded(name: &str) -> [u8; 12] {
-        let mut c = [0u8; 12];
-        c[..name.len()].copy_from_slice(name.as_bytes());
-        c
-    }
-
-    fn decoded(name: &str, payload: Vec<u8>) -> NetworkMessage {
-        frame(padded(name), payload).decode().payload().clone()
-    }
-
-    /// addr, compact filters, reject, and alert stay distinct from an unknown
-    /// command. Feefilter accepts 0 through max money. A trailing byte is not
-    /// verack. Sixty-four invs stay off the heavy path.
-    #[test]
-    #[allow(clippy::cognitive_complexity)] // one codec, many rare-frame arms
-    fn peer_frames_keep_rare_commands_and_feefilter_bounds() {
-        use bitcoin::bip158::{FilterHash, FilterHeader};
-        use bitcoin::hashes::Hash;
-        use bitcoin::p2p::address::Address;
-        use bitcoin::p2p::message_filter::{CFCheckpt, CFHeaders, CFilter};
-        use bitcoin::p2p::message_network::{Reject, RejectReason};
-        use bitcoin::p2p::ServiceFlags;
-        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
-        let zero = [0u8; 32];
-        let block = bitcoin::BlockHash::from_byte_array(zero);
-        let addr = Address::new(
-            &SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 8333),
-            ServiceFlags::NONE,
-        );
-        assert!(matches!(
-            decoded("addr", serialize(&vec![(1u32, addr)])),
-            NetworkMessage::Addr(v) if v.len() == 1
-        ));
-        assert!(matches!(
-            decoded(
-                "cfilter",
-                serialize(&CFilter {
-                    filter_type: 0,
-                    block_hash: block,
-                    filter: vec![0x01],
-                })
-            ),
-            NetworkMessage::CFilter(f) if f.filter == vec![0x01]
-        ));
-        assert!(matches!(
-            decoded(
-                "cfheaders",
-                serialize(&CFHeaders {
-                    filter_type: 0,
-                    stop_hash: block,
-                    previous_filter_header: FilterHeader::from_byte_array(zero),
-                    filter_hashes: vec![FilterHash::from_byte_array(zero)],
-                })
-            ),
-            NetworkMessage::CFHeaders(h) if h.filter_hashes.len() == 1
-        ));
-        assert!(matches!(
-            decoded(
-                "cfcheckpt",
-                serialize(&CFCheckpt {
-                    filter_type: 0,
-                    stop_hash: block,
-                    filter_headers: vec![FilterHeader::from_byte_array(zero)],
-                })
-            ),
-            NetworkMessage::CFCheckpt(c) if c.filter_headers.len() == 1
-        ));
-        assert!(matches!(
-            decoded(
-                "reject",
-                serialize(&Reject {
-                    message: "tx".into(),
-                    ccode: RejectReason::Malformed,
-                    reason: "bad".into(),
-                    hash: bitcoin::hashes::sha256d::Hash::from_byte_array(zero),
-                })
-            ),
-            NetworkMessage::Reject(_)
-        ));
-        assert!(matches!(
-            decoded("alert", serialize(&vec![0xAAu8])),
-            NetworkMessage::Alert(b) if b == vec![0xAA]
-        ));
-
-        let upper: i64 = bitcoin::Amount::MAX_MONEY.to_sat().try_into().unwrap();
-        assert!(matches!(
-            decoded("feefilter", serialize(&0i64)),
-            NetworkMessage::FeeFilter(0)
-        ));
-        assert!(matches!(
-            decoded("feefilter", serialize(&upper)),
-            NetworkMessage::FeeFilter(fee) if fee == upper
-        ));
-        for bad in [-1i64, upper.saturating_add(1)] {
-            assert!(
-                matches!(
-                    decoded("feefilter", serialize(&bad)),
-                    NetworkMessage::Unknown { .. }
-                ),
-                "feefilter {bad} must not become a fee"
-            );
-        }
-
-        // A trailing byte is not verack.
-        assert!(matches!(
-            decoded("verack", vec![0]),
-            NetworkMessage::Unknown { .. }
-        ));
-
-        use bitcoin::p2p::message_blockdata::Inventory;
-        let exact = NetworkMessage::Inv(vec![
-            Inventory::Block(bitcoin::BlockHash::from_byte_array(
-                zero
-            ));
-            64
-        ]);
-        assert!(
-            !encode_is_cpu_heavy(&exact),
-            "64 invs stay on the async worker; 65 is the heavy side"
-        );
-    }
-
-    fn frame(command: [u8; 12], payload: Vec<u8>) -> FramedMessage {
-        FramedMessage {
-            magic: signet_magic(),
-            command,
-            payload,
-        }
-    }
-
-    /// version, marker, flag, one empty input, one empty output, then a witness
-    /// stack count of 4_000_000 and no element bytes.
-    fn short_huge_witness_tx() -> Vec<u8> {
-        let mut p = Vec::new();
-        p.extend_from_slice(&1i32.to_le_bytes());
-        p.push(0x00);
-        p.push(0x01);
-        p.push(1);
-        p.extend_from_slice(&[0u8; 36]);
-        p.push(0);
-        p.extend_from_slice(&0xffff_ffffu32.to_le_bytes());
-        p.push(1);
-        p.extend_from_slice(&0u64.to_le_bytes());
-        p.push(0);
-        p.push(0xfe);
-        p.extend_from_slice(&4_000_000u32.to_le_bytes());
-        p
-    }
-
-    fn assert_witness_count_too_large(command: [u8; 12], payload: Vec<u8>) {
-        assert!(
-            payload.len() < 512,
-            "the frame must stay short so the failure is the count, not the byte cap"
-        );
-        match frame(command, payload).try_decode() {
-            Err(crate::error::NetError::MessageTooLarge(n)) => assert_eq!(n, 4_000_000),
-            other => panic!("huge witness count must be misbehavior, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn short_merkleblock_is_unknown_without_decoding() {
-        use bitcoin::consensus::serialize;
-        use bitcoin::MerkleBlock;
-
-        let genesis = genesis_block(Network::Regtest);
-        let mb = MerkleBlock::from_block_with_predicate(&genesis, |_| true);
-        let payload = serialize(&mb);
-        match frame(*b"merkleblock\0", payload).try_decode() {
-            Ok(msg) => match msg.payload() {
-                NetworkMessage::Unknown { command, .. } => {
-                    assert_eq!(command.to_string(), "merkleblock");
-                }
-                other => panic!("a merkleblock must be ignored, got {other:?}"),
-            },
-            Err(e) => panic!("merkleblock must be Unknown, not {e}"),
-        }
-
-        let mut huge = vec![0u8; 80];
-        huge.extend_from_slice(&1u32.to_le_bytes());
-        huge.push(1);
-        huge.extend_from_slice(&[0x11; 32]);
-        huge.push(0xfe);
-        huge.extend_from_slice(&4_000_000u32.to_le_bytes());
-        assert!(huge.len() < 200);
-        match frame(*b"merkleblock\0", huge).try_decode() {
-            Ok(msg) => match msg.payload() {
-                NetworkMessage::Unknown { command, .. } => {
-                    assert_eq!(command.to_string(), "merkleblock");
-                }
-                other => panic!("huge bit-count must not decode, got {other:?}"),
-            },
-            Err(e) => panic!("huge merkleblock must be Unknown, not {e}"),
-        }
-
-        match frame(*b"zzzzzzzzzzzz", Vec::new()).try_decode() {
-            Ok(msg) => assert!(matches!(msg.payload(), NetworkMessage::Unknown { .. })),
-            Err(e) => panic!("unrecognized command stays Unknown, got {e}"),
-        }
-
-        match frame(*b"tx\0\0\0\0\0\0\0\0\0\0", vec![1, 0, 0, 0]).try_decode() {
-            Ok(msg) => assert!(
-                matches!(msg.payload(), NetworkMessage::Unknown { .. }),
-                "a truncated tx is not the witness-count reject"
-            ),
-            Err(e) => panic!("truncated tx must stay Unknown, got {e}"),
-        }
-    }
-
-    #[test]
-    fn short_tx_witness_count_is_message_too_large() {
-        assert_witness_count_too_large(*b"tx\0\0\0\0\0\0\0\0\0\0", short_huge_witness_tx());
-    }
-
-    #[test]
-    fn short_cmpctblock_witness_count_is_message_too_large() {
-        let mut payload = vec![0u8; 88];
-        payload.push(0);
-        payload.push(1);
-        payload.push(0);
-        payload.extend(short_huge_witness_tx());
-        assert_witness_count_too_large(*b"cmpctblock\0\0", payload);
-    }
-
-    #[test]
-    fn short_blocktxn_witness_count_is_message_too_large() {
-        let mut payload = vec![0u8; 32];
-        payload.push(1);
-        payload.extend(short_huge_witness_tx());
-        assert_witness_count_too_large(*b"blocktxn\0\0\0\0", payload);
-    }
-
-    #[test]
-    fn short_block_witness_count_is_message_too_large() {
-        let mut payload = vec![0u8; 80];
-        payload.push(1);
-        payload.extend(short_huge_witness_tx());
-        assert_witness_count_too_large(*b"block\0\0\0\0\0\0\0", payload);
-    }
-
-    #[test]
-    fn witness_tx_cmpctblock_and_blocktxn_still_decode() {
-        use bitcoin::bip152::{
-            BlockTransactions, HeaderAndShortIds, PrefilledTransaction, ShortId,
-        };
-        use bitcoin::consensus::serialize;
-        use bitcoin::hashes::Hash as _;
-        use bitcoin::p2p::message_compact_blocks::{BlockTxn, CmpctBlock};
-
-        let tx = bitcoin::Transaction {
-            version: bitcoin::transaction::Version::ONE,
-            lock_time: bitcoin::absolute::LockTime::ZERO,
-            input: vec![bitcoin::TxIn {
-                previous_output: bitcoin::OutPoint::null(),
-                script_sig: bitcoin::ScriptBuf::new(),
-                sequence: bitcoin::Sequence::MAX,
-                witness: bitcoin::Witness::from_slice(&[b"abcd"]),
-            }],
-            output: vec![bitcoin::TxOut {
-                value: bitcoin::Amount::from_sat(1),
-                script_pubkey: bitcoin::ScriptBuf::new(),
-            }],
-        };
-        match frame(*b"tx\0\0\0\0\0\0\0\0\0\0", serialize(&tx))
-            .try_decode()
-            .expect("witness tx")
-            .payload()
-        {
-            NetworkMessage::Tx(got) => assert_eq!(got, &tx),
-            other => panic!("expected tx, got {other:?}"),
-        }
-
-        let genesis = genesis_block(Network::Regtest);
-        let compact = CmpctBlock {
-            compact_block: HeaderAndShortIds {
-                header: genesis.header,
-                nonce: 1,
-                short_ids: vec![ShortId::with_siphash_keys(
-                    &tx.compute_txid().to_byte_array(),
-                    (1, 2),
-                )],
-                prefilled_txs: vec![PrefilledTransaction {
-                    idx: 0,
-                    tx: tx.clone(),
-                }],
-            },
-        };
-        match frame(*b"cmpctblock\0\0", serialize(&compact))
-            .try_decode()
-            .expect("cmpctblock")
-            .payload()
-        {
-            NetworkMessage::CmpctBlock(got) => {
-                assert_eq!(got.compact_block.prefilled_txs.len(), 1);
-                assert_eq!(got.compact_block.prefilled_txs[0].tx, tx);
-            }
-            other => panic!("expected cmpctblock, got {other:?}"),
-        }
-
-        let blocktxn = BlockTxn {
-            transactions: BlockTransactions {
-                block_hash: bitcoin::BlockHash::from_byte_array([7; 32]),
-                transactions: vec![tx.clone()],
-            },
-        };
-        match frame(*b"blocktxn\0\0\0\0", serialize(&blocktxn))
-            .try_decode()
-            .expect("blocktxn")
-            .payload()
-        {
-            NetworkMessage::BlockTxn(got) => assert_eq!(got.transactions.transactions, vec![tx]),
-            other => panic!("expected blocktxn, got {other:?}"),
-        }
-
-        let block_payload = serialize(&genesis);
-        match frame(*b"block\0\0\0\0\0\0\0", block_payload)
-            .try_decode()
-            .expect("genesis block")
-            .payload()
-        {
-            NetworkMessage::Block(got) => assert_eq!(got.block_hash(), genesis.block_hash()),
-            other => panic!("expected block, got {other:?}"),
-        }
-    }
 }

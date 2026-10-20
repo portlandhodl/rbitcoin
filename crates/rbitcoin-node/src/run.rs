@@ -5,11 +5,11 @@ use crate::regtest_rpc::HubRegtest;
 use bitcoin::consensus::Encodable;
 use rbitcoin_electrum::{run_electrum, ElectrumConfig, ElectrumHandle, TipNotify};
 use rbitcoin_esplora::{run_esplora, BlockTemplateFn, EsploraConfig, EsploraHandle, EsploraListen};
+use rbitcoin_ibd::{read_platform_rss, tip_perf_json, IbdConfig, TipPerfLog};
 use rbitcoin_log::{debug, enabled, info, warn, Level};
 use rbitcoin_net::{
-    default_port, netgroup, read_platform_rss, sample_reset_serve_perf, socks_dns_seed_dests,
-    tip_perf_json, AddrMan, AsMap, BlockingRegion, ChainHub, Dialer, IbdConfig, MempoolHub,
-    P2PNode, PeerConnType, TipEvent, TipPerfLog,
+    default_port, netgroup, sample_reset_serve_perf, socks_dns_seed_dests, AddrMan, AsMap,
+    BlockingRegion, ChainHub, Dialer, MempoolHub, P2PNode, PeerConnType, TipEvent,
 };
 use rbitcoin_primitives::Network;
 use rbitcoin_query::{spawn_sh_writebehind, Query, SpendSync};
@@ -33,7 +33,7 @@ pub struct NodeHandle {
     /// Smoke-only `run_node` leaves this `None`.
     pub mempool: Option<std::sync::Arc<MempoolHub>>,
     /// Exclusive datadir flock (released on drop).
-    _dir_locks: crate::lock::DirLocks,
+    pub _dir_locks: crate::lock::DirLocks,
 }
 
 impl std::fmt::Debug for NodeHandle {
@@ -69,7 +69,7 @@ impl NodeHandle {
 pub struct Shutdown {
     /// Polled by IBD / long loops for cooperative cancel.
     pub flag: Arc<AtomicBool>,
-    notify: Notify,
+    pub notify: Notify,
 }
 
 impl Shutdown {
@@ -104,14 +104,17 @@ impl Shutdown {
 
 /// Clearnet follow handshake bound. Overlay STREAM CONNECT is slower; see
 /// [`follow_connect_timeout`].
-const FOLLOW_CONNECT_SECS: u64 = 8;
+#[doc(hidden)]
+pub const FOLLOW_CONNECT_SECS: u64 = 8;
 
-fn follow_connect_timeout(peer: rbitcoin_net::NetAddr) -> Duration {
+#[doc(hidden)]
+pub fn follow_connect_timeout(peer: rbitcoin_net::NetAddr) -> Duration {
     rbitcoin_net::connect_timeout_for(peer, Duration::from_secs(FOLLOW_CONNECT_SECS))
 }
 
 /// Install SIGTERM / SIGINT (and Ctrl+C) handlers that trip `shutdown`.
-fn spawn_signal_handler(shutdown: Arc<Shutdown>) {
+#[doc(hidden)]
+pub fn spawn_signal_handler(shutdown: Arc<Shutdown>) {
     tokio::spawn(async move {
         #[cfg(unix)]
         {
@@ -149,7 +152,7 @@ fn spawn_signal_handler(shutdown: Arc<Shutdown>) {
 
 /// Bind RPC after tip entry and onion publish, so wallet RPCs and
 /// `getnetworkinfo` see a node that can already mine and list those services.
-async fn start_rpc_listener(
+pub async fn start_rpc_listener(
     config: &NodeConfig,
     node: &P2PNode,
     mempool: &Arc<MempoolHub>,
@@ -225,7 +228,8 @@ async fn start_rpc_listener(
 
 /// Restore fee history from the mempool dir and read the rest of up to 1 GiB
 /// of txstat rows once relay is on, off the tip path.
-fn spawn_fee_history_backfill(mempool: &Arc<MempoolHub>) {
+#[doc(hidden)]
+pub fn spawn_fee_history_backfill(mempool: &Arc<MempoolHub>) {
     let mp = Arc::clone(mempool);
     info!("mempool: fee history preload started (file, then txstat, budget=1 GiB)");
     tokio::task::spawn_blocking(move || {
@@ -257,7 +261,7 @@ fn spawn_fee_history_backfill(mempool: &Arc<MempoolHub>) {
     });
 }
 
-async fn mempool_blocking<T: Send + 'static>(
+pub async fn mempool_blocking<T: Send + 'static>(
     mp: &Arc<MempoolHub>,
     f: impl FnOnce(&MempoolHub) -> T + Send + 'static,
 ) -> Result<T, NodeError> {
@@ -728,6 +732,7 @@ pub async fn run_p2p(config: NodeConfig) -> Result<(), NodeError> {
             let index_entry = rbitcoin_query::index_tip_entry(&node.hub.query);
             if index_entry.advertise_filters {
                 info!("blockfilter: already at tip; advertising NODE_COMPACT_FILTERS");
+                node.peers.set_compact_filters_advertised(true);
                 rbitcoin_net::set_compact_filters_service(true);
             }
             if index_entry.spawn {
@@ -741,9 +746,13 @@ pub async fn run_p2p(config: NodeConfig) -> Result<(), NodeError> {
                     },
                     // Version carries the bit once per peer: advertise only
                     // when served filters reach the tip, not during materialize.
-                    move || {
-                        if advertise_later {
-                            rbitcoin_net::set_compact_filters_service(true);
+                    {
+                        let peers = std::sync::Arc::clone(&node.peers);
+                        move || {
+                            if advertise_later {
+                                peers.set_compact_filters_advertised(true);
+                                rbitcoin_net::set_compact_filters_service(true);
+                            }
                         }
                     },
                 ));
@@ -1403,7 +1412,7 @@ pub async fn run_p2p(config: NodeConfig) -> Result<(), NodeError> {
                     tokio::select! {
                         biased;
                         _ = shutdown.cancelled() => break,
-                        result = node.sync_cancellable(&retry_peers, retry_cfg, cancel) => {
+                        result = rbitcoin_ibd::sync_cancellable(&node, &retry_peers, retry_cfg, cancel) => {
                             match result {
                                 Ok(n) if n > 0 => {
                                     info!(
@@ -1502,14 +1511,16 @@ pub async fn run_p2p(config: NodeConfig) -> Result<(), NodeError> {
     Ok(())
 }
 
-fn tip_meets_min_work(config: &NodeConfig, hub: &rbitcoin_net::ChainHub) -> bool {
+#[doc(hidden)]
+pub fn tip_meets_min_work(config: &NodeConfig, hub: &rbitcoin_net::ChainHub) -> bool {
     match hub.chain_work() {
         Ok(w) => config.meets_minimum_chain_work(w.to_be_bytes()),
         Err(_) => config.minimum_chain_work.is_none(),
     }
 }
 
-fn should_resolve_default_seeds(config: &NodeConfig) -> bool {
+#[doc(hidden)]
+pub fn should_resolve_default_seeds(config: &NodeConfig) -> bool {
     config.listen.use_seeds
         && !config.listen.has_pinned_connect()
         && config.signet_challenge.is_none()
@@ -1520,7 +1531,7 @@ fn should_resolve_default_seeds(config: &NodeConfig) -> bool {
 /// finished so the process stays up. The later dial is a follow session
 /// (16 blocks in flight on the tip index path), not a return to the IBD
 /// window. A non-zero tip that has not finished catch-up stays in IBD.
-pub(crate) fn catch_up_with_connect(
+pub fn catch_up_with_connect(
     catch_up: CatchUp,
     has_connect: bool,
     shutdown: bool,
@@ -1534,11 +1545,11 @@ pub(crate) fn catch_up_with_connect(
 }
 
 /// Tip-follow may run below `--min-chain-work`. Relay stays off until the floor.
-pub(crate) fn relay_while_following(meets_min_work: bool, blocks_only: bool, in_ibd: bool) -> bool {
+pub fn relay_while_following(meets_min_work: bool, blocks_only: bool, in_ibd: bool) -> bool {
     meets_min_work && !blocks_only && !in_ibd
 }
 
-async fn resolve_connect_dns(hosts: &[String], network: Network) -> Vec<rbitcoin_net::NetAddr> {
+pub async fn resolve_connect_dns(hosts: &[String], network: Network) -> Vec<rbitcoin_net::NetAddr> {
     if hosts.is_empty() {
         return Vec::new();
     }
@@ -1558,7 +1569,8 @@ async fn resolve_connect_dns(hosts: &[String], network: Network) -> Vec<rbitcoin
     .unwrap_or_default()
 }
 
-fn queue_proxy_seed_addrfetch(peers: &Arc<rbitcoin_net::PeerHub>, network: Network) -> usize {
+#[doc(hidden)]
+pub fn queue_proxy_seed_addrfetch(peers: &Arc<rbitcoin_net::PeerHub>, network: Network) -> usize {
     let mut n = 0usize;
     for (host, port) in socks_dns_seed_dests(network) {
         match peers.dial_domain(host.clone(), port, PeerConnType::AddrFetch) {
@@ -1571,29 +1583,29 @@ fn queue_proxy_seed_addrfetch(peers: &Arc<rbitcoin_net::PeerHub>, network: Netwo
 
 /// IBD horizon after `sync_cancellable` (or no peers to dial).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CatchUp {
+pub enum CatchUp {
     Incomplete,
     Complete { dial_failed_all: bool },
 }
 
 impl CatchUp {
-    pub(crate) fn complete() -> Self {
+    pub fn complete() -> Self {
         Self::Complete {
             dial_failed_all: false,
         }
     }
 
-    pub(crate) fn complete_dial_failed() -> Self {
+    pub fn complete_dial_failed() -> Self {
         Self::Complete {
             dial_failed_all: true,
         }
     }
 
-    pub(crate) fn is_complete(self) -> bool {
+    pub fn is_complete(self) -> bool {
         matches!(self, Self::Complete { .. })
     }
 
-    pub(crate) fn dial_failed_all(self) -> bool {
+    pub fn dial_failed_all(self) -> bool {
         matches!(
             self,
             Self::Complete {
@@ -1608,7 +1620,7 @@ impl CatchUp {
 /// An empty book that this process just swept, or that is still waiting on
 /// proxy seed fetch, is not a finished catch-up. A book that was already
 /// empty, with nothing in flight, keeps the serve-only path.
-pub(crate) fn catch_up_without_targets(awaiting_dialable: bool) -> CatchUp {
+pub fn catch_up_without_targets(awaiting_dialable: bool) -> CatchUp {
     if awaiting_dialable {
         CatchUp::Incomplete
     } else {
@@ -1616,7 +1628,7 @@ pub(crate) fn catch_up_without_targets(awaiting_dialable: bool) -> CatchUp {
     }
 }
 
-pub(crate) fn catch_up_after_ok(accepted: u32, tip: u32, shutdown: bool) -> CatchUp {
+pub fn catch_up_after_ok(accepted: u32, tip: u32, shutdown: bool) -> CatchUp {
     if shutdown || (tip == 0 && accepted == 0) {
         CatchUp::Incomplete
     } else {
@@ -1624,7 +1636,7 @@ pub(crate) fn catch_up_after_ok(accepted: u32, tip: u32, shutdown: bool) -> Catc
     }
 }
 
-pub(crate) fn catch_up_after_err(tip: u32, index_is_tip: bool, shutdown: bool) -> CatchUp {
+pub fn catch_up_after_err(tip: u32, index_is_tip: bool, shutdown: bool) -> CatchUp {
     if !shutdown && tip > 0 && index_is_tip {
         CatchUp::complete_dial_failed()
     } else {
@@ -1637,7 +1649,8 @@ pub(crate) fn catch_up_after_err(tip: u32, index_is_tip: bool, shutdown: bool) -
 /// Hash and height come from one confirmed row. A missing row or a read
 /// error stays in catch-up. The scan climbs to genesis, not the 32-hop
 /// IBD seed window.
-fn stored_header_chain_heavier_than_tip(hub: &ChainHub) -> bool {
+#[doc(hidden)]
+pub fn stored_header_chain_heavier_than_tip(hub: &ChainHub) -> bool {
     let Some(tip_h) = hub.tip_height() else {
         return true;
     };
@@ -1664,7 +1677,8 @@ fn stored_header_chain_heavier_than_tip(hub: &ChainHub) -> bool {
     }
 }
 
-fn startup_skip_from_hub(hub: &ChainHub) -> bool {
+#[doc(hidden)]
+pub fn startup_skip_from_hub(hub: &ChainHub) -> bool {
     // Genesis stays in catch-up, same as a catch-up that accepts nothing.
     // The header walk runs only when age and work would already skip.
     let Some(tip_h) = hub.tip_height() else {
@@ -1676,7 +1690,7 @@ fn startup_skip_from_hub(hub: &ChainHub) -> bool {
     !stored_header_chain_heavier_than_tip(hub)
 }
 
-async fn startup_follows_without_catch_up(hub: &Arc<ChainHub>) -> bool {
+pub async fn startup_follows_without_catch_up(hub: &Arc<ChainHub>) -> bool {
     let hub = Arc::clone(hub);
     let joined = tokio::task::spawn_blocking(move || {
         let _region = BlockingRegion::enter();
@@ -1692,7 +1706,8 @@ async fn startup_follows_without_catch_up(hub: &Arc<ChainHub>) -> bool {
     }
 }
 
-fn apply_startup_index_mode(
+#[doc(hidden)]
+pub fn apply_startup_index_mode(
     query: &Query,
     config: &NodeConfig,
     taproot_height: u32,
@@ -1744,7 +1759,7 @@ fn apply_startup_index_mode(
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-async fn run_ibd_or_skip(
+pub async fn run_ibd_or_skip(
     node: &P2PNode,
     ibd_targets: &[rbitcoin_net::NetAddr],
     max_out: usize,
@@ -1795,7 +1810,7 @@ async fn run_ibd_or_skip(
     // that used to drop a nested multi-thread runtime mid-async and panic
     // (`Cannot drop a runtime in an async context`), making Ctrl+C slow/noisy.
     let cancel = Some(Arc::clone(&shutdown.flag));
-    let catch_up = match node.sync_cancellable(ibd_targets, ibd_cfg, cancel).await {
+    let catch_up = match rbitcoin_ibd::sync_cancellable(&node, ibd_targets, ibd_cfg, cancel).await {
         Ok(n) => {
             if shutdown.requested() {
                 warn!(
@@ -1862,7 +1877,8 @@ async fn run_ibd_or_skip(
     catch_up
 }
 
-fn spawn_hub_tip_bridge<T, F>(
+#[doc(hidden)]
+pub fn spawn_hub_tip_bridge<T, F>(
     mut hub_tips: broadcast::Receiver<TipEvent>,
     tx: broadcast::Sender<T>,
     stop: Arc<AtomicBool>,
@@ -1892,7 +1908,8 @@ where
 
 // Bound TCP address, including the kernel port when the configured port was 0.
 // Unix Esplora's placeholder `127.0.0.1:0` is not a listener and is skipped.
-fn publish_listener_addr(datadir: &Path, name: &str, addr: SocketAddr) {
+#[doc(hidden)]
+pub fn publish_listener_addr(datadir: &Path, name: &str, addr: SocketAddr) {
     if addr.port() == 0 {
         return;
     }
@@ -1912,7 +1929,8 @@ fn publish_listener_addr(datadir: &Path, name: &str, addr: SocketAddr) {
     }
 }
 
-fn electrum_tip_notify(ev: TipEvent) -> Option<TipNotify> {
+#[doc(hidden)]
+pub fn electrum_tip_notify(ev: TipEvent) -> Option<TipNotify> {
     let mut buf = Vec::with_capacity(80);
     if ev.header.consensus_encode(&mut buf).is_err() {
         return None;
@@ -1928,7 +1946,7 @@ fn electrum_tip_notify(ev: TipEvent) -> Option<TipNotify> {
     })
 }
 
-async fn start_i2p_named_forward(
+pub async fn start_i2p_named_forward(
     sam_addr: SocketAddr,
     datadir: &Path,
     name: &str,
@@ -1950,7 +1968,12 @@ async fn start_i2p_named_forward(
 /// Scripthash materialize holds the process before dial. The miner can add
 /// a block in that window. Opening Electrum on the pre-dial tip serves a
 /// history that does not include it.
-async fn wait_wallet_history(node: &P2PNode, shindex: bool, shutdown: &Shutdown, mark: (u64, u64)) {
+pub async fn wait_wallet_history(
+    node: &P2PNode,
+    shindex: bool,
+    shutdown: &Shutdown,
+    mark: (u64, u64),
+) {
     if node.follow_live_count() == 0 {
         return;
     }
@@ -1978,7 +2001,7 @@ async fn wait_wallet_history(node: &P2PNode, shindex: bool, shutdown: &Shutdown,
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-async fn start_electrum_if_ready(
+pub async fn start_electrum_if_ready(
     sh_tip_ready: bool,
     addr: Option<SocketAddr>,
     tweaks_min_dust: u64,
@@ -2038,7 +2061,7 @@ async fn start_electrum_if_ready(
     }
 }
 
-async fn start_esplora_if_ready(
+pub async fn start_esplora_if_ready(
     sh_tip_ready: bool,
     listen: Option<EsploraListen>,
     network: Network,
@@ -2114,7 +2137,7 @@ async fn start_esplora_if_ready(
     }
 }
 
-async fn start_sv2_tp(config: &NodeConfig, hub: &Arc<ChainHub>) -> Option<Sv2TpHandle> {
+pub async fn start_sv2_tp(config: &NodeConfig, hub: &Arc<ChainHub>) -> Option<Sv2TpHandle> {
     let listen = config.sv2_tp_listen?;
     let authority_secret = config.sv2_tp_authority_sec?.0;
     let cfg = Sv2TpConfig {
@@ -2146,7 +2169,7 @@ async fn start_sv2_tp(config: &NodeConfig, hub: &Arc<ChainHub>) -> Option<Sv2TpH
 
 /// Result of post-IBD tip entry: follow/mempool gates vs Electrum SH gate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct TipModeGates {
+pub struct TipModeGates {
     /// Class A + spends ready: follow peers, tip loop, mempool tip-relay.
     pub tip_follow_ready: bool,
     /// Electrum / Esplora may bind. With `--sh-index` this waits until the
@@ -2155,7 +2178,8 @@ pub(crate) struct TipModeGates {
     pub sh_tip_ready: bool,
 }
 
-fn sh_cancel_resume_note(query: &Query) -> &'static str {
+#[doc(hidden)]
+pub fn sh_cancel_resume_note(query: &Query) -> &'static str {
     let root = query.store().path();
     if root.join("scripthash.cold_progress").is_file() {
         "partial cold shards kept (scripthash.cold_progress) — \
@@ -2169,7 +2193,8 @@ fn sh_cancel_resume_note(query: &Query) -> &'static str {
     }
 }
 
-fn sh_tip_ready_gates(query: &Query) -> TipModeGates {
+#[doc(hidden)]
+pub fn sh_tip_ready_gates(query: &Query) -> TipModeGates {
     let ready = query.sh_is_tip_ready();
     if ready {
         info!("node: tip-mode complete — safe to start Electrum");
@@ -2199,7 +2224,7 @@ fn sh_tip_ready_gates(query: &Query) -> TipModeGates {
 ///
 /// **When `!shindex`:** skip SH materialize. Listeners may bind
 /// (`sh_tip_ready`); address methods fail closed.
-pub(crate) fn enter_tip_mode(
+pub fn enter_tip_mode(
     query: &Query,
     cancel: Option<Arc<AtomicBool>>,
     shindex: bool,
@@ -2301,7 +2326,8 @@ pub(crate) fn enter_tip_mode(
 ///
 /// Uses [`IbdConfig::default`] (window 1024, stall 30s, connect 8s, …) — not
 /// [`IbdConfig::for_test`], which is only for unit/integration test harnesses.
-fn catch_up_retry_config(
+#[doc(hidden)]
+pub fn catch_up_retry_config(
     peers: std::sync::Arc<std::sync::Mutex<AddrMan>>,
     dialer: Dialer,
 ) -> IbdConfig {
@@ -2317,7 +2343,7 @@ fn catch_up_retry_config(
 /// skip the stale-tip extra-outbound check (mainnet 962723 sat 3h after the
 /// last follow peer died because a one-shot 60s sleep was reset every wake).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TipFollowWakeKind {
+pub enum TipFollowWakeKind {
     TipChanged,
     TipSame,
     Perf,
@@ -2327,7 +2353,7 @@ pub(crate) enum TipFollowWakeKind {
 }
 
 /// One `select!` result from [`tip_follow_next_wake`].
-pub(crate) enum TipFollowWake {
+pub enum TipFollowWake {
     Tip(TipEvent),
     Poll,
     Perf,
@@ -2336,7 +2362,7 @@ pub(crate) enum TipFollowWake {
 }
 
 /// Classify a wake against the last logged tip height.
-pub(crate) fn tip_follow_wake_kind(wake: &TipFollowWake, last_tip: u32) -> TipFollowWakeKind {
+pub fn tip_follow_wake_kind(wake: &TipFollowWake, last_tip: u32) -> TipFollowWakeKind {
     match wake {
         TipFollowWake::Stop => TipFollowWakeKind::Stop,
         TipFollowWake::Perf => TipFollowWakeKind::Perf,
@@ -2354,7 +2380,7 @@ pub(crate) fn tip_follow_wake_kind(wake: &TipFollowWake, last_tip: u32) -> TipFo
 
 /// Load Core asmap bytecode. Missing/invalid file: warn (if a path was
 /// selected) and return `None` so prefix netgroups still work.
-pub(crate) fn load_asmap(datadir: &Path, configured: Option<&Path>) -> Option<Arc<AsMap>> {
+pub fn load_asmap(datadir: &Path, configured: Option<&Path>) -> Option<Arc<AsMap>> {
     let path = match configured {
         Some(p) if p.is_absolute() => p.to_path_buf(),
         Some(p) => datadir.join(p),
@@ -2394,7 +2420,7 @@ pub(crate) fn load_asmap(datadir: &Path, configured: Option<&Path>) -> Option<Ar
 }
 
 /// `--connect` is operator-pinned: no netgroup filter. Otherwise rank + diversity.
-pub(crate) fn follow_dial_targets(
+pub fn follow_dial_targets(
     connect: &[rbitcoin_net::NetAddr],
     book: &AddrMan,
     max: usize,
@@ -2415,7 +2441,7 @@ pub(crate) fn follow_dial_targets(
 
 /// Session type for the tip-follow dials of `targets`. `--connect` targets
 /// are `manual`, as Core dials `-connect` (`getpeerinfo.connection_type`).
-pub(crate) fn follow_dial_type(connect: &[rbitcoin_net::NetAddr]) -> PeerConnType {
+pub fn follow_dial_type(connect: &[rbitcoin_net::NetAddr]) -> PeerConnType {
     if connect.is_empty() {
         PeerConnType::OutboundFullRelay
     } else {
@@ -2423,13 +2449,14 @@ pub(crate) fn follow_dial_type(connect: &[rbitcoin_net::NetAddr]) -> PeerConnTyp
     }
 }
 
-const ADD_NEXT_SEEDNODE_SECS: u64 = 10;
+#[doc(hidden)]
+pub const ADD_NEXT_SEEDNODE_SECS: u64 = 10;
 
 /// True once `now` is at least 10s after the first outbound dial.
 ///
 /// `started_at == 0` means that dial has not happened. A later `setmocktime`
 /// moves `now` and leaves `started_at` on the dial sample.
-pub(crate) fn seednode_delay_elapsed(started_at: u64, now: u64) -> bool {
+pub fn seednode_delay_elapsed(started_at: u64, now: u64) -> bool {
     started_at != 0 && now.saturating_sub(started_at) >= ADD_NEXT_SEEDNODE_SECS
 }
 
@@ -2437,7 +2464,7 @@ pub(crate) fn seednode_delay_elapsed(started_at: u64, now: u64) -> bool {
 /// empty addrman, or by the 10 s fallback when fewer than 2 outbound
 /// full-relay peers are live. Core never dials seednodes under `-connect`.
 /// `--connect` peers are `manual`, so they would never hold the fallback off.
-pub(crate) fn seednodes_allowed(listen: &ListenOpts) -> bool {
+pub fn seednodes_allowed(listen: &ListenOpts) -> bool {
     !listen.seednodes.is_empty() && !listen.has_pinned_connect()
 }
 
@@ -2445,11 +2472,11 @@ pub(crate) fn seednodes_allowed(listen: &ListenOpts) -> bool {
 ///
 /// Perf (5s) and RPC-stop (50ms) ticks must still evaluate stale. A one-shot
 /// `sleep` in the same `select!` is reset on every such wake and never fires.
-pub(crate) fn stale_follow_needs_room(follow_live: usize, max_outbound: usize) -> bool {
+pub fn stale_follow_needs_room(follow_live: usize, max_outbound: usize) -> bool {
     follow_live >= max_outbound.max(1)
 }
 
-pub(crate) fn tip_follow_checks_stale(kind: TipFollowWakeKind) -> bool {
+pub fn tip_follow_checks_stale(kind: TipFollowWakeKind) -> bool {
     matches!(
         kind,
         TipFollowWakeKind::Perf
@@ -2462,7 +2489,7 @@ pub(crate) fn tip_follow_checks_stale(kind: TipFollowWakeKind) -> bool {
 /// One supervisor wake. `stale` must be a **persistent** interval, not a
 /// one-shot sleep created inside the loop (that sleep restarts on every
 /// faster tick and never completes).
-pub(crate) async fn tip_follow_next_wake(
+pub async fn tip_follow_next_wake(
     shutdown: impl std::future::Future<Output = ()>,
     rpc_stop: Option<&mut tokio::time::Interval>,
     perf: &mut tokio::time::Interval,
@@ -2492,7 +2519,8 @@ pub(crate) async fn tip_follow_next_wake(
 
 /// A CJDNS listen bind is the address peers should learn. `--external-ip`
 /// still wins when the operator set the same address already.
-fn external_ips_with_cjdns_bind(
+#[doc(hidden)]
+pub fn external_ips_with_cjdns_bind(
     configured: &[std::net::IpAddr],
     bind: SocketAddr,
     cjdns_reachable: bool,
@@ -2512,7 +2540,8 @@ fn external_ips_with_cjdns_bind(
 }
 
 /// Parse Core `-seednode` host or host:port using the chain default P2P port.
-fn resolve_seednode(raw: &str, network: Network) -> Result<SocketAddr, String> {
+#[doc(hidden)]
+pub fn resolve_seednode(raw: &str, network: Network) -> Result<SocketAddr, String> {
     if let Ok(a) = raw.parse::<SocketAddr>() {
         return Ok(a);
     }
@@ -2520,650 +2549,4 @@ fn resolve_seednode(raw: &str, network: Network) -> Result<SocketAddr, String> {
         .parse()
         .map_err(|e| format!("bad seednode address: {e}"))?;
     Ok(SocketAddr::new(ip, default_port(network)))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-    fn tiny_regtest(dir: impl AsRef<std::path::Path>) -> NodeConfig {
-        NodeConfig::default()
-            .with_datadir(dir.as_ref())
-            .with_network(rbitcoin_primitives::Network::Regtest)
-            .with_tiny_heads()
-    }
-
-    /// Perf (5s) and RPC-stop (50ms) ticks must still evaluate stale redial.
-    /// A one-shot sleep in the same `select!` is reset on every such wake.
-    /// `--sh-index` off still binds Electrum/Esplora. Address methods fail
-    /// closed inside the servers; the listeners themselves are not the gate.
-    #[test]
-    fn listeners_ready_without_sh_index() {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("rbitcoin-shoff-listen-{n}"));
-        let _ = std::fs::remove_dir_all(&dir);
-        let q = Query::open_or_create_tiny(dir.join("store")).unwrap();
-        let gates = enter_tip_mode(&q, None, false);
-        assert!(gates.tip_follow_ready);
-        assert!(
-            gates.sh_tip_ready,
-            "Electrum/Esplora bind when --sh-index is off"
-        );
-        assert!(!q.sh_index_enabled());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn stale_follow_needs_room_at_max_outbound() {
-        assert!(!stale_follow_needs_room(0, 16));
-        assert!(!stale_follow_needs_room(15, 16));
-        assert!(stale_follow_needs_room(16, 16));
-        assert!(stale_follow_needs_room(31, 16));
-        assert!(stale_follow_needs_room(1, 1));
-        assert!(!stale_follow_needs_room(0, 1));
-    }
-
-    #[test]
-    fn follow_dial_targets_connect_bypasses_diversity() {
-        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-        let mut am = AddrMan::new();
-        am.add(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 0, 1)), 8333));
-        am.add(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(9, 9, 0, 1)), 8333));
-        let connect = vec![rbitcoin_net::NetAddr::Ip(SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
-            8333,
-        ))];
-        let occupied = vec![rbitcoin_net::NetAddr::Ip(SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(1, 2, 0, 9)),
-            8333,
-        ))];
-        let want = vec![rbitcoin_net::NetAddr::Ip(SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
-            8333,
-        ))];
-        assert_eq!(follow_dial_targets(&connect, &am, 8, &occupied), want);
-        // Core reports `-connect` peers as `manual`; addrman picks are full relay.
-        assert_eq!(follow_dial_type(&connect), PeerConnType::Manual);
-        assert_eq!(follow_dial_type(&[]), PeerConnType::OutboundFullRelay);
-    }
-
-    #[test]
-    fn seednode_delay_starts_at_the_first_dial() {
-        assert!(
-            !seednode_delay_elapsed(0, 1_700_000_011),
-            "no dial yet, so a clock jump must not add the seednode"
-        );
-        let started = 1_700_000_000u64;
-        assert!(
-            !seednode_delay_elapsed(started, started),
-            "the dial itself must not add the seednode"
-        );
-        assert!(
-            !seednode_delay_elapsed(started, started + 9),
-            "nine seconds is still inside the addrman window"
-        );
-        assert!(
-            seednode_delay_elapsed(started, started + 11),
-            "setmocktime(now+11) after the dial must open the window"
-        );
-    }
-
-    #[test]
-    fn seednodes_are_off_under_connect() {
-        let mut listen = NodeConfig::default().listen;
-        assert!(!seednodes_allowed(&listen), "no seednodes");
-        listen.seednodes = vec!["127.0.0.1:18444".into()];
-        assert!(seednodes_allowed(&listen));
-        listen.connect = vec![rbitcoin_net::NetAddr::Ip(
-            "127.0.0.1:18445".parse().unwrap(),
-        )];
-        assert!(
-            !seednodes_allowed(&listen),
-            "Core skips seednodes under -connect"
-        );
-        listen.connect.clear();
-        listen.connect_dns = vec!["localhost:18445".into()];
-        assert!(!seednodes_allowed(&listen), "a --connect hostname pins too");
-    }
-
-    #[test]
-    fn follow_dial_targets_keeps_i2p_connect() {
-        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-        let mut am = AddrMan::new();
-        am.add(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 0, 1)), 8333));
-        let i2p = rbitcoin_net::NetAddr::I2p {
-            dest: [7u8; 32],
-            port: 8333,
-        };
-        let connect = vec![i2p];
-        let got = follow_dial_targets(&connect, &am, 8, &[]);
-        assert_eq!(got, vec![i2p]);
-    }
-
-    #[test]
-    fn follow_dial_targets_skips_occupied_group() {
-        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-        let mut am = AddrMan::new();
-        let same = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 0, 1)), 8333);
-        let other = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 3, 0, 1)), 8333);
-        am.add(same);
-        am.add(other);
-        let occupied = vec![rbitcoin_net::NetAddr::Ip(SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(1, 2, 0, 9)),
-            8333,
-        ))];
-        let got = follow_dial_targets(&[], &am, 1, &occupied);
-        assert_eq!(got, vec![rbitcoin_net::NetAddr::Ip(other)]);
-    }
-
-    #[test]
-    fn follow_dial_targets_picks_addrman_onion() {
-        let onion: rbitcoin_net::NetAddr =
-            "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion:8333"
-                .parse()
-                .unwrap();
-        let mut am = AddrMan::new();
-        am.set_onion_reachable(true);
-        am.set_only_net(vec![rbitcoin_net::OnlyNet::Onion]);
-        am.add_addr(onion);
-        assert_eq!(follow_dial_targets(&[], &am, 1, &[]), vec![onion]);
-        assert!(
-            follow_dial_targets(&[], &am, 1, &[onion]).is_empty(),
-            "live onion net must not be re-dialed via 0.0.0.0 hint"
-        );
-    }
-
-    #[test]
-    fn tip_follow_checks_stale_on_perf_and_rpc_stop() {
-        assert!(
-            tip_follow_checks_stale(TipFollowWakeKind::Perf),
-            "5s tip:perf tick must still consider a stale extra outbound"
-        );
-        assert!(
-            tip_follow_checks_stale(TipFollowWakeKind::RpcStop),
-            "RPC-stop tick must still consider a stale extra outbound"
-        );
-        assert!(tip_follow_checks_stale(TipFollowWakeKind::Poll));
-        assert!(tip_follow_checks_stale(TipFollowWakeKind::TipSame));
-        assert!(!tip_follow_checks_stale(TipFollowWakeKind::TipChanged));
-        assert!(!tip_follow_checks_stale(TipFollowWakeKind::Stop));
-    }
-
-    #[test]
-    fn parse_blockmintxfee_btc_to_sat() {
-        assert_eq!(parse_btc_to_sat("0.00000001"), Ok(1));
-        assert_eq!(parse_btc_to_sat("0"), Ok(0));
-        assert_eq!(parse_btc_to_sat("0.025"), Ok(2_500_000));
-        assert_eq!(parse_btc_to_sat("0.00000005"), Ok(5));
-        assert_eq!(parse_btc_to_sat("-0.0001"), Err("must be non-negative"));
-        assert_eq!(parse_btc_to_sat("nope"), Err("invalid"));
-    }
-
-    /// Persistent stale interval must complete even when a faster perf tick
-    /// is in the same biased `select!` (the old one-shot sleep never did).
-    #[tokio::test]
-    async fn stale_interval_fires_alongside_faster_perf_tick() {
-        let mut perf = tokio::time::interval(Duration::from_millis(15));
-        perf.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        perf.tick().await;
-        let mut stale = tokio::time::interval(Duration::from_millis(50));
-        stale.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        stale.tick().await;
-        let (_tx, mut tip_rx) = broadcast::channel::<TipEvent>(8);
-        let start = Instant::now();
-        let mut saw_poll = false;
-        while start.elapsed() < Duration::from_millis(200) {
-            let w = tokio::time::timeout(
-                Duration::from_millis(250),
-                tip_follow_next_wake(
-                    std::future::pending(),
-                    None,
-                    &mut perf,
-                    &mut tip_rx,
-                    &mut stale,
-                ),
-            )
-            .await
-            .expect("supervisor wake");
-            if matches!(w, TipFollowWake::Poll) {
-                saw_poll = true;
-                break;
-            }
-        }
-        assert!(
-            saw_poll,
-            "stale interval must produce Poll while perf ticks every 15ms"
-        );
-    }
-
-    #[test]
-    fn catch_up_ok_genesis_zero_accepts_is_incomplete() {
-        assert_eq!(catch_up_after_ok(0, 0, false), CatchUp::Incomplete);
-        assert_eq!(catch_up_after_ok(3, 3, true), CatchUp::Incomplete);
-    }
-
-    #[test]
-    fn catch_up_ok_with_blocks_is_complete() {
-        assert_eq!(
-            catch_up_after_ok(3, 3, false),
-            CatchUp::Complete {
-                dial_failed_all: false
-            }
-        );
-        assert_eq!(
-            catch_up_after_ok(0, 1, false),
-            CatchUp::Complete {
-                dial_failed_all: false
-            }
-        );
-        assert!(CatchUp::complete().is_complete());
-        assert!(!CatchUp::complete().dial_failed_all());
-        assert!(!CatchUp::Incomplete.is_complete());
-    }
-
-    #[test]
-    fn empty_targets_stay_open_until_a_dialable_address_exists() {
-        assert!(catch_up_without_targets(false).is_complete());
-        assert!(
-            !catch_up_without_targets(true).is_complete(),
-            "a swept or seed-pending book is not caught up"
-        );
-    }
-
-    #[test]
-    fn catch_up_err_with_tip_indexes_dials_failed() {
-        assert_eq!(
-            catch_up_after_err(10, true, false),
-            CatchUp::Complete {
-                dial_failed_all: true
-            }
-        );
-        assert!(CatchUp::complete_dial_failed().dial_failed_all());
-        assert_eq!(catch_up_after_err(10, false, false), CatchUp::Incomplete);
-        assert_eq!(catch_up_after_err(0, true, false), CatchUp::Incomplete);
-        assert_eq!(catch_up_after_err(10, true, true), CatchUp::Incomplete);
-    }
-
-    #[test]
-    fn connect_genesis_incomplete_enters_tip_follow() {
-        assert_eq!(
-            catch_up_with_connect(CatchUp::Incomplete, true, false, 0),
-            CatchUp::complete_dial_failed()
-        );
-        assert_eq!(
-            catch_up_with_connect(CatchUp::Incomplete, false, false, 0),
-            CatchUp::Incomplete
-        );
-        assert_eq!(
-            catch_up_with_connect(CatchUp::Incomplete, true, true, 0),
-            CatchUp::Incomplete
-        );
-        assert!(catch_up_with_connect(CatchUp::complete(), true, false, 0).is_complete());
-    }
-
-    #[test]
-    fn connect_nongenesis_incomplete_stays_in_ibd() {
-        assert_eq!(
-            catch_up_with_connect(CatchUp::Incomplete, true, false, 50),
-            CatchUp::Incomplete
-        );
-    }
-
-    #[test]
-    fn relay_requires_min_chain_work_even_when_following() {
-        assert!(!relay_while_following(false, false, false));
-        assert!(relay_while_following(true, false, false));
-        assert!(!relay_while_following(true, true, false));
-        assert!(!relay_while_following(true, false, true));
-        let mut cfg = NodeConfig::default();
-        assert!(cfg.meets_minimum_chain_work([0; 32]));
-        cfg.minimum_chain_work = Some([0xff; 32]);
-        assert!(
-            !cfg.meets_minimum_chain_work([0; 32]),
-            "a non-genesis tip under --min-chain-work follows, but relay stays gated"
-        );
-    }
-
-    #[test]
-    fn cjdns_listen_is_advertised_without_external_ip() {
-        use std::net::{IpAddr, Ipv6Addr};
-        let fc = Ipv6Addr::new(0xfc00, 1, 2, 3, 4, 5, 6, 7);
-        let bind = SocketAddr::from((fc, 8333));
-        let got = external_ips_with_cjdns_bind(&[], bind, true);
-        assert_eq!(got, vec![IpAddr::V6(fc)]);
-        assert!(
-            external_ips_with_cjdns_bind(&[], bind, false).is_empty(),
-            "fc00 stays unroutable until --cjdns-reachable"
-        );
-        let v4 = SocketAddr::from(([1, 2, 3, 4], 8333));
-        assert!(external_ips_with_cjdns_bind(&[], v4, true).is_empty());
-        let ula = SocketAddr::from((Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 1), 8333));
-        assert!(
-            external_ips_with_cjdns_bind(&[], ula, true).is_empty(),
-            "fd00::/8 is not CJDNS"
-        );
-        let dup = external_ips_with_cjdns_bind(&[IpAddr::V6(fc)], bind, true);
-        assert_eq!(dup, vec![IpAddr::V6(fc)]);
-    }
-
-    #[test]
-    fn follow_connect_timeout_i2p_is_longer_than_clearnet() {
-        let i2p = rbitcoin_net::NetAddr::I2p {
-            dest: [0u8; 32],
-            port: 1,
-        };
-        let ip: rbitcoin_net::NetAddr = "127.0.0.1:1".parse().unwrap();
-        assert_eq!(
-            follow_connect_timeout(ip),
-            Duration::from_secs(FOLLOW_CONNECT_SECS)
-        );
-        assert_eq!(follow_connect_timeout(i2p), Duration::from_secs(90));
-    }
-
-    #[test]
-    fn catch_up_retry_config_uses_production_not_for_test() {
-        let peers = std::sync::Arc::new(std::sync::Mutex::new(rbitcoin_net::AddrMan::new()));
-        let cfg = catch_up_retry_config(std::sync::Arc::clone(&peers), Dialer::Direct);
-        let prod = IbdConfig::default();
-        let test = IbdConfig::for_test();
-
-        assert_eq!(cfg.target_peers, 1);
-        assert!(cfg.peers.is_some());
-        // Production class (main catch-up path), not for_test knobs.
-        assert_eq!(cfg.window, prod.window);
-        assert_eq!(cfg.window, rbitcoin_net::DEFAULT_IBD_WINDOW);
-        assert_eq!(cfg.per_peer, prod.per_peer);
-        assert_eq!(cfg.stall, prod.stall);
-        assert_eq!(cfg.connect_timeout, prod.connect_timeout);
-        assert_eq!(cfg.headers_batch, prod.headers_batch);
-        // Guard against reintroducing for_test() base fields.
-        assert_ne!(cfg.window, test.window);
-        assert_ne!(cfg.stall, test.stall);
-        assert_ne!(cfg.connect_timeout, test.connect_timeout);
-    }
-
-    #[test]
-    fn custom_signet_does_not_use_default_signet_seeds() {
-        let mut cfg = NodeConfig::default().with_network(rbitcoin_primitives::Network::Signet);
-        assert!(should_resolve_default_seeds(&cfg));
-        cfg.signet_challenge = Some(bitcoin::ScriptBuf::from_bytes(vec![0x51]));
-        assert!(!should_resolve_default_seeds(&cfg));
-    }
-
-    #[test]
-    fn dns_seeds_not_resolved_locally_when_proxy() {
-        let mut cfg = NodeConfig::default();
-        assert!(should_resolve_default_seeds(&cfg));
-        cfg.listen.proxy = Some("127.0.0.1:9050".parse().unwrap());
-        assert!(
-            !should_resolve_default_seeds(&cfg),
-            "proxy path must not ToSocketAddrs DNS/fixed seeds"
-        );
-    }
-
-    #[test]
-    fn proxy_seed_bootstrap_queues_domain_addrfetch() {
-        let peers = rbitcoin_net::PeerHub::new();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<rbitcoin_net::DialRequest>();
-        peers.set_dialer(tx);
-        let n = queue_proxy_seed_addrfetch(&peers, rbitcoin_primitives::Network::Signet);
-        assert_eq!(n, 1, "signet has one default DNS seed");
-        let req = rx.try_recv().expect("queued dial request");
-        assert_eq!(req.typ, PeerConnType::AddrFetch);
-        match req.target {
-            rbitcoin_net::DialTarget::Domain { host, port } => {
-                assert_eq!(host, "seed.signet.bitcoin.sprovoost.nl");
-                assert_eq!(port, 38333);
-            }
-            other => panic!("expected domain target, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn shutdown_flag_and_node_handle_smoke() {
-        let sd = Shutdown::new();
-        assert!(!sd.requested());
-        sd.request();
-        assert!(sd.requested());
-        // Second request is idempotent.
-        sd.request();
-        assert!(sd.requested());
-
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("rbitcoin-run-node-{nanos}"));
-        let cfg = tiny_regtest(&dir);
-        let handle = run_node(cfg).expect("run_node");
-        assert_eq!(handle.network_name(), "regtest");
-        assert_eq!(
-            handle.query.store().headers.head_target_slots(),
-            64,
-            "tiny_regtest must create Tiny header heads"
-        );
-        assert!(handle.mempool.is_none());
-        let _ = format!("{:?}", handle);
-        handle.shutdown().expect("shutdown flush");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
-    async fn cancelled_completes_after_request() {
-        let sd = Shutdown::new();
-        // Already-requested path returns immediately.
-        sd.request();
-        sd.cancelled().await;
-
-        let sd2 = Shutdown::new();
-        let s2 = Arc::clone(&sd2);
-        let j = tokio::spawn(async move {
-            s2.cancelled().await;
-        });
-        // Give the task a chance to park on notify.
-        tokio::task::yield_now().await;
-        sd2.request();
-        j.await.unwrap();
-    }
-
-    /// The `IbdConfig` literal in `run_ibd_or_skip` is not built by the config
-    /// journey, so this drives `run_p2p`. A refused connect must flush a fail
-    /// mark into the saved book, and the SOCKS proxy must be the socket dialed.
-    #[tokio::test]
-    async fn run_p2p_refused_connect_flushes_book_and_dials_proxy() {
-        use std::io::{Read, Write};
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("rbitcoin-run-p2p-proxy-{nanos}"));
-        let proxy_l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let proxy = proxy_l.local_addr().unwrap();
-        let target_l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let connect = target_l.local_addr().unwrap();
-        let proxy_hit = Arc::new(AtomicBool::new(false));
-        let target_hit = Arc::new(AtomicBool::new(false));
-        let proxy_flag = Arc::clone(&proxy_hit);
-        let target_flag = Arc::clone(&target_hit);
-        std::thread::spawn(move || {
-            while let Ok((mut sock, _)) = proxy_l.accept() {
-                proxy_flag.store(true, Ordering::SeqCst);
-                let _ = sock.set_read_timeout(Some(Duration::from_millis(200)));
-                let mut buf = [0u8; 16];
-                let _ = sock.read(&mut buf);
-                // No acceptable SOCKS method: the dial fails before CONNECT.
-                let _ = sock.write_all(&[0x05, 0xFF]);
-            }
-        });
-        std::thread::spawn(move || {
-            while target_l.accept().is_ok() {
-                target_flag.store(true, Ordering::SeqCst);
-            }
-        });
-
-        let mut cfg = tiny_regtest(&dir).with_p2p_listen("127.0.0.1:0".parse().unwrap());
-        cfg.listen.use_seeds = false;
-        cfg.listen.connect = vec![rbitcoin_net::NetAddr::from_socket(connect)];
-        cfg.listen.proxy = Some(proxy);
-        cfg.max_run_secs = Some(0);
-        let result = tokio::time::timeout(Duration::from_secs(20), run_p2p(cfg)).await;
-        assert!(result.is_ok(), "run_p2p timed out");
-        let _ = result.unwrap();
-
-        assert!(
-            proxy_hit.load(Ordering::SeqCst),
-            "IBD must dial the configured SOCKS proxy"
-        );
-        assert!(
-            !target_hit.load(Ordering::SeqCst),
-            "SOCKS dial must not open a direct TCP connection to the target"
-        );
-        let peers_path = dir.join("peers");
-        let text = std::fs::read_to_string(&peers_path).expect("peers saved");
-        let row = text
-            .lines()
-            .find(|line| line.starts_with(&format!("{connect} ")))
-            .unwrap_or_else(|| {
-                panic!("IBD must flush the dial failure into the saved peer book\n{text}")
-            });
-        let flags = row
-            .split_whitespace()
-            .nth(1)
-            .and_then(|s| s.strip_prefix("0x"))
-            .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-            .unwrap_or(0);
-        assert!(
-            flags & rbitcoin_net::PeerFlags::FAILED_LAST_CONNECT != 0,
-            "IBD must flush the dial failure into the saved peer book, row {row}"
-        );
-        let book = AddrMan::load(&peers_path).expect("peers saved");
-        assert!(
-            book.entry(&connect).is_none(),
-            "loopback is not restored from the peers file"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn node_handle_shutdown_with_mempool() {
-        use rbitcoin_net::MempoolHub;
-        use std::sync::Arc;
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("rbitcoin-handle-mp-{nanos}"));
-        let cfg = tiny_regtest(&dir);
-        let mut handle = run_node(cfg).expect("run_node");
-        // Dual-open same store for MempoolHub's Arc<Query> (flush only).
-        // Same layout as run_node — Tiny here, Mainnet would mismatch.
-        let q = Arc::new(Query::open_or_create_layout(handle.config.store_layout()).unwrap());
-        let mp = MempoolHub::open(handle.config.mempool_path(), q).expect("mempool");
-        handle.mempool = Some(mp);
-        let _ = format!("{:?}", handle);
-        handle.shutdown().expect("flush query+mempool");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
-    async fn cancelled_waits_for_request_race() {
-        // Cover the while !requested re-check after spurious notify.
-        let sd = Shutdown::new();
-        let s = Arc::clone(&sd);
-        let j = tokio::spawn(async move {
-            s.cancelled().await;
-        });
-        tokio::task::yield_now().await;
-        // Double request is idempotent; first wakes waiters.
-        sd.request();
-        sd.request();
-        j.await.unwrap();
-    }
-
-    fn scratch_dir(label: &str) -> std::path::PathBuf {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("rbitcoin-{label}-{n}"));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn startup_sets_datadir_hdd_on_the_store() {
-        let dir = scratch_dir("datadir-hdd");
-        let q = Query::open_or_create_tiny(&dir).unwrap();
-        assert!(!q.store().datadir_hdd());
-        let cfg = NodeConfig {
-            datadir_hdd: true,
-            ..NodeConfig::default()
-        };
-        apply_startup_index_mode(&q, &cfg, 0).unwrap();
-        assert!(q.store().datadir_hdd());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// A pack-marked head whose inclusion floor is behind the tip must not open
-    /// Electrum. Tip follow still starts so write-behind can catch up.
-    #[test]
-    fn enter_tip_mode_does_not_ready_electrum_when_inclusion_lags() {
-        let dir = scratch_dir("tip-gate");
-        let q = Query::open_or_create_tiny(&dir).unwrap();
-        let bump = q.store().scripthash.alloc_bump();
-        let session = q.store().scripthash.pack_shard_session(0).unwrap();
-        let pack = session.finish_pack().unwrap();
-        assert_eq!(pack.bump, bump);
-        q.store().scripthash.publish_packed_shard(0, pack).unwrap();
-        assert!(q.store().scripthash.has_durable_index());
-        assert!(q.sh_use_writebehind());
-        assert!(
-            !q.sh_is_tip_ready(),
-            "empty tip is not an inclusion-complete scripthash head"
-        );
-        let gates = enter_tip_mode(&q, None, true);
-        assert!(gates.tip_follow_ready);
-        assert!(
-            !gates.sh_tip_ready,
-            "lagging inclusion must not start Electrum"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// Cancel before any extract file exists must not tell the operator to
-    /// resume from `scripthash.cold_progress`.
-    #[test]
-    fn enter_tip_mode_cancel_does_not_name_missing_cold_progress() {
-        let dir = scratch_dir("tip-cancel");
-        let q = Query::open_or_create_tiny(&dir).unwrap();
-        assert!(!q.store().path().join("scripthash.cold_progress").is_file());
-        assert!(!q.store().path().join("scripthash.unsorted").is_dir());
-        let cancel = Arc::new(AtomicBool::new(true));
-        rbitcoin_log::capture_logs(true);
-        let gates = enter_tip_mode(&q, Some(cancel), true);
-        let lines = rbitcoin_log::take_logs();
-        rbitcoin_log::capture_logs(false);
-        assert!(gates.tip_follow_ready);
-        assert!(!gates.sh_tip_ready);
-        let joined = lines
-            .iter()
-            .map(|(_, line)| line.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(
-            !joined.contains("scripthash.cold_progress"),
-            "cancel warn named a resume file that is not on disk:\n{joined}"
-        );
-        assert!(
-            joined.contains("cancelled before a durable scripthash extract"),
-            "cancel warn should name the phase that actually exists:\n{joined}"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }

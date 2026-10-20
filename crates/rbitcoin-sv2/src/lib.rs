@@ -3,10 +3,13 @@
 //! Noise_NX over TCP is the only transport. Plan and constraints:
 //! `docs/sv2-template-provider.md`.
 
-mod session;
-mod template;
+#[doc(hidden)]
+pub mod session;
+#[doc(hidden)]
+pub mod template;
 pub mod testutil;
-mod transport;
+#[doc(hidden)]
+pub mod transport;
 
 use bitcoin::secp256k1::{Keypair, Secp256k1};
 use rbitcoin_net::{ChainHub, RequestMeter};
@@ -26,7 +29,7 @@ pub use transport::Frame;
 /// a template holds them: at most 64 × ~4 MB per session if every template's
 /// txs were replaced, ~2 GB across the cap, which costs the replacer
 /// replacement fees on every interval.
-pub(crate) const MAX_SESSIONS: usize = 8;
+pub const MAX_SESSIONS: usize = 8;
 
 /// Default [`Sv2TpConfig::setup_timeout`]. A session holds a slot from TCP
 /// accept, so without it `MAX_SESSIONS` silent sockets lock clients out.
@@ -52,7 +55,7 @@ pub const CONSTRAINTS_COOLDOWN: Duration = Duration::from_secs(1);
 /// Lower bound on [`Sv2TpConfig::template_interval`]. CPU trade: each check
 /// after a mempool change is one build under the mempool read lock, so a
 /// session costs at most ten per second.
-pub(crate) const MIN_TEMPLATE_INTERVAL: Duration = Duration::from_millis(100);
+pub const MIN_TEMPLATE_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Upper bound on [`Sv2TpConfig::template_interval`]; each check deadline is
 /// `Instant + template_interval`, which panics on overflow.
@@ -101,11 +104,11 @@ pub struct Sv2TpStats {
 
 pub struct Sv2TpHandle {
     pub local_addr: SocketAddr,
-    stats: Arc<Sv2TpStats>,
+    pub stats: Arc<Sv2TpStats>,
     /// X-only authority public key the clients verify the certificate against.
-    pub(crate) authority_pubkey: [u8; 32],
-    task: JoinHandle<()>,
-    sessions: Arc<Mutex<Vec<JoinHandle<()>>>>,
+    pub authority_pubkey: [u8; 32],
+    pub task: JoinHandle<()>,
+    pub sessions: Arc<Mutex<Vec<JoinHandle<()>>>>,
 }
 
 impl Sv2TpHandle {
@@ -200,7 +203,7 @@ pub async fn run_sv2_tp(config: Sv2TpConfig) -> io::Result<Sv2TpHandle> {
             // completing into that buffer after the peer stops reading, so
             // the deadline does not start. The write-deadline test pins a
             // small buffer on the accepted socket.
-            #[cfg(all(test, target_os = "linux"))]
+            #[cfg(all(debug_assertions, target_os = "linux"))]
             test_send_buffer::apply(&stream);
             let Ok(slot) = slots.clone().try_acquire_owned() else {
                 rbitcoin_log::warn!("sv2: reject {peer} (at max_sessions={MAX_SESSIONS})");
@@ -254,14 +257,15 @@ pub async fn run_sv2_tp(config: Sv2TpConfig) -> io::Result<Sv2TpHandle> {
     })
 }
 
-/// Accepted-socket `SO_SNDBUF` for one listener.
+/// Accepted-socket `SO_SNDBUF` pin for the write-deadline test.
 ///
 /// `write()` returns as soon as the bytes fit in the send buffer. With
 /// autotune that is several MiB, so a client that never reads still looks
 /// like a live writer and the deadline never starts. The pin is keyed by
 /// the listener address so another test's accept keeps autotune.
-#[cfg(all(test, target_os = "linux"))]
-mod test_send_buffer {
+#[cfg(all(debug_assertions, target_os = "linux"))]
+#[doc(hidden)]
+pub mod test_send_buffer {
     use std::collections::HashMap;
     use std::net::SocketAddr;
     use std::os::fd::AsRawFd;
@@ -271,11 +275,11 @@ mod test_send_buffer {
     static PINS: LazyLock<Mutex<HashMap<SocketAddr, u32>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
 
-    pub(crate) struct Guard {
+    pub struct Guard {
         addr: SocketAddr,
     }
 
-    pub(crate) fn pin(addr: SocketAddr, bytes: u32) -> Guard {
+    pub fn pin(addr: SocketAddr, bytes: u32) -> Guard {
         PINS.lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(addr, bytes);
@@ -290,7 +294,7 @@ mod test_send_buffer {
         }
     }
 
-    pub(super) fn apply(stream: &TcpStream) {
+    pub(crate) fn apply(stream: &TcpStream) {
         let Ok(addr) = stream.local_addr() else {
             return;
         };
@@ -325,10 +329,3 @@ mod test_send_buffer {
         );
     }
 }
-
-#[cfg(test)]
-mod listener_tests;
-#[cfg(test)]
-mod template_tests;
-#[cfg(test)]
-mod test_chain;

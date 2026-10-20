@@ -4,7 +4,7 @@ use bitcoin::consensus::deserialize;
 use bitcoin::{Address, ScriptBuf};
 use std::str::FromStr;
 
-pub(crate) fn decoderawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn decoderawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["hexstring", "iswitness"])?;
     let hex = params.req_str(0, "hexstring")?;
     let force_witness = params.opt_bool(1, "iswitness")?;
@@ -18,7 +18,7 @@ pub(crate) fn decoderawtransaction(ctx: &RpcContext, params: &RpcParams) -> Resu
     Ok(tx_to_json(&tx, None, rpc_btc_network(ctx.network)))
 }
 
-pub(crate) fn decodescript(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn decodescript(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["hexstring"])?;
     let hex = params.req_str(0, "hexstring")?;
     let raw = rbitcoin_primitives::hex_decode(hex)
@@ -29,7 +29,7 @@ pub(crate) fn decodescript(ctx: &RpcContext, params: &RpcParams) -> Result<Value
     ))
 }
 
-pub(crate) fn validateaddress(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn validateaddress(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["address"])?;
     let s = params.req_str(0, "address")?;
     let parsed = match Address::from_str(s) {

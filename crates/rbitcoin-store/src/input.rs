@@ -13,11 +13,16 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 
-const LOC_SLOT: u64 = 2;
-const OFF_SLOT: u64 = 8;
-const REC_LEN: u64 = 8;
-const FK_LIMIT: u64 = 1 << 40;
-const VOUT_LIMIT: u32 = 1 << 24;
+#[doc(hidden)]
+pub const LOC_SLOT: u64 = 2;
+#[doc(hidden)]
+pub const OFF_SLOT: u64 = 8;
+#[doc(hidden)]
+pub const REC_LEN: u64 = 8;
+#[doc(hidden)]
+pub const FK_LIMIT: u64 = 1 << 40;
+#[doc(hidden)]
+pub const VOUT_LIMIT: u32 = 1 << 24;
 
 /// One spending input's parent outpoint. `parent` null and `vout` 0 is coinbase.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,31 +73,31 @@ impl InputEdge {
 }
 
 pub struct Input {
-    loc: TableFile,
-    off: TableFile,
-    body: TableFile,
+    pub loc: TableFile,
+    pub off: TableFile,
+    pub body: TableFile,
     /// Body file offset at the start of window `w + 1` (after create `1024*(w+1)`).
-    checkpoints: RwLock<Vec<u64>>,
-    count: AtomicU64,
-    body_end: AtomicU64,
+    pub checkpoints: RwLock<Vec<u64>>,
+    pub count: AtomicU64,
+    pub body_end: AtomicU64,
 }
 
 impl Input {
-    pub(crate) fn flush(&self) -> Result<(), StoreError> {
+    pub fn flush(&self) -> Result<(), StoreError> {
         self.loc.flush()?;
         self.off.flush()?;
         self.body.flush()?;
         Ok(())
     }
 
-    pub(crate) fn sync_data_only(&self) -> Result<(), StoreError> {
+    pub fn sync_data_only(&self) -> Result<(), StoreError> {
         self.loc.sync_data_only()?;
         self.off.sync_data_only()?;
         self.body.sync_data_only()
     }
 
-    #[cfg(test)]
-    pub(crate) fn pending_sync(&self) -> bool {
+    #[cfg(debug_assertions)]
+    pub fn pending_sync(&self) -> bool {
         self.loc.pending_sync() || self.off.pending_sync() || self.body.pending_sync()
     }
 
@@ -176,7 +181,7 @@ impl Input {
 
     /// Locator read for [`Self::edges_span`]: `n_in` from the window start of
     /// `first` through `last` (no IO).
-    pub(crate) fn plan_edges_span(&self, first: u64, last: u64) -> Result<EdgesPlan, StoreError> {
+    pub fn plan_edges_span(&self, first: u64, last: u64) -> Result<EdgesPlan, StoreError> {
         if first == 0 || last < first {
             return Err(StoreError::InvalidFk);
         }
@@ -201,7 +206,7 @@ impl Input {
     }
 
     /// Body read `(abs, len)` for a plan whose locator bytes are filled.
-    pub(crate) fn edges_body_read(&self, plan: &EdgesPlan) -> Result<(u64, u64), StoreError> {
+    pub fn edges_body_read(&self, plan: &EdgesPlan) -> Result<(u64, u64), StoreError> {
         let n_in = |c: &[u8]| u64::from(u16::from_le_bytes([c[0], c[1]]));
         let mut slots = plan.loc.chunks_exact(LOC_SLOT as usize);
         let before: u64 = slots.by_ref().take(plan.skip).map(n_in).sum();
@@ -210,7 +215,7 @@ impl Input {
     }
 
     /// `input.loc` / `input.body` handles and paths for a machine's reads.
-    pub(crate) fn files(
+    pub fn files(
         &self,
     ) -> (
         (crate::io_handle::IoHandle, &Path),
@@ -332,7 +337,8 @@ impl Input {
         Ok(())
     }
 
-    fn checked_id(&self, fk: Fk) -> Result<u64, StoreError> {
+    #[doc(hidden)]
+    pub fn checked_id(&self, fk: Fk) -> Result<u64, StoreError> {
         let Some(id) = fk.get() else {
             return Err(StoreError::InvalidFk);
         };
@@ -342,14 +348,16 @@ impl Input {
         Ok(id)
     }
 
-    fn read_n_in(&self, id: u64) -> Result<u16, StoreError> {
+    #[doc(hidden)]
+    pub fn read_n_in(&self, id: u64) -> Result<u16, StoreError> {
         let mut buf = [0u8; 2];
         self.loc
             .read_at(FILE_HEADER_LEN as u64 + (id - 1) * LOC_SLOT, &mut buf)?;
         Ok(u16::from_le_bytes(buf))
     }
 
-    fn body_abs(&self, id: u64) -> Result<u64, StoreError> {
+    #[doc(hidden)]
+    pub fn body_abs(&self, id: u64) -> Result<u64, StoreError> {
         let w = loc_window(id);
         let within = loc_within(id);
         let base = if w == 0 {
@@ -375,15 +383,15 @@ impl Input {
 }
 
 /// Locator read of one [`Input::plan_edges_span`].
-pub(crate) struct EdgesPlan {
-    base: u64,
-    skip: usize,
-    pub(crate) loc_off: u64,
-    pub(crate) loc: Vec<u8>,
+pub struct EdgesPlan {
+    pub base: u64,
+    pub skip: usize,
+    pub loc_off: u64,
+    pub loc: Vec<u8>,
 }
 
 /// Edges per create of a filled plan and its body bytes.
-pub(crate) fn decode_edges_span(
+pub fn decode_edges_span(
     plan: &EdgesPlan,
     body: &[u8],
 ) -> Result<Vec<Option<Vec<InputEdge>>>, StoreError> {
@@ -409,156 +417,4 @@ pub(crate) fn decode_edges_span(
         out.push(Some(edges));
     }
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::testutil::TempDir;
-
-    fn edge(parent: u64, vout: u32) -> InputEdge {
-        InputEdge {
-            parent: Fk(parent),
-            vout,
-        }
-    }
-
-    #[test]
-    fn pack_rejects_wide_fk_and_vout() {
-        let err = InputEdge {
-            parent: Fk(FK_LIMIT),
-            vout: 0,
-        }
-        .pack();
-        assert!(matches!(err, Err(StoreError::Corrupt("input create_fk"))));
-        let err = InputEdge {
-            parent: Fk(1),
-            vout: VOUT_LIMIT,
-        }
-        .pack();
-        assert!(matches!(err, Err(StoreError::Corrupt("input vout"))));
-        let err = InputEdge {
-            parent: Fk::NULL,
-            vout: 1,
-        }
-        .pack();
-        assert!(matches!(
-            err,
-            Err(StoreError::Corrupt("input coinbase vout"))
-        ));
-    }
-
-    #[test]
-    fn roundtrip_coinbase_and_parents_across_reopen() {
-        let dir = TempDir::labeled("input-rt").unwrap();
-        let t = Input::create(dir.path()).unwrap();
-        t.append(&[
-            vec![InputEdge::coinbase()],
-            vec![edge(1, 0), edge(1, 3)],
-            vec![],
-        ])
-        .unwrap();
-        assert_eq!(t.n_in(Fk(1)).unwrap(), Some(1));
-        assert_eq!(
-            t.edges(Fk(1)).unwrap().unwrap(),
-            vec![InputEdge::coinbase()]
-        );
-        assert_eq!(
-            t.edges(Fk(2)).unwrap().unwrap(),
-            vec![edge(1, 0), edge(1, 3)]
-        );
-        assert_eq!(t.n_in(Fk(3)).unwrap(), None);
-        assert!(t.edges(Fk(3)).unwrap().is_none());
-        drop(t);
-        let t = Input::open(dir.path()).unwrap();
-        assert_eq!(t.count(), 3);
-        assert_eq!(
-            t.edges(Fk(2)).unwrap().unwrap(),
-            vec![edge(1, 0), edge(1, 3)]
-        );
-        t.truncate_to_count(1).unwrap();
-        assert_eq!(t.count(), 1);
-        assert!(matches!(t.edges(Fk(2)), Err(StoreError::NotFound)));
-        assert_eq!(
-            t.edges(Fk(1)).unwrap().unwrap(),
-            vec![InputEdge::coinbase()]
-        );
-    }
-
-    #[test]
-    fn window_checkpoint_serves_create_1025() {
-        let dir = TempDir::labeled("input-win").unwrap();
-        let t = Input::create(dir.path()).unwrap();
-        let one = vec![edge(7, 1)];
-        let batch = vec![one; 1025];
-        t.append(&batch).unwrap();
-        assert_eq!(t.edges(Fk(1)).unwrap().unwrap(), vec![edge(7, 1)]);
-        assert_eq!(t.edges(Fk(1024)).unwrap().unwrap(), vec![edge(7, 1)]);
-        assert_eq!(t.edges(Fk(1025)).unwrap().unwrap(), vec![edge(7, 1)]);
-        drop(t);
-        let t = Input::open(dir.path()).unwrap();
-        assert_eq!(t.edges(Fk(1025)).unwrap().unwrap(), vec![edge(7, 1)]);
-        assert_eq!(t.n_in(Fk(1025)).unwrap(), Some(1));
-    }
-
-    #[test]
-    fn edges_span_bounds_and_mid_create() {
-        let dir = TempDir::labeled("input-span-bounds").unwrap();
-        let t = Input::create(dir.path()).unwrap();
-        t.append(&[
-            vec![edge(1, 0)],
-            vec![edge(4, 1), edge(4, 2)],
-            vec![edge(7, 3)],
-        ])
-        .unwrap();
-        assert!(matches!(t.edges_span(0, 1), Err(StoreError::InvalidFk)));
-        assert!(matches!(t.edges_span(3, 1), Err(StoreError::InvalidFk)));
-        assert!(matches!(t.edges_span(1, 4), Err(StoreError::NotFound)));
-        assert_eq!(
-            t.edges_span(2, 2).unwrap(),
-            vec![Some(vec![edge(4, 1), edge(4, 2)])]
-        );
-        assert_eq!(
-            t.edges_span(1, 2).unwrap(),
-            vec![Some(vec![edge(1, 0)]), Some(vec![edge(4, 1), edge(4, 2)]),]
-        );
-    }
-
-    #[test]
-    fn input_append_reopen_reads_last_edges() {
-        let dir = TempDir::labeled("input-reopen-last").unwrap();
-        let t = Input::create(dir.path()).unwrap();
-        let mut batch = Vec::with_capacity(1025);
-        for i in 0..1024u32 {
-            batch.push(vec![edge(1, i)]);
-        }
-        batch.push(vec![edge(9, 3), edge(9, 4)]);
-        t.append(&batch).unwrap();
-        drop(t);
-        let t = Input::open(dir.path()).unwrap();
-        assert_eq!(t.n_in(Fk(1025)).unwrap(), Some(2));
-        assert_eq!(
-            t.edges(Fk(1025)).unwrap().unwrap(),
-            vec![edge(9, 3), edge(9, 4)]
-        );
-        assert_eq!(t.edges(Fk(1)).unwrap().unwrap(), vec![edge(1, 0)]);
-    }
-
-    #[test]
-    fn new_store_creates_inputs_stems() {
-        let (dir, _store) = crate::testutil::tiny_store_labeled("input-files");
-        assert!(dir.path().join("input.loc").is_file());
-        assert!(dir.path().join("input.off").is_file());
-        assert!(dir.path().join("input.body").is_file());
-    }
-
-    #[test]
-    fn append_rejects_n_in_past_u16() {
-        let dir = TempDir::labeled("input-wide").unwrap();
-        let t = Input::create(dir.path()).unwrap();
-        let edges = vec![edge(1, 0); usize::from(u16::MAX) + 1];
-        let err = t.append(&[edges]).unwrap_err();
-        assert!(matches!(err, StoreError::Corrupt("input n_in")));
-        assert_eq!(t.count(), 0);
-    }
 }

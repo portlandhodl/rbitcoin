@@ -7,25 +7,31 @@ use bitcoin::consensus::Encodable;
 use bitcoin::hashes::Hash;
 use rbitcoin_primitives::Height;
 
-const MAX_REST_HEADERS: u32 = 2000;
-const MAX_GETUTXOS: usize = 15;
+#[doc(hidden)]
+pub const MAX_REST_HEADERS: u32 = 2000;
+#[doc(hidden)]
+pub const MAX_GETUTXOS: usize = 15;
 /// Core `MEMPOOL_HEIGHT`.
-const MEMPOOL_HEIGHT: u32 = 0x7fff_ffff;
+#[doc(hidden)]
+pub const MEMPOOL_HEIGHT: u32 = 0x7fff_ffff;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum RestFmt {
+#[doc(hidden)]
+pub enum RestFmt {
     Bin,
     Hex,
     Json,
 }
 
 /// Body encoding after JSON has already returned.
-enum RestWire {
+#[doc(hidden)]
+pub enum RestWire {
     Bin,
     Hex,
 }
 
-fn rest_wire(fmt: RestFmt) -> Option<RestWire> {
+#[doc(hidden)]
+pub fn rest_wire(fmt: RestFmt) -> Option<RestWire> {
     match fmt {
         RestFmt::Bin => Some(RestWire::Bin),
         RestFmt::Hex => Some(RestWire::Hex),
@@ -33,13 +39,13 @@ fn rest_wire(fmt: RestFmt) -> Option<RestWire> {
     }
 }
 
-pub(crate) struct RestReply {
+pub struct RestReply {
     pub status: axum::http::StatusCode,
     pub content_type: &'static str,
     pub body: Vec<u8>,
 }
 
-pub(crate) fn dispatch_rest(ctx: &RpcContext, path: &str, query: &str, _body: &[u8]) -> RestReply {
+pub fn dispatch_rest(ctx: &RpcContext, path: &str, query: &str, _body: &[u8]) -> RestReply {
     let path = path.split('?').next().unwrap_or(path);
     let rest = path
         .strip_prefix("/rest/")
@@ -58,7 +64,13 @@ pub(crate) fn dispatch_rest(ctx: &RpcContext, path: &str, query: &str, _body: &[
     }
 }
 
-fn route(ctx: &RpcContext, fmt: RestFmt, param: &str, query: &str) -> Result<RestReply, RestReply> {
+#[doc(hidden)]
+pub fn route(
+    ctx: &RpcContext,
+    fmt: RestFmt,
+    param: &str,
+    query: &str,
+) -> Result<RestReply, RestReply> {
     if param == "chaininfo" {
         return json_only(fmt, getblockchaininfo(ctx));
     }
@@ -113,7 +125,8 @@ fn route(ctx: &RpcContext, fmt: RestFmt, param: &str, query: &str) -> Result<Res
     Err(err(axum::http::StatusCode::NOT_FOUND, "not found"))
 }
 
-fn blockhash_by_height(
+#[doc(hidden)]
+pub fn blockhash_by_height(
     ctx: &RpcContext,
     fmt: RestFmt,
     height: &str,
@@ -154,7 +167,8 @@ fn blockhash_by_height(
     }
 }
 
-fn headers(ctx: &RpcContext, fmt: RestFmt, rest: &str) -> Result<RestReply, RestReply> {
+#[doc(hidden)]
+pub fn headers(ctx: &RpcContext, fmt: RestFmt, rest: &str) -> Result<RestReply, RestReply> {
     let (count_s, hash) = rest.split_once('/').ok_or_else(|| {
         err(
             axum::http::StatusCode::BAD_REQUEST,
@@ -215,7 +229,8 @@ fn headers(ctx: &RpcContext, fmt: RestFmt, rest: &str) -> Result<RestReply, Rest
     }
 }
 
-fn block(
+#[doc(hidden)]
+pub fn block(
     ctx: &RpcContext,
     fmt: RestFmt,
     hash: &str,
@@ -258,7 +273,8 @@ fn block(
     }
 }
 
-fn tx(ctx: &RpcContext, fmt: RestFmt, txid: &str) -> Result<RestReply, RestReply> {
+#[doc(hidden)]
+pub fn tx(ctx: &RpcContext, fmt: RestFmt, txid: &str) -> Result<RestReply, RestReply> {
     if parse_hash(txid)? == genesis_coinbase_txid(ctx) {
         return Err(err(
             axum::http::StatusCode::NOT_FOUND,
@@ -288,7 +304,8 @@ fn tx(ctx: &RpcContext, fmt: RestFmt, txid: &str) -> Result<RestReply, RestReply
     }
 }
 
-fn getutxos(ctx: &RpcContext, fmt: RestFmt, param: &str) -> Result<RestReply, RestReply> {
+#[doc(hidden)]
+pub fn getutxos(ctx: &RpcContext, fmt: RestFmt, param: &str) -> Result<RestReply, RestReply> {
     if fmt != RestFmt::Json {
         return Err(err(
             axum::http::StatusCode::NOT_FOUND,
@@ -373,7 +390,8 @@ fn getutxos(ctx: &RpcContext, fmt: RestFmt, param: &str) -> Result<RestReply, Re
     })))
 }
 
-fn blockfilter(ctx: &RpcContext, fmt: RestFmt, rest: &str) -> Result<RestReply, RestReply> {
+#[doc(hidden)]
+pub fn blockfilter(ctx: &RpcContext, fmt: RestFmt, rest: &str) -> Result<RestReply, RestReply> {
     let (filtertype, hash) = rest.split_once('/').ok_or_else(|| {
         err(
             axum::http::StatusCode::BAD_REQUEST,
@@ -439,7 +457,8 @@ fn blockfilter(ctx: &RpcContext, fmt: RestFmt, rest: &str) -> Result<RestReply, 
 }
 
 /// Core `BlockFilter` wire: type byte, internal block hash, compact-size filter.
-fn serialize_rest_filter(hash: &[u8; 32], body: &[u8]) -> Vec<u8> {
+#[doc(hidden)]
+pub fn serialize_rest_filter(hash: &[u8; 32], body: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(1 + 32 + body.len() + 3);
     out.push(0);
     out.extend_from_slice(hash);
@@ -448,7 +467,8 @@ fn serialize_rest_filter(hash: &[u8; 32], body: &[u8]) -> Vec<u8> {
     out
 }
 
-fn mempool_contents(ctx: &RpcContext, query: &str) -> Result<Value, RestReply> {
+#[doc(hidden)]
+pub fn mempool_contents(ctx: &RpcContext, query: &str) -> Result<Value, RestReply> {
     let verbose = query_flag(query, "verbose", true)?;
     let seq = query_flag(query, "mempool_sequence", false)?;
     if verbose && seq {
@@ -463,7 +483,8 @@ fn mempool_contents(ctx: &RpcContext, query: &str) -> Result<Value, RestReply> {
     getrawmempool(ctx, &RpcParams::named(named)).map_err(rpc_to_rest)
 }
 
-fn query_flag(query: &str, name: &str, default: bool) -> Result<bool, RestReply> {
+#[doc(hidden)]
+pub fn query_flag(query: &str, name: &str, default: bool) -> Result<bool, RestReply> {
     for pair in query.split('&') {
         let Some((k, v)) = pair.split_once('=') else {
             continue;
@@ -483,7 +504,8 @@ fn query_flag(query: &str, name: &str, default: bool) -> Result<bool, RestReply>
     Ok(default)
 }
 
-fn map_tx_missing(txid: &str, r: Result<Value, Value>) -> Result<Value, RestReply> {
+#[doc(hidden)]
+pub fn map_tx_missing(txid: &str, r: Result<Value, Value>) -> Result<Value, RestReply> {
     match r {
         Ok(v) => Ok(v),
         Err(e) => {
@@ -500,7 +522,8 @@ fn map_tx_missing(txid: &str, r: Result<Value, Value>) -> Result<Value, RestRepl
     }
 }
 
-fn json_only(fmt: RestFmt, v: Result<Value, Value>) -> Result<RestReply, RestReply> {
+#[doc(hidden)]
+pub fn json_only(fmt: RestFmt, v: Result<Value, Value>) -> Result<RestReply, RestReply> {
     if fmt != RestFmt::Json {
         return Err(err(
             axum::http::StatusCode::NOT_FOUND,
@@ -510,7 +533,8 @@ fn json_only(fmt: RestFmt, v: Result<Value, Value>) -> Result<RestReply, RestRep
     Ok(json_body(v?))
 }
 
-fn parse_hash(hex: &str) -> Result<[u8; 32], RestReply> {
+#[doc(hidden)]
+pub fn parse_hash(hex: &str) -> Result<[u8; 32], RestReply> {
     parse_hash32_display(hex).map_err(|_| {
         err(
             axum::http::StatusCode::BAD_REQUEST,
@@ -519,7 +543,8 @@ fn parse_hash(hex: &str) -> Result<[u8; 32], RestReply> {
     })
 }
 
-fn split_format(path: &str) -> Option<(RestFmt, &str)> {
+#[doc(hidden)]
+pub fn split_format(path: &str) -> Option<(RestFmt, &str)> {
     let (param, suffix) = path.rsplit_once('.')?;
     let fmt = match suffix {
         "bin" => RestFmt::Bin,
@@ -530,7 +555,8 @@ fn split_format(path: &str) -> Option<(RestFmt, &str)> {
     Some((fmt, param))
 }
 
-fn json_body(v: Value) -> RestReply {
+#[doc(hidden)]
+pub fn json_body(v: Value) -> RestReply {
     let mut s = v.to_string();
     s.push('\n');
     RestReply {
@@ -540,7 +566,8 @@ fn json_body(v: Value) -> RestReply {
     }
 }
 
-fn hex_body(hex: &str) -> RestReply {
+#[doc(hidden)]
+pub fn hex_body(hex: &str) -> RestReply {
     let mut s = hex.to_string();
     if !s.ends_with('\n') {
         s.push('\n');
@@ -552,7 +579,8 @@ fn hex_body(hex: &str) -> RestReply {
     }
 }
 
-fn bin_body(raw: Vec<u8>) -> RestReply {
+#[doc(hidden)]
+pub fn bin_body(raw: Vec<u8>) -> RestReply {
     RestReply {
         status: axum::http::StatusCode::OK,
         content_type: "application/octet-stream",
@@ -560,7 +588,8 @@ fn bin_body(raw: Vec<u8>) -> RestReply {
     }
 }
 
-fn err(status: axum::http::StatusCode, msg: &str) -> RestReply {
+#[doc(hidden)]
+pub fn err(status: axum::http::StatusCode, msg: &str) -> RestReply {
     RestReply {
         status,
         content_type: "text/plain",
@@ -568,14 +597,16 @@ fn err(status: axum::http::StatusCode, msg: &str) -> RestReply {
     }
 }
 
-fn rpc_message(err: &Value) -> String {
+#[doc(hidden)]
+pub fn rpc_message(err: &Value) -> String {
     err.get("message")
         .and_then(|m| m.as_str())
         .unwrap_or("error")
         .to_string()
 }
 
-fn rpc_to_rest(v: Value) -> RestReply {
+#[doc(hidden)]
+pub fn rpc_to_rest(v: Value) -> RestReply {
     let code = v.get("code").and_then(|c| c.as_i64()).unwrap_or(ERR_MISC);
     let msg = rpc_message(&v);
     let status = if code == ERR_INVALID_ADDRESS_OR_KEY || msg.contains("not found") {

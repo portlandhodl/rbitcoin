@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-fn usage() -> String {
+#[doc(hidden)]
+pub fn usage() -> String {
     format!(
         "rbitcoin-cli {} — usage: rbitcoin-cli [OPTIONS] <COMMAND> [PARAMS...]\n\
          \n\
@@ -28,14 +29,15 @@ fn usage() -> String {
     )
 }
 
-struct CliConfig {
-    datadir: PathBuf,
-    network: Network,
-    rpc_url: Option<String>,
-    socket: Option<PathBuf>,
-    token_file: Option<PathBuf>,
-    command: Option<String>,
-    params: Vec<String>,
+#[doc(hidden)]
+pub struct CliConfig {
+    pub datadir: PathBuf,
+    pub network: Network,
+    pub rpc_url: Option<String>,
+    pub socket: Option<PathBuf>,
+    pub token_file: Option<PathBuf>,
+    pub command: Option<String>,
+    pub params: Vec<String>,
 }
 
 impl Default for CliConfig {
@@ -52,20 +54,23 @@ impl Default for CliConfig {
     }
 }
 
-enum Action {
+#[doc(hidden)]
+pub enum Action {
     Help,
     Version,
     Call(CliConfig),
 }
 
-fn take_value(args: &[OsString], i: &mut usize, flag: &str) -> Result<String, String> {
+#[doc(hidden)]
+pub fn take_value(args: &[OsString], i: &mut usize, flag: &str) -> Result<String, String> {
     *i += 1;
     args.get(*i)
         .map(|s| s.to_string_lossy().into_owned())
         .ok_or_else(|| format!("{flag} requires a value"))
 }
 
-fn flag_name_and_eq(raw: &str) -> Option<(&str, Option<&str>)> {
+#[doc(hidden)]
+pub fn flag_name_and_eq(raw: &str) -> Option<(&str, Option<&str>)> {
     let rest = raw.strip_prefix("--")?;
     match rest.split_once('=') {
         Some((name, val)) => Some((name, Some(val))),
@@ -73,7 +78,8 @@ fn flag_name_and_eq(raw: &str) -> Option<(&str, Option<&str>)> {
     }
 }
 
-fn parse_args(args: &[OsString]) -> Result<Action, String> {
+#[doc(hidden)]
+pub fn parse_args(args: &[OsString]) -> Result<Action, String> {
     let mut cfg = CliConfig::default();
     let mut i = 1usize;
     while i < args.len() {
@@ -121,19 +127,22 @@ fn parse_args(args: &[OsString]) -> Result<Action, String> {
     Ok(Action::Call(cfg))
 }
 
-fn socket_path(cfg: &CliConfig) -> PathBuf {
+#[doc(hidden)]
+pub fn socket_path(cfg: &CliConfig) -> PathBuf {
     cfg.socket
         .clone()
         .unwrap_or_else(|| cfg.datadir.join("rpc.sock"))
 }
 
-fn token_path(cfg: &CliConfig) -> PathBuf {
+#[doc(hidden)]
+pub fn token_path(cfg: &CliConfig) -> PathBuf {
     cfg.token_file
         .clone()
         .unwrap_or_else(|| cfg.datadir.join("rpc.token"))
 }
 
-fn parse_http_url(url: &str) -> Result<(String, u16), String> {
+#[doc(hidden)]
+pub fn parse_http_url(url: &str) -> Result<(String, u16), String> {
     let rest = url
         .strip_prefix("http://")
         .or_else(|| url.strip_prefix("https://"))
@@ -150,7 +159,8 @@ fn parse_http_url(url: &str) -> Result<(String, u16), String> {
     Ok((host.to_string(), port))
 }
 
-fn read_token(path: &Path) -> Result<String, String> {
+#[doc(hidden)]
+pub fn read_token(path: &Path) -> Result<String, String> {
     let line =
         std::fs::read_to_string(path).map_err(|e| format!("read token {}: {e}", path.display()))?;
     let t = line.trim();
@@ -160,11 +170,13 @@ fn read_token(path: &Path) -> Result<String, String> {
     Ok(t.to_string())
 }
 
-fn param_value(raw: &str) -> Value {
+#[doc(hidden)]
+pub fn param_value(raw: &str) -> Value {
     serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()))
 }
 
-fn rpc_http(
+#[doc(hidden)]
+pub fn rpc_http(
     mut stream: impl Read + Write,
     host: &str,
     port: u16,
@@ -215,7 +227,8 @@ fn rpc_http(
     Ok(v.get("result").cloned().unwrap_or(Value::Null))
 }
 
-fn connect_unix(path: &Path) -> Result<socket2::Socket, String> {
+#[doc(hidden)]
+pub fn connect_unix(path: &Path) -> Result<socket2::Socket, String> {
     let sock = socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)
         .map_err(|e| format!("unix socket: {e}"))?;
     let addr = socket2::SockAddr::unix(path).map_err(|e| format!("unix addr: {e}"))?;
@@ -224,7 +237,8 @@ fn connect_unix(path: &Path) -> Result<socket2::Socket, String> {
     Ok(sock)
 }
 
-fn read_http(stream: &mut impl Read) -> Result<(u16, String), String> {
+#[doc(hidden)]
+pub fn read_http(stream: &mut impl Read) -> Result<(u16, String), String> {
     let mut buf = Vec::new();
     stream
         .read_to_end(&mut buf)
@@ -243,14 +257,16 @@ fn read_http(stream: &mut impl Read) -> Result<(u16, String), String> {
     Ok((status, body.to_string()))
 }
 
-fn format_result(v: &Value) -> String {
+#[doc(hidden)]
+pub fn format_result(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         other => other.to_string(),
     }
 }
 
-fn dispatch_call(cfg: &CliConfig) -> Result<String, String> {
+#[doc(hidden)]
+pub fn dispatch_call(cfg: &CliConfig) -> Result<String, String> {
     let cmd = cfg.command.as_deref().ok_or_else(usage)?;
     if cmd == "help" {
         return Ok(usage());
@@ -308,228 +324,5 @@ where
                 ExitCode::from(1)
             }
         },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::path::PathBuf;
-    use std::thread;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn exit_ok(c: ExitCode) -> bool {
-        format!("{c:?}") == format!("{:?}", ExitCode::SUCCESS)
-    }
-
-    fn tmp_datadir() -> PathBuf {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let p = std::env::temp_dir().join(format!("rbitcoin-cli-{n}"));
-        std::fs::create_dir_all(&p).unwrap();
-        p
-    }
-
-    fn spawn_rpc_mock(token: &str, result_json: &str) -> (u16, thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let expect = format!("Bearer {token}");
-        let result = result_json.to_string();
-        let h = thread::spawn(move || {
-            let (mut s, _) = listener.accept().unwrap();
-            let mut raw = Vec::new();
-            let mut tmp = [0u8; 1024];
-            while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
-                let n = s.read(&mut tmp).unwrap();
-                if n == 0 {
-                    break;
-                }
-                raw.extend_from_slice(&tmp[..n]);
-            }
-            let req = String::from_utf8_lossy(&raw);
-            let authorized = req.lines().any(|line| {
-                line.trim()
-                    .strip_prefix("Authorization:")
-                    .map(|r| r.trim().eq_ignore_ascii_case(&expect))
-                    .unwrap_or(false)
-            });
-            let body = if authorized {
-                format!("{{\"jsonrpc\":\"1.0\",\"id\":\"1\",\"result\":{result},\"error\":null}}\n")
-            } else {
-                String::new()
-            };
-            if authorized {
-                let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-                s.write_all(resp.as_bytes()).unwrap();
-            } else {
-                s.write_all(b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Bearer realm=\"jsonrpc\"\r\nContent-Length: 13\r\nConnection: close\r\n\r\nUnauthorized\n").unwrap();
-            }
-        });
-        (port, h)
-    }
-
-    #[test]
-    fn param_tokens_json_or_string() {
-        assert_eq!(param_value("0"), serde_json::json!(0));
-        assert_eq!(param_value("true"), serde_json::json!(true));
-        assert_eq!(param_value("abc"), serde_json::json!("abc"));
-    }
-
-    #[test]
-    fn equals_form_datadir_is_accepted() {
-        let dir = tmp_datadir();
-        std::fs::write(dir.join("rpc.token"), "s3cret").unwrap();
-        let (port, h) = spawn_rpc_mock("s3cret", "0");
-        let flag = format!("--datadir={}", dir.display());
-        let code = cli_main([
-            "rbitcoin-cli",
-            flag.as_str(),
-            &format!("--rpc-url=http://127.0.0.1:{port}"),
-            "getblockcount",
-        ]);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(exit_ok(code), "--foo=bar form must parse, got {code:?}");
-        let _ = h.join();
-    }
-
-    #[test]
-    fn usage_describes_every_option() {
-        let u = usage();
-        for needle in [
-            "--datadir PATH",
-            "--network NET",
-            "--rpc-url URL",
-            "--rpc-token-file PATH",
-            "-h, --help",
-            "-V, --version",
-        ] {
-            assert!(u.contains(needle), "usage must list {needle}");
-        }
-        assert!(
-            !u.contains("--rpcuser") && !u.contains("--rpcport") && !u.contains("--rpcconnect"),
-            "dropped Core names must not be advertised: {u}"
-        );
-        assert!(
-            u.contains("-V, --version") && u.contains("print version"),
-            "version must have a description"
-        );
-    }
-
-    #[test]
-    fn getblockcount_token_against_mock() {
-        let dir = tmp_datadir();
-        std::fs::write(dir.join("rpc.token"), "s3cret").unwrap();
-        let (port, h) = spawn_rpc_mock("s3cret", "0");
-        let code = cli_main([
-            "rbitcoin-cli",
-            "--datadir",
-            dir.to_str().unwrap(),
-            "--rpc-url",
-            &format!("http://127.0.0.1:{port}"),
-            "getblockcount",
-        ]);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(
-            exit_ok(code),
-            "token getblockcount must succeed against a live RPC mock, got {code:?}"
-        );
-        let _ = h.join();
-    }
-
-    #[test]
-    fn missing_auth_is_unauthorized() {
-        let (port, _h) = spawn_rpc_mock("alice", "0");
-        let dir = tmp_datadir();
-        let code = cli_main([
-            "rbitcoin-cli",
-            "--datadir",
-            dir.to_str().unwrap(),
-            "--rpc-url",
-            &format!("http://127.0.0.1:{port}"),
-            "getblockcount",
-        ]);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(!exit_ok(code));
-    }
-
-    #[test]
-    fn default_rpc_port_follows_network() {
-        assert_eq!(Network::Mainnet.default_rpc_port(), 8332);
-        assert_eq!(Network::Regtest.default_rpc_port(), 18443);
-    }
-
-    /// Answer one JSON-RPC request on `listener` with `"result": 7`.
-    #[cfg(unix)]
-    fn serve_one_rpc(listener: std::os::unix::net::UnixListener) -> thread::JoinHandle<()> {
-        thread::spawn(move || {
-            let (mut s, _) = listener.accept().unwrap();
-            let mut raw = Vec::new();
-            let mut tmp = [0u8; 1024];
-            while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
-                let n = s.read(&mut tmp).unwrap();
-                if n == 0 {
-                    break;
-                }
-                raw.extend_from_slice(&tmp[..n]);
-            }
-            let body =
-                "{\"jsonrpc\":\"1.0\",\"id\":\"1\",\"result\":7,\"error\":null}\n".to_string();
-            let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            s.write_all(resp.as_bytes()).unwrap();
-        })
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn unix_socket_needs_no_token() {
-        use std::os::unix::net::UnixListener;
-        let dir = tmp_datadir();
-        let sock = dir.join("rpc.sock");
-        let h = serve_one_rpc(UnixListener::bind(&sock).unwrap());
-        let code = cli_main([
-            "rbitcoin-cli",
-            "--datadir",
-            dir.to_str().unwrap(),
-            "getblockcount",
-        ]);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(
-            exit_ok(code),
-            "unix getblockcount must succeed, got {code:?}"
-        );
-        let _ = h.join();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn rpc_socket_reaches_a_socket_outside_the_datadir() {
-        use std::os::unix::net::UnixListener;
-        let dir = tmp_datadir();
-        let sock = dir.join("rpc-elsewhere.sock");
-        let h = serve_one_rpc(UnixListener::bind(&sock).unwrap());
-        let code = cli_main([
-            "rbitcoin-cli",
-            "--datadir",
-            dir.join("no-such-datadir").to_str().unwrap(),
-            "--rpc-socket",
-            sock.to_str().unwrap(),
-            "getblockcount",
-        ]);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(
-            exit_ok(code),
-            "--rpc-socket getblockcount must succeed, got {code:?}"
-        );
-        let _ = h.join();
     }
 }

@@ -2,8 +2,10 @@ use rbitcoin_cli::cli_main;
 use std::process::ExitCode;
 
 #[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+#[doc(hidden)]
+pub static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-fn main() -> ExitCode {
+#[doc(hidden)]
+pub fn main() -> ExitCode {
     cli_main(std::env::args_os())
 }

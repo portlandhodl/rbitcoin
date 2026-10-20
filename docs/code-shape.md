@@ -66,7 +66,7 @@ implementation:
 2. Choose the crate that owns the concept (rule 6).
 3. If an arm has no observable assert, add one **before** moving the code.
 4. Green is the extract only — no new branches. Wrap the old API, switch one
-   caller at a time, keep `--lib` compiling.
+   caller at a time, keep `cargo check -p <crate>` compiling.
 5. Delete the old path, the unused flag, and restating comments.
 
 Do not invent a failing test for a pure move that is already pinned.

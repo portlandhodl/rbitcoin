@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-sv2"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "Stratum v2 Template Distribution Protocol server (Noise over TCP)"
+
+[lib]
+test = false
 
 [features]
 mutants = []
@@ -27,6 +31,10 @@ template_distribution_sv2 = { workspace = true }
 
 [dev-dependencies]
 rbitcoin-query = { workspace = true }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

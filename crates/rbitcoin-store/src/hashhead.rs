@@ -24,14 +24,19 @@ use std::sync::Mutex;
 /// Open-address key length (prefix of full 32-byte hash).
 pub const HEAD_KEY_LEN: usize = 16;
 /// Slot = key[16] + packed value[8].
-const SLOT_SIZE: usize = HEAD_KEY_LEN + 8;
+#[doc(hidden)]
+pub const SLOT_SIZE: usize = HEAD_KEY_LEN + 8;
 /// High bit of packed value: multi-list head (else sole create_fk).
-const MULTI_BIT: u64 = 1u64 << 63;
-const MULTI_REC_LEN: usize = 16;
-const DEFAULT_SLOTS: u64 = 64;
+#[doc(hidden)]
+pub const MULTI_BIT: u64 = 1u64 << 63;
+#[doc(hidden)]
+pub const MULTI_REC_LEN: usize = 16;
+#[doc(hidden)]
+pub const DEFAULT_SLOTS: u64 = 64;
 use crate::open_address::{self, MAX_LOAD_DEN, MAX_LOAD_NUM};
 /// Slots per page-cache RMW chunk (128 × 24 B = 3 KiB).
-const SLOTS_PER_CHUNK: u64 = 128;
+#[doc(hidden)]
+pub const SLOTS_PER_CHUNK: u64 = 128;
 
 pub type HeadKey = [u8; HEAD_KEY_LEN];
 
@@ -43,19 +48,22 @@ pub fn head_key_prefix(full: &[u8; 32]) -> HeadKey {
 }
 
 #[inline]
-fn pack_sole(fk: Fk) -> u64 {
+#[doc(hidden)]
+pub fn pack_sole(fk: Fk) -> u64 {
     debug_assert_eq!(fk.0 & MULTI_BIT, 0);
     fk.0
 }
 
 #[inline]
-fn pack_multi(list_head: Fk) -> u64 {
+#[doc(hidden)]
+pub fn pack_multi(list_head: Fk) -> u64 {
     debug_assert!(!list_head.is_null());
     list_head.0 | MULTI_BIT
 }
 
 #[inline]
-fn unpack_value(v: u64) -> (bool, Fk) {
+#[doc(hidden)]
+pub fn unpack_value(v: u64) -> (bool, Fk) {
     if v & MULTI_BIT != 0 {
         (true, Fk(v & !MULTI_BIT))
     } else {
@@ -63,9 +71,10 @@ fn unpack_value(v: u64) -> (bool, Fk) {
     }
 }
 /// Max chunks held in the insert cache (~1.25 MiB).
-const CHUNK_CACHE_MAX: usize = 256;
+#[doc(hidden)]
+pub const CHUNK_CACHE_MAX: usize = 256;
 
-pub(crate) const HASH_HEAD_FULL: &str = "invariant: hash head full";
+pub const HASH_HEAD_FULL: &str = "invariant: hash head full";
 
 /// Disk pre-size policy for hash heads.
 ///
@@ -172,19 +181,22 @@ pub fn sh_main_shard_count(scale: HeadScale) -> usize {
 }
 
 /// Append-only multi-fk list for a single 16-byte head key (prefix / BIP30).
-struct MultiList {
-    file: TableFile,
-    count: Mutex<u64>,
+#[doc(hidden)]
+pub struct MultiList {
+    pub file: TableFile,
+    pub count: Mutex<u64>,
 }
 
 impl MultiList {
-    fn path_for(head_path: &Path) -> PathBuf {
+    #[doc(hidden)]
+    pub fn path_for(head_path: &Path) -> PathBuf {
         let mut p = head_path.as_os_str().to_os_string();
         p.push(".mlt");
         PathBuf::from(p)
     }
 
-    fn create(head_path: &Path) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn create(head_path: &Path) -> Result<Self, StoreError> {
         let path = Self::path_for(head_path);
         // ArrayLink kind is shared with Class C; multi-list is
         // linear append like idx — always FdOnly.
@@ -195,7 +207,8 @@ impl MultiList {
         })
     }
 
-    fn open(head_path: &Path) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn open(head_path: &Path) -> Result<Self, StoreError> {
         let path = Self::path_for(head_path);
         if !path.exists() {
             return Self::create(head_path);
@@ -211,11 +224,13 @@ impl MultiList {
         })
     }
 
-    fn offset(id: u64) -> u64 {
+    #[doc(hidden)]
+    pub fn offset(id: u64) -> u64 {
         FILE_HEADER_LEN as u64 + (id - 1) * MULTI_REC_LEN as u64
     }
 
-    fn append(&self, create_fk: Fk, next: Fk) -> Result<Fk, StoreError> {
+    #[doc(hidden)]
+    pub fn append(&self, create_fk: Fk, next: Fk) -> Result<Fk, StoreError> {
         let mut count = self.count.lock().unwrap();
         let id = *count + 1;
         let mut buf = [0u8; MULTI_REC_LEN];
@@ -226,7 +241,8 @@ impl MultiList {
         Ok(Fk(id))
     }
 
-    fn get(&self, fk: Fk) -> Result<(Fk, Fk), StoreError> {
+    #[doc(hidden)]
+    pub fn get(&self, fk: Fk) -> Result<(Fk, Fk), StoreError> {
         let id = fk.get().ok_or(StoreError::InvalidFk)?;
         let count = *self.count.lock().unwrap();
         if id == 0 || id > count {
@@ -240,7 +256,8 @@ impl MultiList {
         ))
     }
 
-    fn collect(&self, head: Fk) -> Result<Vec<Fk>, StoreError> {
+    #[doc(hidden)]
+    pub fn collect(&self, head: Fk) -> Result<Vec<Fk>, StoreError> {
         let mut out = Vec::new();
         let mut cur = head;
         let mut guard = 0u32;
@@ -256,49 +273,56 @@ impl MultiList {
         Ok(out)
     }
 
-    fn contains(&self, head: Fk, target: Fk) -> Result<bool, StoreError> {
+    #[doc(hidden)]
+    pub fn contains(&self, head: Fk, target: Fk) -> Result<bool, StoreError> {
         Ok(self.collect(head)?.contains(&target))
     }
 
-    fn flush(&self) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn flush(&self) -> Result<(), StoreError> {
         self.file.flush()
     }
 
-    fn flush_async(&self) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn flush_async(&self) -> Result<(), StoreError> {
         self.file.flush_async()
     }
 }
 
 pub struct HashHead {
-    file: TableFile,
-    multi: MultiList,
-    state: Mutex<HashState>,
+    pub file: TableFile,
+    pub multi: MultiList,
+    pub state: Mutex<HashState>,
 }
 
-struct HashState {
-    slots: u64,
-    occupied: u64,
+#[doc(hidden)]
+pub struct HashState {
+    pub slots: u64,
+    pub occupied: u64,
 }
 
-fn grow_part_path(head_path: &Path) -> PathBuf {
+#[doc(hidden)]
+pub fn grow_part_path(head_path: &Path) -> PathBuf {
     let mut p = head_path.as_os_str().to_os_string();
     p.push(".grow");
     PathBuf::from(p)
 }
 
-fn mlt_path(head_path: &Path) -> PathBuf {
+#[doc(hidden)]
+pub fn mlt_path(head_path: &Path) -> PathBuf {
     let mut p = head_path.as_os_str().to_os_string();
     p.push(".mlt");
     PathBuf::from(p)
 }
 
-pub(crate) fn discard_grow_part(head_path: &Path) {
+pub fn discard_grow_part(head_path: &Path) {
     let grow = grow_part_path(head_path);
     let _ = std::fs::remove_file(&grow);
     let _ = std::fs::remove_file(mlt_path(&grow));
 }
 
-fn install_grown_oa(from: &Path, to: &Path) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn install_grown_oa(from: &Path, to: &Path) -> Result<(), StoreError> {
     match std::fs::rename(from, to) {
         Ok(()) => Ok(()),
         Err(_) => {
@@ -379,11 +403,13 @@ impl HashHead {
         })
     }
 
-    fn hash_slot(key: &HeadKey, slots: u64) -> u64 {
+    #[doc(hidden)]
+    pub fn hash_slot(key: &HeadKey, slots: u64) -> u64 {
         open_address::primary_slot(key, slots)
     }
 
-    fn slot_file_off(slot: u64) -> u64 {
+    #[doc(hidden)]
+    pub fn slot_file_off(slot: u64) -> u64 {
         FILE_HEADER_LEN as u64 + slot * SLOT_SIZE as u64
     }
 
@@ -395,7 +421,8 @@ impl HashHead {
         self.get_all_prefix(&key)
     }
 
-    fn get_all_prefix(&self, key: &HeadKey) -> Result<Vec<Fk>, StoreError> {
+    #[doc(hidden)]
+    pub fn get_all_prefix(&self, key: &HeadKey) -> Result<Vec<Fk>, StoreError> {
         let slots = self.state.lock().unwrap().slots;
         // Chunk-coalesced probe (same 128-slot windows as insert) — one pread per
         // chunk under FdOnly, not one pread per open-address hop.
@@ -422,24 +449,24 @@ impl HashHead {
     }
 
     /// Number of occupied hash slots (open-address load observer).
-    pub(crate) fn occupied(&self) -> u64 {
+    pub fn occupied(&self) -> u64 {
         self.state.lock().unwrap().occupied
     }
 
-    pub(crate) fn multi_count(&self) -> u64 {
+    pub fn multi_count(&self) -> u64 {
         *self.multi.count.lock().unwrap()
     }
 
-    pub(crate) fn slots(&self) -> u64 {
+    pub fn slots(&self) -> u64 {
         self.state.lock().unwrap().slots
     }
 
     #[inline]
-    pub(crate) fn max_occupied(slots: u64) -> u64 {
+    pub fn max_occupied(slots: u64) -> u64 {
         slots.saturating_mul(MAX_LOAD_NUM) / MAX_LOAD_DEN
     }
 
-    pub(crate) fn at_load_cap(&self) -> bool {
+    pub fn at_load_cap(&self) -> bool {
         let s = self.state.lock().unwrap();
         s.occupied >= Self::max_occupied(s.slots)
     }
@@ -454,7 +481,7 @@ impl HashHead {
     }
 
     /// Single-key insert (convenience; batch path is [`Self::insert_many`]).
-    #[cfg(test)]
+    #[cfg(debug_assertions)]
     pub fn insert(&self, key: &[u8; 32], fk: Fk) -> Result<Option<Fk>, StoreError> {
         debug_assert!(!fk.is_null());
         let mut prev = None;
@@ -462,13 +489,14 @@ impl HashHead {
         Ok(prev)
     }
 
-    #[cfg(test)]
+    #[cfg(debug_assertions)]
     pub fn insert_many(&self, entries: &[([u8; 32], Fk)]) -> Result<(), StoreError> {
         self.insert_many_with(entries, |_| {})
     }
 
-    #[cfg(test)]
-    fn insert_many_with(
+    #[cfg(debug_assertions)]
+    #[doc(hidden)]
+    pub fn insert_many_with(
         &self,
         entries: &[([u8; 32], Fk)],
         on_prev: impl FnMut(Option<Fk>),
@@ -486,7 +514,7 @@ impl HashHead {
     /// When the table is **empty**, builds the open-addressing table in RAM and
     /// writes it in one sequential pass. Does not grow an occupied table.
     /// Returns unapplied pairs when this gen hits [`HASH_HEAD_FULL`].
-    pub(crate) fn insert_many_file(
+    pub fn insert_many_file(
         &self,
         entries: &[([u8; 32], Fk)],
         mut on_prev: impl FnMut(Option<Fk>),
@@ -552,7 +580,8 @@ impl HashHead {
     /// Same 16-byte prefix with a different fk becomes a multi-list (BIP30 / prefix
     /// collision). Builds the full slot image in RAM then one `write_at` — used for
     /// cold run→head materialize.
-    fn bulk_fill_empty(
+    #[doc(hidden)]
+    pub fn bulk_fill_empty(
         &self,
         entries: &[([u8; 32], Fk)],
         mut on_prev: impl FnMut(Option<Fk>),
@@ -614,7 +643,8 @@ impl HashHead {
     }
 
     /// Create a new OA file at `path`, reopening an existing `.mlt` if present.
-    fn create_replaced_oa(path: &Path, slots: u64) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn create_replaced_oa(path: &Path, slots: u64) -> Result<Self, StoreError> {
         let slots = slots.max(2).next_power_of_two();
         let file = TableFile::create(path, TableKind::HashHead)?;
         let multi = MultiList::open(path)?;
@@ -634,7 +664,7 @@ impl HashHead {
     ///
     /// Writes `path.grow`, fsyncs, then rename over the live file so a crash
     /// during rewrite leaves the previous undersized OA.
-    pub(crate) fn rewrite_to_slots(self, new_slots: u64) -> Result<Self, StoreError> {
+    pub fn rewrite_to_slots(self, new_slots: u64) -> Result<Self, StoreError> {
         let new_slots = new_slots.max(2).next_power_of_two();
         let (old_slots, occupied) = {
             let state = self.state.lock().unwrap();
@@ -719,21 +749,24 @@ impl HashHead {
 }
 
 /// Chunk-buffered slot RMW for a fixed `slots` generation.
-struct SlotPageCache<'a> {
-    head: &'a HashHead,
-    slots: u64,
-    chunks: BTreeMap<u64, CachedChunk>,
+#[doc(hidden)]
+pub struct SlotPageCache<'a> {
+    pub head: &'a HashHead,
+    pub slots: u64,
+    pub chunks: BTreeMap<u64, CachedChunk>,
 }
 
-struct CachedChunk {
+#[doc(hidden)]
+pub struct CachedChunk {
     /// First slot index covered by `data`.
-    base_slot: u64,
-    data: Vec<u8>,
-    dirty: bool,
+    pub base_slot: u64,
+    pub data: Vec<u8>,
+    pub dirty: bool,
 }
 
 impl<'a> SlotPageCache<'a> {
-    fn new(head: &'a HashHead, slots: u64) -> Self {
+    #[doc(hidden)]
+    pub fn new(head: &'a HashHead, slots: u64) -> Self {
         Self {
             head,
             slots,
@@ -742,7 +775,12 @@ impl<'a> SlotPageCache<'a> {
     }
 
     /// Insert / merge `fk` under the 16-byte prefix of `full`.
-    fn try_insert_merge(&mut self, full: &[u8; 32], fk: Fk) -> Result<InsertResult, StoreError> {
+    #[doc(hidden)]
+    pub fn try_insert_merge(
+        &mut self,
+        full: &[u8; 32],
+        fk: Fk,
+    ) -> Result<InsertResult, StoreError> {
         let key = head_key_prefix(full);
         let mut slot = HashHead::hash_slot(&key, self.slots);
         for _ in 0..self.slots {
@@ -772,7 +810,12 @@ impl<'a> SlotPageCache<'a> {
         Ok(InsertResult::NeedRehash)
     }
 
-    fn try_place_raw(&mut self, key: &HeadKey, packed: u64) -> Result<InsertResult, StoreError> {
+    #[doc(hidden)]
+    pub fn try_place_raw(
+        &mut self,
+        key: &HeadKey,
+        packed: u64,
+    ) -> Result<InsertResult, StoreError> {
         let mut slot = HashHead::hash_slot(key, self.slots);
         for _ in 0..self.slots {
             let (k, old) = self.read_slot(slot)?;
@@ -795,7 +838,8 @@ impl<'a> SlotPageCache<'a> {
         Ok(InsertResult::NeedRehash)
     }
 
-    fn read_slot(&mut self, slot: u64) -> Result<(HeadKey, u64), StoreError> {
+    #[doc(hidden)]
+    pub fn read_slot(&mut self, slot: u64) -> Result<(HeadKey, u64), StoreError> {
         let chunk = self.ensure_chunk(slot)?;
         let rel = ((slot - chunk.base_slot) as usize) * SLOT_SIZE;
         let k: HeadKey = chunk.data[rel..rel + HEAD_KEY_LEN].try_into().unwrap();
@@ -807,7 +851,8 @@ impl<'a> SlotPageCache<'a> {
         Ok((k, packed))
     }
 
-    fn write_slot(&mut self, slot: u64, key: &HeadKey, packed: u64) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn write_slot(&mut self, slot: u64, key: &HeadKey, packed: u64) -> Result<(), StoreError> {
         let chunk = self.ensure_chunk(slot)?;
         let rel = ((slot - chunk.base_slot) as usize) * SLOT_SIZE;
         chunk.data[rel..rel + HEAD_KEY_LEN].copy_from_slice(key);
@@ -816,7 +861,8 @@ impl<'a> SlotPageCache<'a> {
         Ok(())
     }
 
-    fn ensure_chunk(&mut self, slot: u64) -> Result<&mut CachedChunk, StoreError> {
+    #[doc(hidden)]
+    pub fn ensure_chunk(&mut self, slot: u64) -> Result<&mut CachedChunk, StoreError> {
         let chunk_idx = slot / SLOTS_PER_CHUNK;
         if !self.chunks.contains_key(&chunk_idx) {
             if self.chunks.len() >= CHUNK_CACHE_MAX {
@@ -840,7 +886,8 @@ impl<'a> SlotPageCache<'a> {
         Ok(self.chunks.get_mut(&chunk_idx).unwrap())
     }
 
-    fn flush(&mut self) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn flush(&mut self) -> Result<(), StoreError> {
         // BTreeMap iterates in chunk/slot order → sequential writeback (map or pwrite).
         for (_, chunk) in self.chunks.iter_mut() {
             if chunk.dirty {
@@ -854,7 +901,8 @@ impl<'a> SlotPageCache<'a> {
     }
 }
 
-fn is_empty_slot(k: &HeadKey, packed: u64) -> bool {
+#[doc(hidden)]
+pub fn is_empty_slot(k: &HeadKey, packed: u64) -> bool {
     packed == 0 && *k == [0u8; HEAD_KEY_LEN]
 }
 
@@ -863,7 +911,8 @@ fn is_empty_slot(k: &HeadKey, packed: u64) -> bool {
 /// - Same fk already present → unchanged packed value.
 /// - Sole → different fk: convert to multi (new first, then old).
 /// - Multi: prepend if not already in the chain.
-fn merge_packed(multi: &MultiList, packed: u64, fk: Fk) -> Result<u64, StoreError> {
+#[doc(hidden)]
+pub fn merge_packed(multi: &MultiList, packed: u64, fk: Fk) -> Result<u64, StoreError> {
     let (is_multi, head) = unpack_value(packed);
     if is_multi {
         if multi.contains(head, fk)? {
@@ -884,381 +933,12 @@ fn merge_packed(multi: &MultiList, packed: u64, fk: Fk) -> Result<u64, StoreErro
     Ok(pack_multi(new_head))
 }
 
-enum InsertResult {
+#[doc(hidden)]
+pub enum InsertResult {
     Done {
         prev: Option<Fk>,
         /// True when a previously empty open-address slot became occupied.
         new_slot: bool,
     },
     NeedRehash,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn create_defaults_to_fd_only() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(MultiList::path_for(&path));
-        let h = HashHead::create_with_slots(&path, DEFAULT_SLOTS).unwrap();
-        drop(h);
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(MultiList::path_for(&path));
-    }
-
-    fn tmp_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "rbitcoin-hh-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
-    }
-
-    #[test]
-    fn dense_load_inserts_until_full_without_rehash() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, DEFAULT_SLOTS).unwrap();
-        for i in 0u64..50 {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&i.to_le_bytes());
-            h.insert(&key, Fk(i + 1)).unwrap();
-        }
-        for i in 0u64..50 {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&i.to_le_bytes());
-            assert_eq!(h.get(&key).unwrap(), Some(Fk(i + 1)));
-        }
-        let mut overflow = None;
-        for i in 50u64..70 {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&i.to_le_bytes());
-            match h.insert(&key, Fk(i + 1)) {
-                Ok(_) => continue,
-                Err(e) => {
-                    overflow = Some(e);
-                    break;
-                }
-            }
-        }
-        let err = overflow.expect("64-slot head must refuse past 7/8");
-        assert!(
-            matches!(err, StoreError::Corrupt(HASH_HEAD_FULL)),
-            "got {err}"
-        );
-        assert_eq!(h.slots(), 64);
-        assert_eq!(h.get(&[0u8; 32]).unwrap(), Some(Fk(1)));
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn persist_survives_reopen() {
-        let path = tmp_path();
-        {
-            let h = HashHead::create_with_slots(&path, 256).unwrap();
-            let mut batch = Vec::new();
-            for i in 0u64..100 {
-                let mut key = [0u8; 32];
-                key[0..8].copy_from_slice(&i.to_le_bytes());
-                batch.push((key, Fk(i + 1)));
-            }
-            h.insert_many(&batch).unwrap();
-            h.flush().unwrap();
-        }
-        let h = HashHead::open(&path).unwrap();
-        assert_eq!(h.occupied(), 100);
-        for i in 0u64..100 {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&i.to_le_bytes());
-            assert_eq!(h.get(&key).unwrap(), Some(Fk(i + 1)));
-        }
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn bulk_fill_empty_roundtrip() {
-        // Cold materialize path: empty table + pre-size + one insert_many.
-        let path = tmp_path();
-        // 20_000 keys at load 7/8 need 32_768 slots. create_with_slots is the live presize.
-        let h = HashHead::create_with_slots(&path, 32_768).unwrap();
-        let mut batch = Vec::new();
-        for i in 0u64..20_000 {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&i.to_le_bytes());
-            batch.push((key, Fk(i + 1)));
-        }
-        assert_eq!(h.occupied(), 0);
-        h.insert_many(&batch).unwrap();
-        assert_eq!(h.occupied(), 20_000);
-        for i in [0u64, 1, 9999, 19_999] {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&i.to_le_bytes());
-            assert_eq!(h.get(&key).unwrap(), Some(Fk(i + 1)));
-        }
-        // Second wave uses RMW path (non-empty).
-        let mut more = Vec::new();
-        for i in 20_000u64..21_000 {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&i.to_le_bytes());
-            more.push((key, Fk(i + 1)));
-        }
-        h.insert_many(&more).unwrap();
-        assert_eq!(h.occupied(), 21_000);
-        assert_eq!(h.get(&[0u8; 32]).unwrap(), Some(Fk(1)));
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn create_with_slots_sparse_presize() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, 1024).unwrap();
-        assert_eq!(h.state.lock().unwrap().slots, 1024);
-        assert_eq!(h.occupied(), 0);
-        h.insert(&[1u8; 32], Fk(1)).unwrap();
-        assert_eq!(h.get(&[1u8; 32]).unwrap(), Some(Fk(1)));
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn mainnet_scale_slot_targets() {
-        assert_eq!(HeadScale::Tiny.initial_slots(), 64);
-        assert_eq!(HeadScale::Mainnet.initial_slots(), 1 << 22);
-        assert_eq!(HeadScale::Tiny.sh_main_shards(), 1);
-        assert_eq!(HeadScale::Mainnet.sh_main_shards(), SH_MAIN_SHARDS_MAINNET);
-        assert_eq!(sh_main_shard_count(HeadScale::Tiny), 1);
-        assert_eq!(
-            sh_main_shard_count(HeadScale::Mainnet),
-            SH_MAIN_SHARDS_MAINNET
-        );
-    }
-
-    #[test]
-    fn open_does_not_require_full_ram_copy() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, DEFAULT_SLOTS).unwrap();
-        h.insert(&[1u8; 32], Fk(42)).unwrap();
-        h.flush().unwrap();
-        drop(h);
-        let h = HashHead::open(&path).unwrap();
-        assert_eq!(h.get(&[1u8; 32]).unwrap(), Some(Fk(42)));
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn slot_sorted_batch_matches_sequential_inserts() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, 1024).unwrap();
-        let mut batch = Vec::new();
-        for i in 0u64..500 {
-            let mut key = [0u8; 32];
-            // Scramble key so primary slots are not insertion order.
-            key[0..8].copy_from_slice(&(i.wrapping_mul(0x9e3779b97f4a7c15)).to_le_bytes());
-            batch.push((key, Fk(i + 1)));
-        }
-        h.insert_many(&batch).unwrap();
-        for (key, fk) in &batch {
-            assert_eq!(h.get(key).unwrap(), Some(*fk));
-        }
-        // Overwrite subset
-        let mut upd = Vec::new();
-        for i in 0u64..50 {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&(i.wrapping_mul(0x9e3779b97f4a7c15)).to_le_bytes());
-            upd.push((key, Fk(10_000 + i)));
-        }
-        h.insert_many(&upd).unwrap();
-        for (key, fk) in &upd {
-            assert_eq!(h.get(key).unwrap(), Some(*fk));
-        }
-        assert_eq!(h.occupied(), 500);
-        cleanup_hh(&path);
-    }
-
-    fn cleanup_hh(path: &std::path::Path) {
-        let _ = std::fs::remove_file(path);
-        let mut mlt = path.as_os_str().to_os_string();
-        mlt.push(".mlt");
-        let _ = std::fs::remove_file(mlt);
-        discard_grow_part(path);
-    }
-
-    #[test]
-    fn prefix_collision_multi_list() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, DEFAULT_SLOTS).unwrap();
-        // Same first 16 bytes, different trailing bytes.
-        let mut k1 = [0u8; 32];
-        k1[0] = 0xab;
-        k1[15] = 1;
-        k1[16] = 1;
-        let mut k2 = k1;
-        k2[16] = 2;
-        h.insert(&k1, Fk(10)).unwrap();
-        h.insert(&k2, Fk(20)).unwrap();
-        assert_eq!(h.occupied(), 1); // one prefix slot
-        let all1 = h.get_all(&k1).unwrap();
-        let all2 = h.get_all(&k2).unwrap();
-        assert_eq!(all1, all2);
-        assert!(all1.contains(&Fk(10)) && all1.contains(&Fk(20)));
-        // Newest first
-        assert_eq!(all1[0], Fk(20));
-        assert_eq!(h.get(&k1).unwrap(), Some(Fk(20)));
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn bip30_same_full_key_multi() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, DEFAULT_SLOTS).unwrap();
-        let key = [0x42u8; 32];
-        h.insert(&key, Fk(1)).unwrap();
-        h.insert(&key, Fk(2)).unwrap(); // same txid, second Class A row
-        let all = h.get_all(&key).unwrap();
-        assert_eq!(all, vec![Fk(2), Fk(1)]);
-        assert_eq!(h.occupied(), 1);
-        // Idempotent re-insert of existing fk
-        h.insert(&key, Fk(2)).unwrap();
-        assert_eq!(h.get_all(&key).unwrap(), vec![Fk(2), Fk(1)]);
-        h.flush().unwrap();
-        let h2 = HashHead::open(&path).unwrap();
-        assert_eq!(h2.get_all(&key).unwrap(), vec![Fk(2), Fk(1)]);
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn multi_list_survives_when_head_is_full() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, DEFAULT_SLOTS).unwrap();
-        let mut k1 = [0u8; 32];
-        k1[0..4].copy_from_slice(&1u32.to_le_bytes());
-        let mut k2 = k1;
-        k2[20] = 9;
-        h.insert(&k1, Fk(100)).unwrap();
-        h.insert(&k2, Fk(200)).unwrap();
-        let mut n = 0u64;
-        loop {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&(n + 1000).to_le_bytes());
-            match h.insert(&key, Fk(n + 1)) {
-                Ok(_) => n += 1,
-                Err(StoreError::Corrupt(HASH_HEAD_FULL)) => break,
-                Err(e) => panic!("unexpected {e}"),
-            }
-            assert!(n < 64, "must refuse before rewriting slots");
-        }
-        assert_eq!(h.slots(), 64);
-        let all = h.get_all(&k1).unwrap();
-        assert!(all.contains(&Fk(100)) && all.contains(&Fk(200)));
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn head_scale_prefix_and_pack_helpers() {
-        assert_eq!(HeadScale::Tiny.initial_slots(), DEFAULT_SLOTS);
-        assert_eq!(HeadScale::Mainnet.initial_slots(), 1 << 22);
-        assert_eq!(
-            sh_main_shard_count(HeadScale::Mainnet),
-            SH_MAIN_SHARDS_MAINNET
-        );
-        assert_eq!(initial_slots_for(HeadScale::Tiny), DEFAULT_SLOTS);
-        assert_eq!(initial_slots_for(HeadScale::Mainnet), 1 << 22);
-        let full = [0xABu8; 32];
-        let p = head_key_prefix(&full);
-        assert_eq!(&p[..], &full[..16]);
-        assert_eq!(pack_sole(Fk(7)), 7);
-        let pm = pack_multi(Fk(3));
-        assert_ne!(pm & MULTI_BIT, 0);
-        let (multi, fk) = unpack_value(pm);
-        assert!(multi);
-        assert_eq!(fk, Fk(3));
-        let (multi, fk) = unpack_value(42);
-        assert!(!multi);
-        assert_eq!(fk, Fk(42));
-    }
-
-    #[test]
-    fn rewrite_to_slots_replaces_file_keeps_keys() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, 32).unwrap();
-        let mut k_multi = [0u8; 32];
-        k_multi[0] = 0x11;
-        h.insert(&k_multi, Fk(1)).unwrap();
-        h.insert(&k_multi, Fk(2)).unwrap();
-        let mut k_sole = [0u8; 32];
-        k_sole[0] = 0x22;
-        h.insert(&k_sole, Fk(3)).unwrap();
-        h.flush().unwrap();
-        #[cfg(unix)]
-        let old = std::fs::File::open(&path).unwrap();
-        #[cfg(unix)]
-        let old_ino = {
-            use std::os::unix::fs::MetadataExt;
-            old.metadata().unwrap().ino()
-        };
-        let h = h.rewrite_to_slots(64).unwrap();
-        assert_eq!(h.slots(), 64);
-        assert_eq!(h.get_all(&k_multi).unwrap(), vec![Fk(2), Fk(1)]);
-        assert_eq!(h.get(&k_sole).unwrap(), Some(Fk(3)));
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            assert_ne!(
-                std::fs::metadata(&path).unwrap().ino(),
-                old_ino,
-                "open-grow must replace the OA file, not zero the live inode"
-            );
-            drop(old);
-        }
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn rewrite_to_slots_discards_leftover_grow_keeps_old_keys() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, 32).unwrap();
-        let mut k = [0u8; 32];
-        k[0] = 0x33;
-        h.insert(&k, Fk(9)).unwrap();
-        h.flush().unwrap();
-        let grow = grow_part_path(&path);
-        std::fs::write(&grow, b"stale-grow").unwrap();
-        let h = h.rewrite_to_slots(64).unwrap();
-        assert_eq!(h.slots(), 64);
-        assert_eq!(h.get(&k).unwrap(), Some(Fk(9)));
-        assert!(
-            !grow.exists(),
-            "leftover .grow must not remain after rewrite"
-        );
-        cleanup_hh(&path);
-    }
-
-    #[test]
-    fn hashhead_empty_insert_get_miss_flush_and_reopen_multi() {
-        let path = tmp_path();
-        let h = HashHead::create_with_slots(&path, 16).unwrap();
-        h.insert_many(&[]).unwrap();
-        assert!(h.get(&[0u8; 32]).unwrap().is_none());
-        assert!(h.get_all(&[0u8; 32]).unwrap().is_empty());
-        // multi chain walk
-        let key = [0x55u8; 32];
-        h.insert(&key, Fk(1)).unwrap();
-        h.insert(&key, Fk(2)).unwrap();
-        h.insert(&key, Fk(3)).unwrap();
-        assert_eq!(h.get_all(&key).unwrap(), vec![Fk(3), Fk(2), Fk(1)]);
-        assert_eq!(h.get(&key).unwrap(), Some(Fk(3)));
-        h.flush().unwrap();
-        h.flush_async().unwrap();
-        drop(h);
-        let h = HashHead::open(&path).unwrap();
-        assert_eq!(h.get_all(&key).unwrap(), vec![Fk(3), Fk(2), Fk(1)]);
-        // multi-list sibling file exists after multi inserts
-        let mut mlt = path.as_os_str().to_os_string();
-        mlt.push(".mlt");
-        assert!(std::path::PathBuf::from(mlt).exists());
-        cleanup_hh(&path);
-    }
 }

@@ -11,7 +11,7 @@ use std::sync::Mutex;
 pub const PENDING_HEAD_CAP: usize = 262_144;
 
 pub struct PendingHeadInserts {
-    queued: Mutex<Vec<([u8; 32], Fk)>>,
+    pub queued: Mutex<Vec<([u8; 32], Fk)>>,
 }
 
 impl PendingHeadInserts {

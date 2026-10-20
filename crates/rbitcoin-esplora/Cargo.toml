@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-esplora"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "Esplora-compatible REST (electrs HTTP drop-in except address-prefix)"
+
+[lib]
+test = false
 
 [features]
 mutants = []
@@ -28,6 +32,10 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 http = "1"
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

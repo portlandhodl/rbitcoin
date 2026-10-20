@@ -10,7 +10,8 @@ use std::collections::{BTreeMap, HashMap};
 use crate::{ConfirmError, Query};
 
 /// Txid and outputs of a spent create.
-type ParentLookup<'a> = dyn Fn(Fk) -> Option<([u8; 32], &'a [OutputRecord])> + 'a;
+#[doc(hidden)]
+pub type ParentLookup<'a> = dyn Fn(Fk) -> Option<([u8; 32], &'a [OutputRecord])> + 'a;
 
 /// Prefer the thin index (no parent peeks). Hole / no table → [`tweaks_for_height`].
 pub fn tweaks_at_height(
@@ -101,7 +102,8 @@ pub fn tweak_records_from_window(
 
 /// Per-tx tweak (`None` = ineligible) for `txs` in order. Only P2TR-output
 /// txs with loaded inputs are candidates; EC math runs on the caller.
-fn tweaks_for_txs<'a>(
+#[doc(hidden)]
+pub fn tweaks_for_txs<'a>(
     txs: &[&'a LoadedTweakTx],
     parent: &ParentLookup<'a>,
 ) -> Result<Vec<Option<TxTweak>>, ConfirmError> {
@@ -147,7 +149,8 @@ pub fn tweaks_from_thin_and_body(
     Ok(out)
 }
 
-fn taproot_outs_from_records(outputs: &[OutputRecord]) -> Vec<TaprootOut> {
+#[doc(hidden)]
+pub fn taproot_outs_from_records(outputs: &[OutputRecord]) -> Vec<TaprootOut> {
     let mut out = Vec::new();
     for (i, o) in outputs.iter().enumerate() {
         if !bitcoin::Script::from_bytes(&o.script).is_p2tr() {
@@ -167,7 +170,8 @@ fn taproot_outs_from_records(outputs: &[OutputRecord]) -> Vec<TaprootOut> {
 
 /// A spent parent missing from the lookup is an invariant break, not an
 /// ineligible tx.
-fn build_tx_and_prevouts(
+#[doc(hidden)]
+pub fn build_tx_and_prevouts(
     inputs: &[InputRecord],
     outputs: &[OutputRecord],
     parent: &ParentLookup<'_>,
@@ -218,45 +222,4 @@ fn build_tx_and_prevouts(
         },
         prevouts,
     ))
-}
-
-#[cfg(test)]
-mod classifier_record_tests {
-    use super::{build_tx_and_prevouts, taproot_outs_from_records};
-    use rbitcoin_primitives::Fk;
-    use rbitcoin_store::{InputRecord, OutputRecord};
-
-    #[test]
-    fn taproot_record_keeps_a_zero_value_and_skips_other_scripts() {
-        let mut p2tr = vec![0x51, 0x20];
-        p2tr.extend_from_slice(&[0xab; 32]);
-        let outs = vec![
-            OutputRecord::unspent(0, p2tr),
-            OutputRecord::unspent(7, vec![0x51]),
-        ];
-        let got = taproot_outs_from_records(&outs);
-        assert_eq!(got.len(), 1);
-        assert_eq!(got[0].vout, 0);
-        assert_eq!(got[0].value, 0);
-        assert_eq!(got[0].xonly, [0xab; 32]);
-    }
-
-    #[test]
-    fn build_tx_uses_the_parent_output_value() {
-        let parent_txid = [0x11; 32];
-        let parent_outs = [OutputRecord::unspent(7, vec![0x51])];
-        let inp = InputRecord::prevout(parent_txid, Fk(3), 0, 0xffff_ffff, Vec::new(), Vec::new());
-        let spend_out = OutputRecord::unspent(1, vec![0x51]);
-        let parent = |fk: Fk| {
-            if fk == Fk(3) {
-                Some((parent_txid, parent_outs.as_slice()))
-            } else {
-                None
-            }
-        };
-        let (tx, prevouts) = build_tx_and_prevouts(&[inp], &[spend_out], &parent).unwrap();
-        assert_eq!(prevouts[0].value.to_sat(), 7);
-        assert_eq!(tx.output[0].value.to_sat(), 1);
-        assert_eq!(tx.input[0].previous_output.vout, 0);
-    }
 }

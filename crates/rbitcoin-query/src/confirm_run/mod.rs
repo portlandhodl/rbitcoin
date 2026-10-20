@@ -41,75 +41,82 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
-mod bq_resolve;
-mod head_drain;
-mod index;
-mod lookup;
-mod phases;
-mod pin;
-mod scripts;
-mod write;
+#[doc(hidden)]
+pub mod bq_resolve;
+#[doc(hidden)]
+pub mod head_drain;
+#[doc(hidden)]
+pub mod index;
+#[doc(hidden)]
+pub mod lookup;
+#[doc(hidden)]
+pub mod phases;
+#[doc(hidden)]
+pub mod pin;
+#[doc(hidden)]
+pub mod scripts;
+#[doc(hidden)]
+pub mod write;
 
 pub use bq_resolve::{
     confirm_bq_resolve_wave_capped, take_wave_items_for_load, BqResolveWave,
     BQ_RESOLVE_WAVE_MAX_BLOCKS, BQ_RESOLVE_WAVE_MAX_INPUTS,
 };
-#[cfg(test)]
-use head_drain::{submit_head_drain, submit_head_insert, HEAD_DRAIN_THREAD_NAME};
-#[cfg(test)]
-use lookup::confirm_archive_kind;
-#[cfg(test)]
-use lookup::ConfirmArchiveKind;
+#[doc(hidden)]
+pub use head_drain::{submit_head_drain, submit_head_insert, HEAD_DRAIN_THREAD_NAME};
+#[doc(hidden)]
+pub use lookup::{confirm_archive_kind, ConfirmArchiveKind};
 pub use lookup::{
     confirm_wire_load_from_plan, confirm_wire_lookup_stamp, parent_missing_from_chain,
     ParentPinStamp, PlanStampOutcome, WireBlockIn,
 };
 use phases::{assemble_run, Assembled};
-#[cfg(test)]
-use phases::{expected_bits_extending, post_commit};
-#[cfg(test)]
-use pin::ensure_spend_abs_layouts;
-use pin::{collect_spend_abs_after_fill, pin_for_wire_batch};
+#[doc(hidden)]
+pub use phases::{expected_bits_extending, post_commit};
+#[doc(hidden)]
+pub use pin::{collect_spend_abs_after_fill, ensure_spend_abs_layouts, pin_for_wire_batch};
 pub use scripts::{confirm_scripts_phase, drive_script_waves_with};
-pub(crate) use write::finish_post_commit;
+pub use write::finish_post_commit;
 pub use write::{
     confirm_write_phase, confirm_write_phase_or_return, finish_post_commit_hashes,
     replay_spend_annotations,
 };
-#[cfg(test)]
-use write::{
+#[doc(hidden)]
+pub use write::{
     fill_planned_create_layout_after_commit, write_batch_vs_tip, write_height_needed,
     WriteBatchVsTip,
 };
-
 /// Pure-write annotate backend from global `RBITCOIN_IO`.
 #[inline]
-fn spend_ann_backend_next() -> WriteIoBackend {
+#[doc(hidden)]
+pub fn spend_ann_backend_next() -> WriteIoBackend {
     rbitcoin_store::spend_ann_backend()
 }
 
 /// One height resolved for the confirm wave (header + Class A body fks).
-struct BodyMeta {
-    height: Height,
-    hash: [u8; 32],
-    header_fk: rbitcoin_primitives::Fk,
-    header_rec: rbitcoin_store::HeaderRecord,
-    tx_fks: Vec<rbitcoin_primitives::Fk>,
+#[doc(hidden)]
+pub struct BodyMeta {
+    pub height: Height,
+    pub hash: [u8; 32],
+    pub header_fk: rbitcoin_primitives::Fk,
+    pub header_rec: rbitcoin_store::HeaderRecord,
+    pub tx_fks: Vec<rbitcoin_primitives::Fk>,
     /// Create txids for this block — **exactly one** `compute_txid` per entry
     /// at structure/entry (plan or archived load). Assemble must use these only.
-    txids: Vec<[u8; 32]>,
+    pub txids: Vec<[u8; 32]>,
     /// Same walk as `txids` (lookup/structure). Script jobs reuse these.
-    pres: std::sync::Arc<[crate::TxPrecompute]>,
+    pub pres: std::sync::Arc<[crate::TxPrecompute]>,
 }
 
 /// Assemble output for one height (held through scripts → write).
-struct Prepared {
-    height: Height,
-    header_fk: rbitcoin_primitives::Fk,
-    tx_fks: Vec<rbitcoin_primitives::Fk>,
-    jobs: Vec<ScriptCheckJob>,
+#[doc(hidden)]
+pub struct Prepared {
+    pub height: Height,
+    pub header_fk: rbitcoin_primitives::Fk,
+    pub tx_fks: Vec<rbitcoin_primitives::Fk>,
+    pub jobs: Vec<ScriptCheckJob>,
     /// `(prev_txid, vout, spending_tx_fk, create_tx_fk, vin)`.
-    spends: Vec<(
+    pub spends: Vec<(
         [u8; 32],
         u32,
         rbitcoin_primitives::Fk,
@@ -117,15 +124,15 @@ struct Prepared {
         u32,
     )>,
     /// Total fees from assemble (for structural coinbase subsidy check).
-    fees: i64,
-    check_scripts: bool,
-    time: u32,
-    bits: bitcoin::CompactTarget,
+    pub fees: i64,
+    pub check_scripts: bool,
+    pub time: u32,
+    pub bits: bitcoin::CompactTarget,
     /// Header hash of this block (prev-link for the next height in the run).
-    hash: [u8; 32],
+    pub hash: [u8; 32],
     /// Prev-block MTP from assemble (`mtp_at(height-1)`). Write BIP68 uses this
     /// instead of `ConfirmParentCache::get_header_plan`.
-    prev_mtp: u32,
+    pub prev_mtp: u32,
 }
 
 /// Txids already consensus-script-verified under tip-era softforks (live mempool
@@ -165,30 +172,30 @@ pub struct WireLoadPipeline<'a> {
 /// When [`archive_plan`] is `Some`, commit stage appends Class A before
 /// structural / annotate (single ordered commit era).
 pub struct LoadedBatch {
-    prepared: Vec<Prepared>,
+    pub prepared: Vec<Prepared>,
     /// Shared wire (Arc) so load→scripts→write does not deep-clone full blocks.
-    wire_blocks: Vec<Arc<Block>>,
+    pub wire_blocks: Vec<Arc<Block>>,
     /// Per-batch pin map: load → assemble → write structural, then drop.
-    batch_parents: crate::BatchParents,
+    pub batch_parents: crate::BatchParents,
     /// Mempool preverified txids for scripts stage (tip follow); empty on IBD.
-    script_preverified: ScriptPreverified,
+    pub script_preverified: ScriptPreverified,
     /// Planned Class A write from wire lookup/load (committed in write stage).
     pub archive_plan: Option<crate::ArchiveWritePlan>,
     /// Indexes to assemble. Copied from `index_live` at load.
-    index_want: index::IndexWant,
-    stats: Arc<crate::ConfirmStats>,
+    pub index_want: index::IndexWant,
+    pub stats: Arc<crate::ConfirmStats>,
 }
 
 /// Script-verified batch ready for ordered commit (Class A + structural + C).
 ///
 /// `Send` so IBD can hand off scripts → write.
 pub struct ScriptOkBatch {
-    prepared: Vec<Prepared>,
-    wire_blocks: Vec<Arc<Block>>,
-    batch_parents: crate::BatchParents,
+    pub prepared: Vec<Prepared>,
+    pub wire_blocks: Vec<Arc<Block>>,
+    pub batch_parents: crate::BatchParents,
     pub archive_plan: Option<crate::ArchiveWritePlan>,
     /// Filter bytes and tweak vecs for this batch. Empty when the indexes are off.
-    index_seal: index::IndexSeal,
+    pub index_seal: index::IndexSeal,
 }
 
 /// Outcome of load: batch ready for scripts + pure work wall.
@@ -233,7 +240,8 @@ pub fn confirm_wire_load_phase(
     confirm_wire_load_phase_pipelined(query, params, milestone, blocks, preverified, None)
 }
 
-fn wire_blocks_to_arcs(query: &Query, blocks: &[(Height, Block)]) -> Vec<WireBlockIn> {
+#[doc(hidden)]
+pub fn wire_blocks_to_arcs(query: &Query, blocks: &[(Height, Block)]) -> Vec<WireBlockIn> {
     let t = Instant::now();
     let arcs = blocks
         .iter()
@@ -416,8 +424,3 @@ impl ScriptOkBatch {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod spend_durable_tests;
-#[cfg(test)]
-mod write_idempotent_tests;

@@ -32,7 +32,8 @@ pub fn esplora_script_fields(script: &[u8], network: Network) -> EsploraScriptFi
     }
 }
 
-fn classify_script(s: &Script) -> &'static str {
+#[doc(hidden)]
+pub fn classify_script(s: &Script) -> &'static str {
     if s.is_p2pkh() {
         "p2pkh"
     } else if s.is_p2sh() {
@@ -55,7 +56,8 @@ fn classify_script(s: &Script) -> &'static str {
 }
 
 /// Minimal bare multisig: ends with CHECKMULTISIG / CHECKMULTISIGVERIFY.
-fn is_bare_multisig(s: &Script) -> bool {
+#[doc(hidden)]
+pub fn is_bare_multisig(s: &Script) -> bool {
     let b = s.as_bytes();
     if b.len() < 3 {
         return false;

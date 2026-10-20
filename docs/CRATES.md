@@ -12,7 +12,8 @@ shared libraries through storage and runtime crates to composition and tools;
 | `rbitcoin-query` | Archive, confirm pipeline, reconstruction, and query APIs over the store. Loads rows, writes Class A / Class C / spend annotations, and calls `rbitcoin-consensus` for rule decisions |
 | `rbitcoin-consensus` | Header, block, and script rules from bytes and caller facts. Does not open a store |
 | `rbitcoin-mempool` | Live transaction graph and admission policy |
-| `rbitcoin-net` | P2P, IBD, tip follow, and transaction relay |
+| `rbitcoin-net` | P2P, tip follow, and transaction relay |
+| `rbitcoin-ibd` | Multi-peer initial block download and the confirm pipeline. Depends on `rbitcoin-net`; RPC and Electrum do not |
 | `rbitcoin-rpc` | Core-class JSON-RPC subset |
 | `rbitcoin-electrum` | Electrum TCP server |
 | `rbitcoin-esplora` | Esplora REST server |

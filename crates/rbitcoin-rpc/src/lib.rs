@@ -2,10 +2,14 @@
 //!
 //! See `docs/rpc.md` for methods, auth, and permanent gaps.
 
-mod auth;
-mod blockstats;
-mod methods;
-mod server;
+#[doc(hidden)]
+pub mod auth;
+#[doc(hidden)]
+pub mod blockstats;
+#[doc(hidden)]
+pub mod methods;
+#[doc(hidden)]
+pub mod server;
 
 pub use auth::{
     default_socket_path, default_token_path, read_cookie_file, RpcAuth, RpcCookiePerms,
@@ -19,12 +23,4 @@ pub use server::{run_rpc, RpcConfig, RpcHandle, DEFAULT_RPC_WORK_QUEUE, RPC_MAX_
 /// Root HTTP path for the node RPC endpoint.
 pub fn node_rpc_path() -> &'static str {
     "/"
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn node_rpc_path_is_root() {
-        assert_eq!(crate::node_rpc_path(), "/");
-    }
 }

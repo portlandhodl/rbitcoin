@@ -4,7 +4,8 @@ use super::*;
 use crate::U64Map;
 use std::time::Instant;
 
-const TXSTAT_BODY_ROW_BYTES: u64 = 8;
+#[doc(hidden)]
+pub const TXSTAT_BODY_ROW_BYTES: u64 = 8;
 
 /// Stamped fee/weight rows from `txstat.body`; `None` means at least one row
 /// in the block is unstamped. Byte count includes the coinbase cell.
@@ -24,7 +25,8 @@ pub struct StampedTxstatBlock {
     pub n_outs: Vec<u32>,
 }
 
-fn block_size_weight_from_txstat(
+#[doc(hidden)]
+pub fn block_size_weight_from_txstat(
     rows: &[rbitcoin_store::TxStatRow],
 ) -> Result<(u32, u32), StoreError> {
     let n = rows.len() as u64;
@@ -88,7 +90,8 @@ impl Query {
         }))
     }
 
-    fn load_body_from_store(
+    #[doc(hidden)]
+    pub fn load_body_from_store(
         &self,
         fk: Fk,
     ) -> Result<(TxRecord, Vec<OutputRecord>, Vec<InputRecord>), QueryError> {
@@ -189,7 +192,8 @@ impl Query {
             .ok_or(StoreError::Corrupt("confirmed header missing body list"))
     }
 
-    fn contiguous_fk_run(fks: &[Fk]) -> Option<(u64, u64)> {
+    #[doc(hidden)]
+    pub fn contiguous_fk_run(fks: &[Fk]) -> Option<(u64, u64)> {
         let first = fks.first()?.get()?;
         if first == 0 {
             return None;
@@ -214,7 +218,8 @@ impl Query {
         ))
     }
 
-    fn transaction_from_class_a(
+    #[doc(hidden)]
+    pub fn transaction_from_class_a(
         rec: TxRecord,
         stored_outputs: Vec<OutputRecord>,
         stored_inputs: Vec<InputRecord>,
@@ -258,7 +263,7 @@ impl Query {
     /// 1. already-filled soft prev_txid
     /// 2. same-block / prior-in-block cache
     /// 3. one `txids_get_many` for remaining creates
-    pub(crate) fn fill_input_prev_txids_cached(
+    pub fn fill_input_prev_txids_cached(
         &self,
         inputs: &mut [InputRecord],
         cache: &mut U64Map<[u8; 32]>,
@@ -326,7 +331,8 @@ impl Query {
     }
 
     #[allow(clippy::type_complexity)] // packed (fk, range) / span row is the on-disk shape
-    fn load_class_a_rows(
+    #[doc(hidden)]
+    pub fn load_class_a_rows(
         &self,
         tx_fks: &[Fk],
     ) -> Result<Vec<(TxRecord, Vec<InputRecord>, Vec<OutputRecord>)>, QueryError> {
@@ -573,7 +579,8 @@ impl Query {
     }
 }
 
-fn txstat_in_sum_from_block(
+#[doc(hidden)]
+pub fn txstat_in_sum_from_block(
     query: &Query,
     same_block: &std::collections::HashMap<[u8; 32], &bitcoin::Transaction>,
     tx: &bitcoin::Transaction,
@@ -605,7 +612,8 @@ fn txstat_in_sum_from_block(
     Ok(Some(sum))
 }
 
-fn encode_witness_block(
+#[doc(hidden)]
+pub fn encode_witness_block(
     header: &BlockHeader,
     rows: &[(TxRecord, Vec<InputRecord>, Vec<OutputRecord>)],
 ) -> Vec<u8> {
@@ -619,7 +627,8 @@ fn encode_witness_block(
     out
 }
 
-fn encode_class_a_tx(
+#[doc(hidden)]
+pub fn encode_class_a_tx(
     out: &mut Vec<u8>,
     rec: &TxRecord,
     ins: &[InputRecord],
@@ -656,94 +665,4 @@ fn encode_class_a_tx(
         }
     }
     let _ = rec.locktime.consensus_encode(&mut *out);
-}
-
-#[cfg(test)]
-mod encode_witness_tests {
-    use super::*;
-
-    #[test]
-    fn encode_class_a_tx_emits_segwit_marker_when_input_has_witness() {
-        let rec = TxRecord {
-            txid: [0xee; 32],
-            version: 1,
-            locktime: 0,
-            input_start_fk: Fk::NULL,
-            input_count: 1,
-            output_start_fk: Fk::NULL,
-            output_count: 1,
-        };
-        let ins = vec![InputRecord::coinbase(
-            u32::MAX,
-            vec![0x01],
-            vec![vec![0x51]],
-        )];
-        let outs = vec![OutputRecord::unspent(50, vec![0x51])];
-        let mut out = Vec::new();
-        encode_class_a_tx(&mut out, &rec, &ins, &outs);
-        assert_eq!(&out[4..6], &[0, 1], "BIP141 marker after version");
-        let no_wit = vec![InputRecord::coinbase(u32::MAX, vec![0x01], vec![])];
-        let mut plain = Vec::new();
-        encode_class_a_tx(&mut plain, &rec, &no_wit, &outs);
-        assert_ne!(&plain[4..6], &[0, 1]);
-    }
-
-    #[test]
-    fn txstat_in_sum_reads_same_block_parent() {
-        use bitcoin::hashes::Hash;
-        let (_dir, q) = crate::testutil::tiny_query_labeled("txstat-in-sum-same");
-        let parent = bitcoin::Transaction {
-            version: bitcoin::transaction::Version::ONE,
-            lock_time: bitcoin::absolute::LockTime::ZERO,
-            input: vec![bitcoin::TxIn {
-                previous_output: bitcoin::OutPoint::null(),
-                script_sig: bitcoin::script::ScriptBuf::from_bytes(vec![0x01]),
-                sequence: bitcoin::Sequence::MAX,
-                witness: bitcoin::Witness::new(),
-            }],
-            output: vec![bitcoin::TxOut {
-                value: bitcoin::Amount::from_sat(50_0000_0000),
-                script_pubkey: bitcoin::script::ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let child = bitcoin::Transaction {
-            version: bitcoin::transaction::Version::ONE,
-            lock_time: bitcoin::absolute::LockTime::ZERO,
-            input: vec![bitcoin::TxIn {
-                previous_output: bitcoin::OutPoint {
-                    txid: parent.compute_txid(),
-                    vout: 0,
-                },
-                script_sig: bitcoin::script::ScriptBuf::new(),
-                sequence: bitcoin::Sequence::MAX,
-                witness: bitcoin::Witness::new(),
-            }],
-            output: vec![bitcoin::TxOut {
-                value: bitcoin::Amount::from_sat(49_0000_0000),
-                script_pubkey: bitcoin::script::ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let mut same = std::collections::HashMap::new();
-        same.insert(parent.compute_txid().to_byte_array(), &parent);
-        assert_eq!(
-            txstat_in_sum_from_block(&q, &same, &child).unwrap(),
-            Some(50_0000_0000)
-        );
-        let bad_vout = bitcoin::Transaction {
-            input: vec![bitcoin::TxIn {
-                previous_output: bitcoin::OutPoint {
-                    txid: parent.compute_txid(),
-                    vout: 9,
-                },
-                ..child.input[0].clone()
-            }],
-            ..child.clone()
-        };
-        let err = txstat_in_sum_from_block(&q, &same, &bad_vout).unwrap_err();
-        assert!(
-            matches!(err, StoreError::Corrupt(s) if s.contains("stamp same-block vout")),
-            "{err:?}"
-        );
-        let _ = std::fs::remove_dir_all(_dir.path());
-    }
 }

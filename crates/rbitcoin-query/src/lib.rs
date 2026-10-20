@@ -1,54 +1,76 @@
 //! Domain query layer over [`rbitcoin_store::Store`].
 
-mod archive;
-mod batch_parents;
-mod block_filter;
-#[cfg(test)]
-mod bq_lock_pin;
-mod catchup;
-mod chain_view;
-mod combined_stage;
-mod confirm_load;
-mod confirm_parent_cache;
-mod confirm_stats;
-mod connect;
-mod in_flight;
-mod reconstruct;
-mod resolved_wire;
-mod run_builder_core;
-mod scripthash;
-mod sh_builder;
-mod soft_densify;
-mod sp_tweaks;
-mod spend_sync;
-mod stamp;
-pub mod testutil;
-mod wave_prevout;
-mod write_create_loc;
+#[doc(hidden)]
+pub mod archive;
+#[doc(hidden)]
+pub mod batch_parents;
+#[doc(hidden)]
+pub mod block_filter;
 
-#[cfg(test)]
-mod bip68_store_tests;
-mod block_pipeline;
-mod confirm_error;
-mod confirm_run;
-mod connect_facade;
-mod convert;
-mod header_read;
-#[cfg(test)]
-mod header_store_tests;
-mod index_rows;
-mod index_writebehind;
-mod milestone_gate;
-#[cfg(test)]
-mod overlay_csv_tests;
-mod regtest_pad;
-mod sp_read;
-#[cfg(test)]
-mod sp_store_tests;
-#[cfg(test)]
-mod structure_rule_tests;
-#[cfg(test)]
-mod wire_agree_tests;
+#[doc(hidden)]
+pub mod catchup;
+#[doc(hidden)]
+pub mod chain_view;
+#[doc(hidden)]
+pub mod combined_stage;
+#[doc(hidden)]
+pub mod confirm_load;
+#[doc(hidden)]
+pub mod confirm_parent_cache;
+#[doc(hidden)]
+pub mod confirm_stats;
+#[doc(hidden)]
+pub mod connect;
+#[doc(hidden)]
+pub mod in_flight;
+#[doc(hidden)]
+pub mod reconstruct;
+#[doc(hidden)]
+pub mod resolved_wire;
+#[doc(hidden)]
+pub mod run_builder_core;
+#[doc(hidden)]
+pub mod scripthash;
+#[doc(hidden)]
+pub mod sh_builder;
+#[doc(hidden)]
+pub mod soft_densify;
+#[doc(hidden)]
+pub mod sp_tweaks;
+#[doc(hidden)]
+pub mod spend_sync;
+#[doc(hidden)]
+pub mod stamp;
+pub mod testutil;
+#[doc(hidden)]
+pub mod wave_prevout;
+#[doc(hidden)]
+pub mod write_create_loc;
+
+#[doc(hidden)]
+pub mod block_pipeline;
+#[doc(hidden)]
+pub mod confirm_error;
+#[doc(hidden)]
+pub mod confirm_run;
+#[doc(hidden)]
+pub mod connect_facade;
+#[doc(hidden)]
+pub mod convert;
+#[doc(hidden)]
+pub mod header_read;
+
+#[doc(hidden)]
+pub mod index_rows;
+#[doc(hidden)]
+pub mod index_writebehind;
+#[doc(hidden)]
+pub mod milestone_gate;
+
+#[doc(hidden)]
+pub mod regtest_pad;
+#[doc(hidden)]
+pub mod sp_read;
 
 pub use combined_stage::{load_creates_once, CombinedCreate};
 pub use confirm_error::ConfirmError;
@@ -143,11 +165,13 @@ thread_local! {
     static OWNED_SIZE_SNAPSHOT_N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
-fn note_scripthash_run_count_call() {
+#[doc(hidden)]
+pub fn note_scripthash_run_count_call() {
     SCRIPTHASH_RUN_COUNT_N.with(|c| c.set(c.get().saturating_add(1)));
 }
 
-fn note_owned_size_snapshot_call() {
+#[doc(hidden)]
+pub fn note_owned_size_snapshot_call() {
     OWNED_SIZE_SNAPSHOT_N.with(|c| c.set(c.get().saturating_add(1)));
 }
 
@@ -163,7 +187,7 @@ pub fn progress_snapshot_counts() -> (u64, u64) {
     )
 }
 
-pub(crate) fn uring_recover_credit(last_tip: Option<u32>, tip: u32) -> bool {
+pub fn uring_recover_credit(last_tip: Option<u32>, tip: u32) -> bool {
     match last_tip {
         None => true,
         Some(last) => tip.saturating_sub(last) >= Query::URING_RECOVER_MIN_TIP_GAP,
@@ -252,7 +276,7 @@ pub use archive::{
     input_records_from_wire, ArchiveWritePlan, CreatePin, CreatePinArc, CreatePinInner,
     WirePlanNeed,
 };
-pub(crate) use batch_parents::FkSet;
+pub use batch_parents::FkSet;
 pub use batch_parents::{
     layout_covers_need, sparse_spender_rels, BatchParents, FkMap, ParentPinView,
     SharedPrevoutScript, U32Map, U64Map, U64Set,
@@ -294,50 +318,56 @@ pub struct ResumeWorkEntry {
     pub has_body: bool,
 }
 
-type ResumeChildMap = U64Map<Vec<(Fk, [u8; 32])>>;
-type ResumeSibPick = (Fk, [u8; 32], bool, u32, [u8; 32]);
+#[doc(hidden)]
+pub type ResumeChildMap = U64Map<Vec<(Fk, [u8; 32])>>;
+#[doc(hidden)]
+pub type ResumeSibPick = (Fk, [u8; 32], bool, u32, [u8; 32]);
 
 /// One sequential pass over `header.body`: child edges, `nBits`, and `prev_fk`.
-struct ResumeHeaderIndex {
-    children: ResumeChildMap,
-    bits: Vec<u32>,
-    prevs: Vec<u64>,
+#[doc(hidden)]
+pub struct ResumeHeaderIndex {
+    pub children: ResumeChildMap,
+    pub bits: Vec<u32>,
+    pub prevs: Vec<u64>,
 }
 
 #[derive(Default)]
-struct SeqSigWitRamWindow {
-    by_height: BTreeMap<u32, Vec<Fk>>,
-    by_fk: U64Map<Vec<InputRecord>>,
-    bytes: u64,
-    evictions: u64,
+#[doc(hidden)]
+pub struct SeqSigWitRamWindow {
+    pub by_height: BTreeMap<u32, Vec<Fk>>,
+    pub by_fk: U64Map<Vec<InputRecord>>,
+    pub bytes: u64,
+    pub evictions: u64,
 }
 
 /// SH write-behind: confirm enqueues; one Class B appender drains.
 ///
 /// Separate mutexes on purpose: confirm enqueues on the write thread while
 /// Electrum joins read `ram_head`. Do not merge pending / applying / ram_head.
-struct ShWriteBehind {
+#[doc(hidden)]
+pub struct ShWriteBehind {
     /// Process-local scripthash → body head fk (confirm append path).
-    heads: Mutex<HashMap<[u8; 32], rbitcoin_store::ShHeadValue>>,
+    pub heads: Mutex<HashMap<[u8; 32], rbitcoin_store::ShHeadValue>>,
     /// Last height whose SH creates were applied after tip commit.
     /// `u64::MAX` = none.
-    indexed_through: AtomicU64,
-    pending: Mutex<VecDeque<connect::ShPendingJob>>,
-    pending_cv: Condvar,
+    pub indexed_through: AtomicU64,
+    pub pending: Mutex<VecDeque<connect::ShPendingJob>>,
+    pub pending_cv: Condvar,
     /// Job popped for apply but not yet watermarked.
-    applying: Mutex<Option<connect::ShPendingJob>>,
+    pub applying: Mutex<Option<connect::ShPendingJob>>,
     /// Pending + in-flight SH creates keyed by scripthash.
-    ram_head: Mutex<HashMap<[u8; 32], Vec<Fk>>>,
+    pub ram_head: Mutex<HashMap<[u8; 32], Vec<Fk>>>,
     /// Serializes the one Class B appender (worker vs generate drain).
-    appender: Mutex<()>,
+    pub appender: Mutex<()>,
     /// Max create fk applied to the SH tables (may lead `include_hwm`).
-    applied_max_fk: AtomicU64,
+    pub applied_max_fk: AtomicU64,
     /// Last durable `include_hwm` advance (throttles table syncs in a burst).
-    last_durable: Mutex<std::time::Instant>,
+    pub last_durable: Mutex<std::time::Instant>,
 }
 
 impl ShWriteBehind {
-    fn new() -> Self {
+    #[doc(hidden)]
+    pub fn new() -> Self {
         Self {
             heads: Mutex::new(HashMap::new()),
             indexed_through: AtomicU64::new(u64::MAX),
@@ -354,122 +384,122 @@ impl ShWriteBehind {
 
 /// Domain query facade used by higher layers (consensus, net, RPC).
 pub struct Query {
-    store: Arc<Store>,
+    pub store: Arc<Store>,
     /// When false, confirm skips durable spend-annotation writes.
-    spend_index: std::sync::atomic::AtomicBool,
+    pub spend_index: std::sync::atomic::AtomicBool,
     /// When false, archive skips durable `tx.head` inserts.
-    tx_index: std::sync::atomic::AtomicBool,
+    pub tx_index: std::sync::atomic::AtomicBool,
     /// Height-ordered SH write-behind (one Class B appender). Confirm enqueues;
     /// [`Self::apply_sh_pending`] / the tip-follow worker drain.
-    sh: ShWriteBehind,
+    pub sh: ShWriteBehind,
     /// Index write-behind release gate shared by every appender. `0` = none
     /// released; `h+1` = appenders may apply through height `h`.
-    index_released_through: AtomicU32,
+    pub index_released_through: AtomicU32,
     /// Block-structured confirm parent cache.
-    confirm_parents: confirm_parent_cache::ConfirmParentCache,
+    pub confirm_parents: confirm_parent_cache::ConfirmParentCache,
     /// Confirmed header hash at BIP34 height. The header row is the durable
     /// record. Dropped only when that block is disconnected.
-    bip34_ancestor: std::sync::Mutex<Option<crate::chain_view::Bip34AncestorNote>>,
+    pub bip34_ancestor: std::sync::Mutex<Option<crate::chain_view::Bip34AncestorNote>>,
     /// In-RAM body rows. `has_hash` is a map lookup on this mutex, not a scan.
     ///
     /// RAM-only by design: avoids double-writing every block (queue + Class A).
     /// Accepts redownload on restart and peak RAM of soft densify depth.
-    block_queue: Mutex<rbitcoin_store::BlockQueue>,
+    pub block_queue: Mutex<rbitcoin_store::BlockQueue>,
     /// Lookup's decoded wires. Getdata enqueue and `has_hash` never lock this.
-    bq_resolved: Mutex<HashMap<u32, ResolvedWire>>,
+    pub bq_resolved: Mutex<HashMap<u32, ResolvedWire>>,
     /// Last soft-assign restricted flag (over free-byte floor; cache for meters).
-    block_queue_pressure: AtomicBool,
+    pub block_queue_pressure: AtomicBool,
     /// Last 1-min confirm window (`bq soft=n/win` `win`). 0 = rate unknown.
-    soft_confirm_window: AtomicU32,
+    pub soft_confirm_window: AtomicU32,
     /// Re-arm generation (high 32 bits) and the last contiguous height lookup
     /// dequeued into loadq (low 32 bits, `u32::MAX` = none). One word, so a
     /// take selected before a re-arm cannot overwrite it.
-    lookup_taken: AtomicU64,
+    pub lookup_taken: AtomicU64,
     /// Highest height whose TipOnly **started** (`u32::MAX` = none).
-    lookup_started_hi: AtomicU32,
+    pub lookup_started_hi: AtomicU32,
     /// Max height whose Class A append committed (`u32::MAX` = none).
-    class_a_hi: AtomicU32,
+    pub class_a_hi: AtomicU32,
     /// Post-IBD SH SEAL + leftover-run discard (unsorted collect is tip finalize).
-    sh_run: sh_builder::ShRunBuilder,
+    pub sh_run: sh_builder::ShRunBuilder,
     /// Operator scripthash index intent (`--shindex`). When false, Class C skips
     /// SH collect/enqueue/durable write-through entirely (tip follow independent).
-    sh_index_enabled: std::sync::atomic::AtomicBool,
-    block_filter_enabled: std::sync::atomic::AtomicBool,
+    pub sh_index_enabled: std::sync::atomic::AtomicBool,
+    pub block_filter_enabled: std::sync::atomic::AtomicBool,
     /// Confirm appends filter and tweak rows. Set by `prepare_live_indexes`
     /// when every enabled index is contiguous with the tip. Load reads it;
     /// the write thread is the only writer.
-    index_live: std::sync::atomic::AtomicBool,
+    pub index_live: std::sync::atomic::AtomicBool,
     /// BIP158 basic filter table, opened when the index is first turned on.
-    block_filters: std::sync::OnceLock<rbitcoin_store::BlockFilterTable>,
-    bf_wb: block_filter::BlockFilterWriteBehind,
+    pub block_filters: std::sync::OnceLock<rbitcoin_store::BlockFilterTable>,
+    pub bf_wb: block_filter::BlockFilterWriteBehind,
     /// Optional BIP-352 thin tweak index (`--sptweaks`). Files may exist when off.
-    sp_tweaks: Mutex<Option<SpTweaksTable>>,
-    sptweaks_enabled: AtomicBool,
+    pub sp_tweaks: Mutex<Option<SpTweaksTable>>,
+    pub sptweaks_enabled: AtomicBool,
     /// `taproot_height` used when creating the table. 0 until enabled / opened.
-    sptweaks_origin: AtomicU32,
+    pub sptweaks_origin: AtomicU32,
     /// Explicit [`IndexMode`] (Direct / Tip).
-    index_mode_cell: std::sync::atomic::AtomicU8,
+    pub index_mode_cell: std::sync::atomic::AtomicU8,
     /// Cooperative cancel for in-flight confirm load. Set on IBD SIGINT
     /// teardown so the confirm load thread aborts before process exit.
-    confirm_cancel: std::sync::atomic::AtomicBool,
+    pub confirm_cancel: std::sync::atomic::AtomicBool,
     /// One header read returns [`StoreError::Cancelled`]. Tests only.
-    #[cfg(feature = "test-hooks")]
-    header_read_cancel: std::sync::atomic::AtomicBool,
+    #[cfg(debug_assertions)]
+    pub header_read_cancel: std::sync::atomic::AtomicBool,
     /// Confirmed best-chain `hash → height` (kept for process life; ~60 MiB mainnet).
     ///
     /// Avoids O(tip) header walks on Esplora/P2P `height_of_hash`.
-    height_by_hash: Mutex<HeightByHashIndex>,
+    pub height_by_hash: Mutex<HeightByHashIndex>,
     /// `reconstruct_archived_block` calls (`/raw` and Esplora size/weight).
-    reconstruct_archived: AtomicU64,
+    pub reconstruct_archived: AtomicU64,
     /// 0 = unlimited. Electrum + Esplora SH joins refuse above this create count.
-    max_sh_creates: AtomicU32,
+    pub max_sh_creates: AtomicU32,
     /// Packed `tx.body` bytes read by [`Self::load_thin_tweaks`].
-    thin_tweak_body_bytes: AtomicU64,
+    pub thin_tweak_body_bytes: AtomicU64,
     /// Max fk `head_insert_many` has published (0 = never). Load polls this
     /// with the fence to prune in-flight **after** bind.
-    head_drain_fk: AtomicU64,
+    pub head_drain_fk: AtomicU64,
     /// Disconnect height (valid when [`Self::disconnect_gen`] > 0).
-    disconnect_height: AtomicU32,
+    pub disconnect_height: AtomicU32,
     /// Bumped on each [`Self::disconnect_tip`]. Load drops in-flight layers.
-    disconnect_gen: AtomicU64,
+    pub disconnect_gen: AtomicU64,
     /// Confirmed tip hash published by the write that advanced `confirmed[]`.
     /// The IBD orchestration loop loads this instead of reading the header store.
-    published_tip: arc_swap::ArcSwapOption<PublishedTip>,
+    pub published_tip: arc_swap::ArcSwapOption<PublishedTip>,
     /// Scripthash run count last published by the confirm thread.
-    sh_runs_published: AtomicUsize,
+    pub sh_runs_published: AtomicUsize,
     /// Process-owned sizes last published by the confirm thread.
-    owned_sizes_published: arc_swap::ArcSwap<ProcessOwnedSizes>,
+    pub owned_sizes_published: arc_swap::ArcSwap<ProcessOwnedSizes>,
     /// Held from the tip-height check through `flush_class_c_tip` (IBD: through
     /// starting it) / disconnect flush. Rewind tries it and retries; it does not
     /// disconnect mid-flush.
-    tip_commit: Mutex<()>,
+    pub tip_commit: Mutex<()>,
     /// IBD tip barrier on `rbtc-tip-flush`, or the failure of one. The next
     /// `tip_commit` taker joins it.
-    tip_flush: Mutex<connect::TipFlush>,
+    pub tip_flush: Mutex<connect::TipFlush>,
     /// Test hook: IBD tip flush threads wait before writing while this is set.
-    #[cfg(any(test, feature = "test-hooks"))]
-    tip_flush_hold: Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(debug_assertions)]
+    pub tip_flush_hold: Arc<std::sync::atomic::AtomicBool>,
     /// Test hook: the next IBD tip flush thread fails to start.
-    #[cfg(any(test, feature = "test-hooks"))]
-    tip_flush_spawn_fail: std::sync::atomic::AtomicBool,
+    #[cfg(debug_assertions)]
+    pub tip_flush_spawn_fail: std::sync::atomic::AtomicBool,
     /// Confirm / archive / load window meters (`ibd: perf`). One instance per Query.
-    confirm_stats: Arc<ConfirmStats>,
+    pub confirm_stats: Arc<ConfirmStats>,
     /// Tip height of last in-process io_uring recover (`u32::MAX` = none).
-    uring_recover_tip: AtomicU32,
+    pub uring_recover_tip: AtomicU32,
     /// Highest height whose seqsigwit was dropped (`u32::MAX` = none dropped).
-    pruneheight: AtomicU32,
+    pub pruneheight: AtomicU32,
     /// Highest spill height already unlinked (`u32::MAX` = none yet).
-    spill_unlinked_through: AtomicU32,
+    pub spill_unlinked_through: AtomicU32,
     /// Operator `--prune-seqsigwit` (advertise NETWORK_LIMITED even before a drop).
-    prune_seqsigwit: AtomicBool,
+    pub prune_seqsigwit: AtomicBool,
     /// True while the net IBD engine is active.
-    ibd_mode: AtomicBool,
+    pub ibd_mode: AtomicBool,
     /// In prune+IBD mode, cap for recent witness kept in RAM.
-    seqsigwit_ram_threshold_bytes: AtomicU64,
+    pub seqsigwit_ram_threshold_bytes: AtomicU64,
     /// Recent witness cache keyed by confirmed heights/create fks.
-    seqsigwit_ram_window: Mutex<SeqSigWitRamWindow>,
+    pub seqsigwit_ram_window: Mutex<SeqSigWitRamWindow>,
     /// Inputs from the most recent Class A append wave (fk-keyed).
-    seqsigwit_append_cache: Mutex<U64Map<Vec<InputRecord>>>,
+    pub seqsigwit_append_cache: Mutex<U64Map<Vec<InputRecord>>>,
     /// Header work-path height → hash plus work through the contiguous tip.
     ///
     /// Second map beside IBD `height_to_hash` so confirm threads can do two
@@ -477,26 +507,28 @@ pub struct Query {
     /// any height it is the only source: a missing height is not an ancestor
     /// of the milestone. When it is empty, the confirmed chain is the source.
     /// RAM is one hash per header on that path for the process lifetime of the sync.
-    milestone_path: Mutex<MilestonePath>,
+    pub milestone_path: Mutex<MilestonePath>,
 }
 
 /// Best header path published by IBD header intake.
 #[derive(Default)]
-struct MilestonePath {
-    by_height: HashMap<u32, [u8; 32]>,
+#[doc(hidden)]
+pub struct MilestonePath {
+    pub by_height: HashMap<u32, [u8; 32]>,
     /// Work through `work_height` when `work_valid` (big-endian).
-    work_through: [u8; 32],
-    work_height: u32,
-    work_valid: bool,
+    pub work_through: [u8; 32],
+    pub work_height: u32,
+    pub work_valid: bool,
 }
 
 /// In-process hash→height map for the confirmed tip chain (~33 MiB raw at 1e6 tips).
 /// `tip == None` means empty (open / invalidate); any other tip is incremental.
 #[derive(Default)]
-struct HeightByHashIndex {
+#[doc(hidden)]
+pub struct HeightByHashIndex {
     /// Tip height the map matches (`None` = empty / needs rebuild).
-    tip: Option<u32>,
-    map: HashMap<[u8; 32], u32>,
+    pub tip: Option<u32>,
+    pub map: HashMap<[u8; 32], u32>,
 }
 
 impl Query {
@@ -588,7 +620,7 @@ impl Query {
             sptweaks_origin: AtomicU32::new(sptweaks_origin),
             index_mode_cell: std::sync::atomic::AtomicU8::new(IndexMode::Tip as u8),
             confirm_cancel: std::sync::atomic::AtomicBool::new(false),
-            #[cfg(feature = "test-hooks")]
+            #[cfg(debug_assertions)]
             header_read_cancel: std::sync::atomic::AtomicBool::new(false),
             height_by_hash: Mutex::new(HeightByHashIndex::default()),
             reconstruct_archived: AtomicU64::new(0),
@@ -602,9 +634,9 @@ impl Query {
             owned_sizes_published: arc_swap::ArcSwap::from_pointee(ProcessOwnedSizes::default()),
             tip_commit: Mutex::new(()),
             tip_flush: Mutex::new(connect::TipFlush::Idle),
-            #[cfg(any(test, feature = "test-hooks"))]
+            #[cfg(debug_assertions)]
             tip_flush_hold: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            #[cfg(any(test, feature = "test-hooks"))]
+            #[cfg(debug_assertions)]
             tip_flush_spawn_fail: std::sync::atomic::AtomicBool::new(false),
             confirm_stats: Arc::new(ConfirmStats::default()),
             uring_recover_tip: AtomicU32::new(u32::MAX),
@@ -646,7 +678,8 @@ impl Query {
         Arc::clone(&self.confirm_stats)
     }
 
-    fn milestone_path_lock(&self) -> std::sync::MutexGuard<'_, MilestonePath> {
+    #[doc(hidden)]
+    pub fn milestone_path_lock(&self) -> std::sync::MutexGuard<'_, MilestonePath> {
         self.milestone_path
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -741,7 +774,8 @@ impl Query {
         }
     }
 
-    fn load_pruneheight(store_path: &Path) -> Result<(u32, bool), QueryError> {
+    #[doc(hidden)]
+    pub fn load_pruneheight(store_path: &Path) -> Result<(u32, bool), QueryError> {
         let path = store_path.join("seqsigwit.prune");
         match std::fs::read(&path) {
             Ok(bytes) => {
@@ -830,7 +864,8 @@ impl Query {
         }
     }
 
-    fn unlink_spill_height(&self, height: u32) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn unlink_spill_height(&self, height: u32) -> Result<(), QueryError> {
         let path = self.seqsigwit_spill_file(height)?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
@@ -840,7 +875,8 @@ impl Query {
     }
 
     /// Unlink `{start}..=new_h` spill files. Heights at or below `new_h` are pruned.
-    fn unlink_spill_through(&self, new_h: u32) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn unlink_spill_through(&self, new_h: u32) -> Result<(), QueryError> {
         if new_h == u32::MAX {
             return Ok(());
         }
@@ -866,7 +902,8 @@ impl Query {
         Ok(())
     }
 
-    fn sweep_spill_at_or_below_pruneheight(&self) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn sweep_spill_at_or_below_pruneheight(&self) -> Result<(), QueryError> {
         let Some(ph) = self.pruneheight() else {
             return Ok(());
         };
@@ -894,12 +931,14 @@ impl Query {
         Ok(())
     }
 
-    fn persist_pruneheight(&self, v: u32) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn persist_pruneheight(&self, v: u32) -> Result<(), QueryError> {
         let path = self.store.path().join("seqsigwit.prune");
         std::fs::write(&path, v.to_le_bytes()).map_err(|e| StoreError::io(path, e))
     }
 
-    fn persist_pruneheight_clear(&self) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn persist_pruneheight_clear(&self) -> Result<(), QueryError> {
         let path = self.store.path().join("seqsigwit.prune");
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
@@ -915,7 +954,7 @@ impl Query {
     }
 
     /// Keep the last [`Self::SEQSIGWIT_KEEP_HEIGHTS`] heights at or below `tip`.
-    pub(crate) fn prune_seqsigwit_below(&self, tip: Option<Height>) -> Result<(), QueryError> {
+    pub fn prune_seqsigwit_below(&self, tip: Option<Height>) -> Result<(), QueryError> {
         if !self.prune_seqsigwit() {
             return Ok(());
         }
@@ -939,7 +978,8 @@ impl Query {
         }
     }
 
-    fn require_seqsigwit_at(&self, height: Height) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn require_seqsigwit_at(&self, height: Height) -> Result<(), QueryError> {
         if let Some(ph) = self.pruneheight() {
             if height.0 <= ph.0 {
                 return Err(StoreError::Pruned { height: height.0 });
@@ -948,7 +988,8 @@ impl Query {
         Ok(())
     }
 
-    fn require_seqsigwit_fk(&self, fk: Fk) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn require_seqsigwit_fk(&self, fk: Fk) -> Result<(), QueryError> {
         if self.seqsigwit_available(fk)? {
             return Ok(());
         }
@@ -956,7 +997,8 @@ impl Query {
         Err(StoreError::Pruned { height })
     }
 
-    fn drop_seqsigwit_ram_height(&self, height: u32) {
+    #[doc(hidden)]
+    pub fn drop_seqsigwit_ram_height(&self, height: u32) {
         let mut g = self.seqsigwit_ram_window.lock().unwrap();
         let Some(old_fks) = g.by_height.remove(&height) else {
             return;
@@ -973,18 +1015,18 @@ impl Query {
         }
     }
 
-    pub(crate) fn clear_seqsigwit_ram_window(&self) {
+    pub fn clear_seqsigwit_ram_window(&self) {
         *self.seqsigwit_ram_window.lock().unwrap() = SeqSigWitRamWindow::default();
         self.seqsigwit_append_cache.lock().unwrap().clear();
     }
 
-    #[cfg(test)]
-    pub(crate) fn seqsigwit_ram_window_stats(&self) -> (usize, usize, u64, u64) {
+    #[cfg(debug_assertions)]
+    pub fn seqsigwit_ram_window_stats(&self) -> (usize, usize, u64, u64) {
         let g = self.seqsigwit_ram_window.lock().unwrap();
         (g.by_height.len(), g.by_fk.len(), g.bytes, g.evictions)
     }
 
-    pub(crate) fn seqsigwit_ram_inputs(&self, fk: Fk) -> Option<Vec<InputRecord>> {
+    pub fn seqsigwit_ram_inputs(&self, fk: Fk) -> Option<Vec<InputRecord>> {
         let id = fk.get()?;
         self.seqsigwit_ram_window
             .lock()
@@ -994,11 +1036,13 @@ impl Query {
             .cloned()
     }
 
-    fn seqsigwit_spill_dir(&self) -> std::path::PathBuf {
+    #[doc(hidden)]
+    pub fn seqsigwit_spill_dir(&self) -> std::path::PathBuf {
         self.store.path().join("seqsigwit.window")
     }
 
-    fn seqsigwit_spill_file(&self, height: u32) -> Result<std::path::PathBuf, QueryError> {
+    #[doc(hidden)]
+    pub fn seqsigwit_spill_file(&self, height: u32) -> Result<std::path::PathBuf, QueryError> {
         let dir = self.seqsigwit_spill_dir();
         let name = format!("{height}.bin");
         let stem_ok = name
@@ -1017,7 +1061,8 @@ impl Query {
         Ok(path)
     }
 
-    fn persist_seqsigwit_spill_height(
+    #[doc(hidden)]
+    pub fn persist_seqsigwit_spill_height(
         &self,
         height: Height,
         rows: &[(Fk, &[InputRecord])],
@@ -1054,7 +1099,8 @@ impl Query {
         std::fs::rename(&tmp, &path).map_err(|e| StoreError::io(&path, e))
     }
 
-    fn seqsigwit_spill_inputs_with_count(
+    #[doc(hidden)]
+    pub fn seqsigwit_spill_inputs_with_count(
         &self,
         fk: Fk,
         input_count: u32,
@@ -1109,7 +1155,7 @@ impl Query {
         Ok(None)
     }
 
-    pub(crate) fn seqsigwit_cached_inputs(
+    pub fn seqsigwit_cached_inputs(
         &self,
         fk: Fk,
         input_count: u32,
@@ -1120,7 +1166,7 @@ impl Query {
         self.seqsigwit_spill_inputs_with_count(fk, input_count)
     }
 
-    pub(crate) fn note_appended_seqsigwit_inputs(&self, fks: &[Fk], ins: Vec<Vec<InputRecord>>) {
+    pub fn note_appended_seqsigwit_inputs(&self, fks: &[Fk], ins: Vec<Vec<InputRecord>>) {
         let mut cache = self.seqsigwit_append_cache.lock().unwrap();
         for (fk, inputs) in fks.iter().zip(ins) {
             if let Some(id) = fk.get() {
@@ -1129,7 +1175,7 @@ impl Query {
         }
     }
 
-    pub(crate) fn note_seqsigwit_ram_for_confirmed(
+    pub fn note_seqsigwit_ram_for_confirmed(
         &self,
         height: Height,
         tx_fks: &[Fk],
@@ -1199,7 +1245,8 @@ impl Query {
         Ok(())
     }
 
-    fn seed_recent_seqsigwit_from_store(&self) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn seed_recent_seqsigwit_from_store(&self) -> Result<(), QueryError> {
         let Some(tip) = self.tip_height() else {
             return Ok(());
         };
@@ -1305,7 +1352,7 @@ impl Query {
     }
 
     /// The next [`Self::header_at_height`] returns [`StoreError::Cancelled`].
-    #[cfg(feature = "test-hooks")]
+    #[cfg(debug_assertions)]
     #[doc(hidden)]
     pub fn fail_next_header_read_cancelled(&self) {
         self.header_read_cancel
@@ -1329,7 +1376,7 @@ impl Query {
     }
 
     /// Advance SH watermark only after Class C tip commit.
-    pub(crate) fn set_sh_indexed_through_height(&self, height: Option<u32>) {
+    pub fn set_sh_indexed_through_height(&self, height: Option<u32>) {
         let v = height.map(|h| h as u64).unwrap_or(u64::MAX);
         self.sh.indexed_through.store(v, AtomicOrdering::Release);
     }
@@ -1343,7 +1390,8 @@ impl Query {
     ///
     /// ConfirmParentCache is keyed by create fk only (no process-local txid map).
     /// IBD thin edges carry stamped create_fk; cold/soft paths use durable head.
-    fn lookup_tx_fk(&self, txid: &[u8; 32]) -> Result<Option<Fk>, QueryError> {
+    #[doc(hidden)]
+    pub fn lookup_tx_fk(&self, txid: &[u8; 32]) -> Result<Option<Fk>, QueryError> {
         if !self.tx_index_enabled() {
             return Ok(None);
         }
@@ -1390,7 +1438,7 @@ impl Query {
         self.max_sh_creates.load(AtomicOrdering::Relaxed)
     }
 
-    pub(crate) fn note_reconstruct_archived(&self) {
+    pub fn note_reconstruct_archived(&self) {
         self.reconstruct_archived
             .fetch_add(1, AtomicOrdering::Relaxed);
     }
@@ -1400,7 +1448,7 @@ impl Query {
         self.thin_tweak_body_bytes.swap(0, AtomicOrdering::Relaxed)
     }
 
-    pub(crate) fn note_thin_tweak_body_bytes(&self, n: u64) {
+    pub fn note_thin_tweak_body_bytes(&self, n: u64) {
         if n > 0 {
             self.thin_tweak_body_bytes
                 .fetch_add(n, AtomicOrdering::Relaxed);
@@ -1716,7 +1764,8 @@ impl Query {
         self.block_queue_offer_counted(height, hash, header_fk, owned, n_inputs, sender)
     }
 
-    fn block_queue_offer_counted(
+    #[doc(hidden)]
+    pub fn block_queue_offer_counted(
         &self,
         height: u32,
         hash: [u8; 32],
@@ -2194,7 +2243,7 @@ impl Query {
         inputs.get(i as usize).cloned().ok_or(StoreError::NotFound)
     }
 
-    pub(crate) fn tx_prevouts_for_fk(&self, fk: Fk) -> Result<Vec<(Fk, u32)>, QueryError> {
+    pub fn tx_prevouts_for_fk(&self, fk: Fk) -> Result<Vec<(Fk, u32)>, QueryError> {
         match self.store.get_tx_meta_and_prevouts(fk) {
             Ok((_, prevs)) => Ok(prevs),
             Err(StoreError::NotFound) if self.prune_seqsigwit() => {
@@ -2329,7 +2378,8 @@ impl Query {
 
     /// IBD seeding climbs this many ancestors looking for a heavier sibling.
     /// Startup's heavier-chain check climbs to genesis instead.
-    const RESUME_ANCESTOR_HOPS: u32 = 32;
+    #[doc(hidden)]
+    pub const RESUME_ANCESTOR_HOPS: u32 = 32;
 
     /// Rebuild the post-tip work path from durable headers + Class A bodies.
     ///
@@ -2386,7 +2436,8 @@ impl Query {
         Ok(!path.is_empty())
     }
 
-    fn resume_work_path_limited(
+    #[doc(hidden)]
+    pub fn resume_work_path_limited(
         &self,
         tip_hash: [u8; 32],
         tip_height: u32,
@@ -2417,7 +2468,8 @@ impl Query {
         self.resume_walk_best_kids(tip_fk, tip_height, max, best_sib, &index, &mut score_memo)
     }
 
-    fn resume_index_children(
+    #[doc(hidden)]
+    pub fn resume_index_children(
         store: &rbitcoin_store::Store,
         n: u64,
         exclude: &[[u8; 32]],
@@ -2449,12 +2501,14 @@ impl Query {
         })
     }
 
-    fn resume_parent(index: &ResumeHeaderIndex, fk: Fk) -> Option<u64> {
+    #[doc(hidden)]
+    pub fn resume_parent(index: &ResumeHeaderIndex, fk: Fk) -> Option<u64> {
         let i = fk.0.checked_sub(1)? as usize;
         Fk::new(*index.prevs.get(i)?).map(|p| p.0)
     }
 
-    fn resume_nearest_better_sib(
+    #[doc(hidden)]
+    pub fn resume_nearest_better_sib(
         &self,
         tip_fk: Fk,
         tip_height: u32,
@@ -2514,7 +2568,8 @@ impl Query {
         Ok(best_sib)
     }
 
-    fn resume_walk_best_kids(
+    #[doc(hidden)]
+    pub fn resume_walk_best_kids(
         &self,
         tip_fk: Fk,
         tip_height: u32,
@@ -2597,7 +2652,7 @@ impl Query {
     ///
     /// Gray (`on_stack`) nodes are not re-pushed: a `prev_fk` cycle used to spin
     /// the IBD thread after `resume seed walk start` with no further log.
-    pub(crate) fn resume_subtree_score(
+    pub fn resume_subtree_score(
         index: &ResumeHeaderIndex,
         root: Fk,
         memo: &mut U64Map<(bitcoin::Work, u32)>,
@@ -2689,7 +2744,8 @@ impl Query {
     }
 }
 
-fn wire_header(rec: &HeaderRecord, prev_blockhash: BlockHash) -> BlockHeader {
+#[doc(hidden)]
+pub fn wire_header(rec: &HeaderRecord, prev_blockhash: BlockHash) -> BlockHeader {
     BlockHeader {
         version: BlockVersion::from_consensus(rec.version),
         prev_blockhash,
@@ -2706,7 +2762,3 @@ pub struct MerkleProof {
     pub pos: usize,
     pub merkle: Vec<[u8; 32]>,
 }
-
-#[cfg(test)]
-#[path = "query_tests.rs"]
-mod tests;

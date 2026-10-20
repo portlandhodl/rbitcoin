@@ -17,14 +17,16 @@ use template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 
 /// Coinbase witness reserved value the template's witness commitment is
 /// built with (BIP141).
-pub(crate) const WITNESS_RESERVED_VALUE: [u8; 32] = [0u8; 32];
+pub const WITNESS_RESERVED_VALUE: [u8; 32] = [0u8; 32];
 
 /// sv2-spec 07 §7.1: coinbase weight outside the client's additional outputs,
 /// and the floor on the whole reserve.
-const COINBASE_BASE_WU: u64 = 1168;
-const MIN_COINBASE_RESERVE_WU: u64 = 2000;
+#[doc(hidden)]
+pub const COINBASE_BASE_WU: u64 = 1168;
+#[doc(hidden)]
+pub const MIN_COINBASE_RESERVE_WU: u64 = 2000;
 
-pub(crate) struct Template {
+pub struct Template {
     pub version: u32,
     pub coinbase_prefix: Vec<u8>,
     pub value_remaining: u64,
@@ -78,7 +80,7 @@ impl Template {
 /// Template on the current tip for one client's coinbase constraints. The
 /// client's sigops replace the default reserve (Core `BlockAssembler`).
 /// Takes the mempool lock and reads the store: blocking region only.
-pub(crate) fn build(
+pub fn build(
     chain: &ChainHub,
     max_additional_size: u32,
     max_additional_sigops: u16,

@@ -15,7 +15,8 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 /// Concurrent **block** payload decodes (Class A feed). Sized for IBD window.
-fn block_decode_permits() -> usize {
+#[doc(hidden)]
+pub fn block_decode_permits() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get().saturating_mul(8).max(64))
         .unwrap_or(64)
@@ -23,18 +24,21 @@ fn block_decode_permits() -> usize {
 
 /// Concurrent **headers/notfound** decodes. Kept smaller so header storms cannot
 /// starve block deserialize (signet: drain flooded while arch_q=0 / writer idle).
-fn ctrl_decode_permits() -> usize {
+#[doc(hidden)]
+pub fn ctrl_decode_permits() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get().saturating_mul(2).max(8))
         .unwrap_or(8)
 }
 
-fn block_decode_semaphore() -> &'static Arc<Semaphore> {
+#[doc(hidden)]
+pub fn block_decode_semaphore() -> &'static Arc<Semaphore> {
     static SEM: OnceLock<Arc<Semaphore>> = OnceLock::new();
     SEM.get_or_init(|| Arc::new(Semaphore::new(block_decode_permits())))
 }
 
-fn ctrl_decode_semaphore() -> &'static Arc<Semaphore> {
+#[doc(hidden)]
+pub fn ctrl_decode_semaphore() -> &'static Arc<Semaphore> {
     static SEM: OnceLock<Arc<Semaphore>> = OnceLock::new();
     SEM.get_or_init(|| Arc::new(Semaphore::new(ctrl_decode_permits())))
 }
@@ -68,7 +72,7 @@ pub async fn decode_framed_offload(frame: FramedMessage) -> Result<RawNetworkMes
     }
 }
 
-async fn decode_with_permit(
+pub async fn decode_with_permit(
     frame: FramedMessage,
     permit: OwnedSemaphorePermit,
 ) -> Result<RawNetworkMessage, NetError> {
@@ -104,61 +108,4 @@ where
             Err(e) => on_err(e),
         }
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bitcoin::p2p::message::NetworkMessage;
-    use bitcoin::p2p::Magic;
-    use bitcoin::Network;
-    use std::sync::{Arc, Mutex};
-
-    fn verack_frame() -> FramedMessage {
-        FramedMessage {
-            magic: Magic::from(Network::Regtest),
-            command: *b"verack\0\0\0\0\0\0",
-            payload: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn decode_offload_light_and_spawn() {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let msg = rt.block_on(decode_framed_offload(verack_frame())).unwrap();
-        assert!(matches!(msg.payload(), NetworkMessage::Verack));
-
-        let done = Arc::new(Mutex::new(false));
-        let d2 = done.clone();
-        rt.block_on(async {
-            spawn_decode_then_with_err(
-                verack_frame(),
-                move |_| {
-                    *d2.lock().unwrap() = true;
-                },
-                |_| panic!("should not err"),
-            );
-            // Yield so the spawned task can finish.
-            tokio::task::yield_now().await;
-            for _ in 0..50 {
-                if *done.lock().unwrap() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-            }
-        });
-        assert!(*done.lock().unwrap());
-    }
-
-    #[test]
-    fn decode_permit_pools_are_wider_than_one_slot() {
-        let blocks = block_decode_permits();
-        let ctrl = ctrl_decode_permits();
-        assert!(blocks >= 64, "block decodes keep a wide pool, got {blocks}");
-        assert!(ctrl >= 8, "header decodes keep their own pool, got {ctrl}");
-        assert!(blocks > ctrl);
-    }
 }

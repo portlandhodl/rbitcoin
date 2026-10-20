@@ -10,7 +10,8 @@ use rbitcoin_primitives::{read_compact_size, read_uleb128, write_compact_size};
 /// Nibble values 10–15 are Corrupt (soft-extend), not extra exponent.
 pub const AMOUNT_EXP_MAX: u8 = 9;
 
-const POW10: [u64; (AMOUNT_EXP_MAX as usize) + 1] = [
+#[doc(hidden)]
+pub const POW10: [u64; (AMOUNT_EXP_MAX as usize) + 1] = [
     1,
     10,
     100,
@@ -114,7 +115,8 @@ pub const SCRIPT_KIND_V17_P2TR: u8 = 7;
 pub const SCRIPT_KIND_V17_OP_RETURN_PUSH: u8 = 8;
 pub const SCRIPT_KIND_V17_P2A: u8 = 9;
 
-const SCRIPT_KIND_V17_MAX: u8 = SCRIPT_KIND_V17_P2A;
+#[doc(hidden)]
+pub const SCRIPT_KIND_V17_MAX: u8 = SCRIPT_KIND_V17_P2A;
 
 /// Classify a wire scriptPubKey into a v17 kind and template payload (no CompactSize).
 pub fn classify_script(script: &[u8]) -> (u8, &[u8]) {
@@ -227,7 +229,8 @@ pub fn encode_script_kind_v17(script: &[u8], out: &mut Vec<u8>) -> u8 {
 }
 
 /// Read an on-disk v17 script payload and expand it to the wire scriptPubKey.
-fn span_fits(buf_len: usize, off: usize, n: u64) -> bool {
+#[doc(hidden)]
+pub fn span_fits(buf_len: usize, off: usize, n: u64) -> bool {
     match buf_len.checked_sub(off) {
         Some(rest) => n <= rest as u64,
         None => false,
@@ -266,14 +269,16 @@ pub fn decode_script_kind_v17(kind: u8, buf: &[u8]) -> Result<(Vec<u8>, usize), 
     }
 }
 
-fn hash160_payload(payload: &[u8]) -> Result<&[u8], StoreError> {
+#[doc(hidden)]
+pub fn hash160_payload(payload: &[u8]) -> Result<&[u8], StoreError> {
     if payload.len() != 20 {
         return Err(StoreError::Corrupt("v17 script kind expects 20-byte hash"));
     }
     Ok(payload)
 }
 
-fn hash256_payload(payload: &[u8]) -> Result<&[u8], StoreError> {
+#[doc(hidden)]
+pub fn hash256_payload(payload: &[u8]) -> Result<&[u8], StoreError> {
     if payload.len() != 32 {
         return Err(StoreError::Corrupt("v17 script kind expects 32-byte hash"));
     }
@@ -281,7 +286,8 @@ fn hash256_payload(payload: &[u8]) -> Result<&[u8], StoreError> {
 }
 
 /// Canonical single-push `OP_RETURN`: direct push 1..=75, or PUSHDATA1 only when n≥76.
-fn canonical_op_return_push(script: &[u8]) -> Option<&[u8]> {
+#[doc(hidden)]
+pub fn canonical_op_return_push(script: &[u8]) -> Option<&[u8]> {
     if script.first() != Some(&0x6a) {
         return None;
     }
@@ -303,7 +309,8 @@ fn canonical_op_return_push(script: &[u8]) -> Option<&[u8]> {
     None
 }
 
-fn encode_op_return_push(data: &[u8]) -> Result<Vec<u8>, StoreError> {
+#[doc(hidden)]
+pub fn encode_op_return_push(data: &[u8]) -> Result<Vec<u8>, StoreError> {
     if data.is_empty() || data.len() > 255 {
         return Err(StoreError::Corrupt("v17 OP_RETURN push length"));
     }
@@ -342,48 +349,5 @@ pub fn script_kind_v17_disk_used(kind: u8, buf: &[u8]) -> Result<usize, StoreErr
             Ok(n + slen as usize)
         }
         _ => Err(StoreError::Corrupt("v17 reserved script kind")),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn amount_exp_mantissa_strips_trailing_tens() {
-        assert_eq!(amount_exp_mantissa(0), (0, 0));
-        assert_eq!(amount_exp_mantissa(546), (0, 546));
-        assert_eq!(amount_exp_mantissa(1_000), (3, 1));
-        assert_eq!(amount_exp_mantissa(100_000_000), (8, 1));
-        assert_eq!(amount_exp_mantissa(5_000_000_000), (9, 5));
-        assert_eq!(amount_exp_mantissa(10_000_000_000), (9, 10));
-        assert_eq!(amount_exp_mantissa(330), (1, 33));
-        assert_eq!(amount_exp_mantissa(1_250_000_000), (7, 125));
-        assert_eq!(amount_exp_mantissa(2_500_000_000), (8, 25));
-        for sats in [
-            0u64,
-            330,
-            546,
-            1_000,
-            1_250_000_000,
-            2_500_000_000,
-            5_000_000_000,
-        ] {
-            let (e, m) = amount_exp_mantissa(sats);
-            assert_eq!(scale_amount_exp(e, m).unwrap(), sats, "{sats}");
-        }
-        assert_eq!(scale_amount_exp(8, 1).unwrap(), 100_000_000);
-        for e in 0..=AMOUNT_EXP_MAX {
-            assert_eq!(
-                scale_amount_exp(e, 1).unwrap(),
-                10u64.pow(u32::from(e)),
-                "{e}"
-            );
-        }
-        assert!(scale_amount_exp(9, u64::MAX).is_err());
-        assert!(scale_amount_exp(10, 1).is_err());
-        assert!(scale_amount_exp(1, 10).is_err());
-        assert!(scale_amount_exp(3, 0).is_err());
-        assert_eq!(scale_amount_exp(0, 0).unwrap(), 0);
     }
 }

@@ -8,6 +8,7 @@ members = [
     "crates/rbitcoin-consensus",
     "crates/rbitcoin-mempool",
     "crates/rbitcoin-net",
+    "crates/rbitcoin-ibd",
     "crates/rbitcoin-rpc",
     "crates/rbitcoin-electrum",
     "crates/rbitcoin-esplora",
@@ -35,6 +36,7 @@ rbitcoin-query = { path = "crates/rbitcoin-query" }
 rbitcoin-consensus = { path = "crates/rbitcoin-consensus" }
 rbitcoin-mempool = { path = "crates/rbitcoin-mempool" }
 rbitcoin-net = { path = "crates/rbitcoin-net" }
+rbitcoin-ibd = { path = "crates/rbitcoin-ibd" }
 rbitcoin-rpc = { path = "crates/rbitcoin-rpc" }
 rbitcoin-electrum = { path = "crates/rbitcoin-electrum" }
 rbitcoin-esplora = { path = "crates/rbitcoin-esplora" }

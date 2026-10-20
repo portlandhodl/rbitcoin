@@ -4,7 +4,7 @@ use rbitcoin_net::MempoolHub;
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 
-pub(crate) fn getnettotals(ctx: &RpcContext) -> Value {
+pub fn getnettotals(ctx: &RpcContext) -> Value {
     let (recv, sent) = ctx
         .peers
         .as_ref()
@@ -29,7 +29,7 @@ pub(crate) fn getnettotals(ctx: &RpcContext) -> Value {
     })
 }
 
-pub(crate) fn getpeerinfo(ctx: &RpcContext) -> Value {
+pub fn getpeerinfo(ctx: &RpcContext) -> Value {
     let Some(hub) = ctx.peers.as_ref() else {
         return json!([]);
     };
@@ -41,7 +41,8 @@ pub(crate) fn getpeerinfo(ctx: &RpcContext) -> Value {
     json!(rows)
 }
 
-fn peer_header_height(ctx: &RpcContext, hash: &bitcoin::BlockHash) -> Option<i64> {
+#[doc(hidden)]
+pub fn peer_header_height(ctx: &RpcContext, hash: &bitcoin::BlockHash) -> Option<i64> {
     if let Some(c) = ctx.chain.as_ref() {
         return c.header_height(hash).map(i64::from);
     }
@@ -52,7 +53,8 @@ fn peer_header_height(ctx: &RpcContext, hash: &bitcoin::BlockHash) -> Option<i64
         .map(|h| i64::from(h.0))
 }
 
-fn peer_block_connected(ctx: &RpcContext, hash: &bitcoin::BlockHash) -> bool {
+#[doc(hidden)]
+pub fn peer_block_connected(ctx: &RpcContext, hash: &bitcoin::BlockHash) -> bool {
     if let Some(c) = ctx.chain.as_ref() {
         return c.is_connected(hash);
     }
@@ -63,11 +65,12 @@ fn peer_block_connected(ctx: &RpcContext, hash: &bitcoin::BlockHash) -> bool {
         .is_some()
 }
 
-fn outbound_median_time_offset(rows: &[rbitcoin_net::PeerInfo]) -> i64 {
+#[doc(hidden)]
+pub fn outbound_median_time_offset(rows: &[rbitcoin_net::PeerInfo]) -> i64 {
     rbitcoin_net::outbound_time_offset(rows)
 }
 
-pub(crate) fn peerinfo_json(ctx: &RpcContext, p: rbitcoin_net::PeerInfo) -> Value {
+pub fn peerinfo_json(ctx: &RpcContext, p: rbitcoin_net::PeerInfo) -> Value {
     let mut recv = serde_json::Map::new();
     for (k, v) in p.bytesrecv_per_msg {
         recv.insert(k, json!(v));
@@ -135,14 +138,14 @@ pub(crate) fn peerinfo_json(ctx: &RpcContext, p: rbitcoin_net::PeerInfo) -> Valu
     row
 }
 
-pub(crate) fn ping(ctx: &RpcContext) -> Result<Value, Value> {
+pub fn ping(ctx: &RpcContext) -> Result<Value, Value> {
     if let Some(hub) = ctx.peers.as_ref() {
         hub.queue_pings();
     }
     Ok(Value::Null)
 }
 
-pub(crate) fn services_names(bits: u64) -> Vec<&'static str> {
+pub fn services_names(bits: u64) -> Vec<&'static str> {
     let mut n = Vec::new();
     if bits & 1 != 0 {
         n.push("NETWORK");
@@ -162,13 +165,13 @@ pub(crate) fn services_names(bits: u64) -> Vec<&'static str> {
     n
 }
 
-pub(crate) fn require_peers(ctx: &RpcContext) -> Result<&rbitcoin_net::PeerHub, Value> {
+pub fn require_peers(ctx: &RpcContext) -> Result<&rbitcoin_net::PeerHub, Value> {
     ctx.peers
         .as_deref()
         .ok_or_else(|| rpc_error(ERR_MISC, "P2P session table not attached"))
 }
 
-pub(crate) fn addnode(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn addnode(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["node", "command", "v2transport"])?;
     let hub = require_peers(ctx)?;
     let node = params.req_str(0, "node")?;
@@ -179,7 +182,7 @@ pub(crate) fn addnode(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Val
     Ok(Value::Null)
 }
 
-pub(crate) fn disconnectnode(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn disconnectnode(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["address", "nodeid"])?;
     let hub = require_peers(ctx)?;
     if let Some(id) = params.opt_u64(1, "nodeid")? {
@@ -205,7 +208,7 @@ pub(crate) fn disconnectnode(ctx: &RpcContext, params: &RpcParams) -> Result<Val
     Err(rpc_error(ERR_INVALID_PARAMS, "address or nodeid required"))
 }
 
-pub(crate) fn addconnection(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn addconnection(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["address", "connection_type", "v2transport"])?;
     let hub = require_peers(ctx)?;
     let address = params.req_str(0, "address")?;
@@ -224,7 +227,7 @@ pub(crate) fn addconnection(ctx: &RpcContext, params: &RpcParams) -> Result<Valu
 }
 
 /// Core `addpeeraddress` (hidden): insert into addrman + durable peers file.
-pub(crate) fn addpeeraddress(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn addpeeraddress(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["address", "port", "tried"])?;
     let address = params.req_str(0, "address")?;
     let port = params.req_u64(1, "port")?;
@@ -249,7 +252,7 @@ pub(crate) fn addpeeraddress(ctx: &RpcContext, params: &RpcParams) -> Result<Val
 }
 
 /// Core `getnodeaddresses`: sample from addrman (`count=0` → all).
-pub(crate) fn getnodeaddresses(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getnodeaddresses(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["count", "network"])?;
     let count_raw = params.get(0, "count");
     let count: u64 = match count_raw {
@@ -309,7 +312,7 @@ pub(crate) fn getnodeaddresses(ctx: &RpcContext, params: &RpcParams) -> Result<V
 /// Falls back to the outbound-follow counter when no PeerHub is attached.
 /// Live P2P sessions (Core `getconnectioncount`). Inbound + outbound.
 /// Falls back to the outbound-follow counter when no PeerHub is attached.
-pub(crate) fn connection_count(ctx: &RpcContext) -> u64 {
+pub fn connection_count(ctx: &RpcContext) -> u64 {
     if let Some(hub) = ctx.peers.as_ref() {
         hub.snapshot().len() as u64
     } else {
@@ -317,7 +320,7 @@ pub(crate) fn connection_count(ctx: &RpcContext) -> u64 {
     }
 }
 
-pub(crate) fn localaddresses_json(ctx: &RpcContext) -> Value {
+pub fn localaddresses_json(ctx: &RpcContext) -> Value {
     let Some(hub) = ctx.peers.as_ref() else {
         return json!([]);
     };
@@ -339,9 +342,9 @@ pub(crate) fn localaddresses_json(ctx: &RpcContext) -> Value {
 /// 190000 and then rejects our `getblockchaininfo`. This is an RPC shape
 /// floor. P2P stays `protocolversion` 70016. The crate semver stays in
 /// `subversion`.
-pub(crate) const RPC_COMPAT_VERSION: u64 = 190_000;
+pub const RPC_COMPAT_VERSION: u64 = 190_000;
 
-pub(crate) fn getnetworkinfo(ctx: &RpcContext) -> Value {
+pub fn getnetworkinfo(ctx: &RpcContext) -> Value {
     let (cin, cout, timeoffset) = if let Some(hub) = ctx.peers.as_ref() {
         let rows = hub.snapshot();
         let (cin, cout) = rbitcoin_net::connection_counts(&rows);

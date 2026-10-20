@@ -7,7 +7,7 @@ use std::path::Path;
 
 /// Best-chain height → header fk. Length = tip_height + 1 when non-empty.
 pub struct ConfirmedTable {
-    arr: ArrayTable,
+    pub arr: ArrayTable,
 }
 
 impl ConfirmedTable {
@@ -52,7 +52,7 @@ impl ConfirmedTable {
 
     /// Write a raw slot, including 0. For tests that need a tip length with
     /// no header fk. Production `set` refuses 0.
-    #[cfg(any(test, feature = "test-hooks"))]
+    #[cfg(debug_assertions)]
     #[doc(hidden)]
     pub fn set_raw_for_test(&self, height: Height, value: u64) -> Result<(), StoreError> {
         self.arr.set(u64::from(height.0), value)
@@ -135,17 +135,17 @@ impl ConfirmedTable {
 /// Always L2 write-behind (unlike [`crate::array_table::class_c_inram_max_bytes`],
 /// which still caps `confirmed` / `header_txs_*`). 1 bit/tx stays in RAM.
 pub struct StrongTxTable {
-    bits: crate::file::TableFile,
+    pub bits: crate::file::TableFile,
     /// Number of bits allocated (covers tx fks 1..=n_bits).
-    n_bits: std::sync::atomic::AtomicU64,
+    pub n_bits: std::sync::atomic::AtomicU64,
     /// L2 byte image. `strong_tx` stays in this `Vec`; open and create never go FdOnly.
-    data: std::sync::RwLock<Vec<u8>>,
+    pub data: std::sync::RwLock<Vec<u8>>,
     /// `0` = clean. Nonzero generation: a bit `set` raced persist if CAS fails.
-    dirty_epoch: std::sync::atomic::AtomicU64,
+    pub dirty_epoch: std::sync::atomic::AtomicU64,
     /// Min bit index mutated since last flush (`u64::MAX` = none).
-    dirty_lo_bit: std::sync::atomic::AtomicU64,
+    pub dirty_lo_bit: std::sync::atomic::AtomicU64,
     /// Body byte length last flushed to disk (L2).
-    disk_bytes: std::sync::atomic::AtomicU64,
+    pub disk_bytes: std::sync::atomic::AtomicU64,
 }
 
 impl StrongTxTable {
@@ -180,7 +180,8 @@ impl StrongTxTable {
         })
     }
 
-    fn mark_dirty_bit(&self, bit: u64) {
+    #[doc(hidden)]
+    pub fn mark_dirty_bit(&self, bit: u64) {
         use std::sync::atomic::Ordering;
         crate::array_table::dirty_epoch_bump(&self.dirty_epoch);
         let mut cur = self.dirty_lo_bit.load(Ordering::Relaxed);
@@ -197,7 +198,8 @@ impl StrongTxTable {
         }
     }
 
-    fn ensure_bits(&self, need_bits: u64) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn ensure_bits(&self, need_bits: u64) -> Result<(), StoreError> {
         use std::sync::atomic::Ordering;
         let n = self.n_bits.load(Ordering::Acquire);
         if need_bits <= n {
@@ -213,7 +215,8 @@ impl StrongTxTable {
         Ok(())
     }
 
-    fn get_bit(&self, bit: u64) -> Result<bool, StoreError> {
+    #[doc(hidden)]
+    pub fn get_bit(&self, bit: u64) -> Result<bool, StoreError> {
         use std::sync::atomic::Ordering;
         let n = self.n_bits.load(Ordering::Acquire);
         if bit >= n {
@@ -224,7 +227,8 @@ impl StrongTxTable {
         Ok((guard[bi] >> (bit % 8)) & 1 != 0)
     }
 
-    fn set_bit(&self, bit: u64, on: bool) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn set_bit(&self, bit: u64, on: bool) -> Result<(), StoreError> {
         self.ensure_bits(bit + 1)?;
         let mut guard = self.data.write().unwrap_or_else(|e| e.into_inner());
         let bi = (bit / 8) as usize;
@@ -281,7 +285,8 @@ impl StrongTxTable {
     }
 
     /// Set bits in half-open `[start, end)` (bit indices).
-    fn set_bits_range(&self, start: u64, end: u64, on: bool) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn set_bits_range(&self, start: u64, end: u64, on: bool) -> Result<(), StoreError> {
         if end <= start {
             return Ok(());
         }
@@ -350,7 +355,8 @@ impl StrongTxTable {
         self.count_ones_bits(start_bit, end_bit)
     }
 
-    fn count_ones_bits(&self, start_bit: u64, end_bit: u64) -> Result<u64, StoreError> {
+    #[doc(hidden)]
+    pub fn count_ones_bits(&self, start_bit: u64, end_bit: u64) -> Result<u64, StoreError> {
         if end_bit <= start_bit {
             return Ok(0);
         }
@@ -374,7 +380,7 @@ impl StrongTxTable {
     }
 
     /// Read `dst.len()` bit-image bytes starting at payload byte `byte_off`.
-    pub(crate) fn read_bit_bytes(&self, byte_off: u64, dst: &mut [u8]) -> Result<(), StoreError> {
+    pub fn read_bit_bytes(&self, byte_off: u64, dst: &mut [u8]) -> Result<(), StoreError> {
         if dst.is_empty() {
             return Ok(());
         }
@@ -459,420 +465,6 @@ impl StrongTxTable {
     }
 }
 
-#[cfg(test)]
-mod strong_tests {
-    use super::*;
-
-    fn tmp() -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "rbitcoin-strong-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&p).unwrap();
-        p
-    }
-
-    #[test]
-    fn strong_bitset_range_and_clear() {
-        let dir = tmp();
-        let t = StrongTxTable::create(&dir).unwrap();
-        t.set_strong_range(Fk(1), 10, Fk(99)).unwrap();
-        for i in 1..=10 {
-            assert!(t.is_strong(Fk(i)).unwrap());
-        }
-        assert!(!t.is_strong(Fk(11)).unwrap());
-        t.set_unstrong(Fk(5)).unwrap();
-        assert!(!t.is_strong(Fk(5)).unwrap());
-        assert!(t.is_strong(Fk(4)).unwrap());
-        assert!(t.get(Fk(1)).unwrap().is_some());
-        assert!(t.get(Fk(5)).unwrap().is_none());
-        t.flush().unwrap();
-        drop(t);
-        let t = StrongTxTable::open(&dir).unwrap();
-        assert!(t.is_strong(Fk(1)).unwrap());
-        assert!(!t.is_strong(Fk(5)).unwrap());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn count_strong_in_fk_range_skips_zero_bytes() {
-        let dir = tmp();
-        let t = StrongTxTable::create(&dir).unwrap();
-        assert_eq!(t.count_strong_in_fk_range(0, 8).unwrap(), 0);
-        assert_eq!(t.count_strong_in_fk_range(5, 5).unwrap(), 0);
-        assert_eq!(t.count_strong_in_fk_range(100, 200).unwrap(), 0);
-        t.set_strong(Fk(1), Fk(1)).unwrap();
-        t.set_strong(Fk(16), Fk(1)).unwrap();
-        assert_eq!(t.count_strong_in_fk_range(1, 17).unwrap(), 2);
-        assert_eq!(t.count_strong_in_fk_range(2, 16).unwrap(), 0);
-        t.flush().unwrap();
-        drop(t);
-        let t = StrongTxTable::open(&dir).unwrap();
-        assert_eq!(t.count_strong_in_fk_range(1, 17).unwrap(), 2);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// Count uses the L2 image. A scribbled `strong_tx.body` does not change it.
-    #[test]
-    fn strong_tx_count_reads_l2_not_the_file() {
-        let dir = tmp();
-        let t = StrongTxTable::create(&dir).unwrap();
-        t.set_strong_range(Fk(1), 20, Fk(1)).unwrap();
-        t.flush().unwrap();
-        assert!(t.l2_resident_bytes() > 0);
-        assert_eq!(t.count_strong_in_fk_range(1, 21).unwrap(), 20);
-        let path = dir.join("strong_tx.body");
-        let mut bytes = std::fs::read(&path).unwrap();
-        let header = crate::file::FILE_HEADER_LEN;
-        assert!(bytes.len() > header);
-        for b in &mut bytes[header..] {
-            *b = 0;
-        }
-        std::fs::write(&path, &bytes).unwrap();
-        assert_eq!(t.count_strong_in_fk_range(1, 21).unwrap(), 20);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// `strong_tx` stays L2 even when the Class C array cap would demote it.
-    #[test]
-    fn strong_tx_always_l2_above_class_c_cap() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let prev = std::env::var_os("RBITCOIN_CLASS_C_INRAM_MAX_MB");
-        std::env::set_var("RBITCOIN_CLASS_C_INRAM_MAX_MB", "1");
-        let dir = tmp();
-        // 1 MiB + 1 byte of bits → body > class_c_inram_max_bytes() (1 MiB).
-        let fk = Fk(8_388_608 + 8);
-        {
-            let t = StrongTxTable::create(&dir).unwrap();
-            t.set_strong(fk, Fk(1)).unwrap();
-            t.flush().unwrap();
-            assert!(
-                t.l2_resident_bytes() > 1024 * 1024,
-                "create path L2={}",
-                t.l2_resident_bytes()
-            );
-        }
-        let t = StrongTxTable::open(&dir).unwrap();
-        assert!(
-            t.l2_resident_bytes() > 1024 * 1024,
-            "reopen must keep L2 under a 1 MiB Class C cap; got {}",
-            t.l2_resident_bytes()
-        );
-        assert!(t.is_strong(fk).unwrap());
-        match prev {
-            Some(v) => std::env::set_var("RBITCOIN_CLASS_C_INRAM_MAX_MB", v),
-            None => std::env::remove_var("RBITCOIN_CLASS_C_INRAM_MAX_MB"),
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn concurrent_set_strong_during_flush_persists() {
-        use std::sync::atomic::{AtomicBool, Ordering as AtomOrd};
-        use std::sync::Arc;
-        let dir = tmp();
-        let t = Arc::new(StrongTxTable::create(&dir).unwrap());
-        t.set_strong_range(Fk(1), 80_000, Fk(1)).unwrap();
-        t.flush().unwrap();
-        let stop = Arc::new(AtomicBool::new(false));
-        let flush_t = {
-            let t = Arc::clone(&t);
-            let stop = Arc::clone(&stop);
-            std::thread::spawn(move || {
-                while !stop.load(AtomOrd::Relaxed) {
-                    t.flush_dirty().unwrap();
-                }
-            })
-        };
-        for _ in 0..2_000 {
-            t.set_unstrong(Fk(1)).unwrap();
-            t.set_strong(Fk(1), Fk(1)).unwrap();
-        }
-        stop.store(true, AtomOrd::Relaxed);
-        flush_t.join().unwrap();
-        let want = t.is_strong(Fk(1)).unwrap();
-        t.flush().unwrap();
-        drop(t);
-        let t = StrongTxTable::open(&dir).unwrap();
-        assert_eq!(t.is_strong(Fk(1)).unwrap(), want);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn strong_write_behind_no_flush_keeps_old() {
-        let dir = tmp();
-        {
-            let t = StrongTxTable::create(&dir).unwrap();
-            t.set_strong_range(Fk(1), 8, Fk(1)).unwrap();
-            t.flush().unwrap();
-            t.set_strong(Fk(9), Fk(1)).unwrap();
-            // Drop without flush.
-        }
-        let t = StrongTxTable::open(&dir).unwrap();
-        assert!(t.is_strong(Fk(1)).unwrap());
-        assert!(
-            !t.is_strong(Fk(9)).unwrap(),
-            "unflushed strong must not survive"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// High-fk-only dirties must write a suffix, not the full L2 image.
-    #[test]
-    fn strong_high_fk_flush_writes_suffix_not_full_image() {
-        let dir = tmp();
-        let t = StrongTxTable::create(&dir).unwrap();
-        // 80_000 bits = 10_000 payload bytes.
-        t.set_strong_range(Fk(1), 80_000, Fk(1)).unwrap();
-        t.flush_dirty().unwrap();
-        t.set_unstrong(Fk(80_000)).unwrap();
-        t.flush_dirty().unwrap();
-        assert!(t.is_strong(Fk(1)).unwrap());
-        assert!(!t.is_strong(Fk(80_000)).unwrap());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// In-prefix high-bit dirties must flush without losing low bits (suffix write).
-    #[test]
-    fn strong_suffix_dirty_flush_preserves_prefix() {
-        let dir = tmp();
-        {
-            let s = StrongTxTable::create(&dir).unwrap();
-            // Allocate a wide bit image then flush so disk_bytes covers it.
-            s.set_strong_range(Fk(1), 10_000, Fk(1)).unwrap();
-            s.flush().unwrap();
-            // Flip only high bits (still within disk image) — suffix dirty path.
-            s.set_strong_range(Fk(9000), 100, Fk(1)).unwrap();
-            s.flush().unwrap();
-        }
-        let s = StrongTxTable::open(&dir).unwrap();
-        assert!(s.is_strong(Fk(1)).unwrap());
-        assert!(s.is_strong(Fk(5000)).unwrap());
-        assert!(s.is_strong(Fk(9000)).unwrap());
-        assert!(s.is_strong(Fk(9099)).unwrap());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn strong_write_behind_flush_reopen() {
-        let dir = tmp();
-        {
-            let t = StrongTxTable::create(&dir).unwrap();
-            t.set_strong_range(Fk(1), 16, Fk(1)).unwrap();
-            t.flush().unwrap();
-            t.set_unstrong_range(Fk(5), 4).unwrap();
-            t.flush().unwrap();
-        }
-        let t = StrongTxTable::open(&dir).unwrap();
-        assert!(t.is_strong(Fk(1)).unwrap());
-        assert!(!t.is_strong(Fk(5)).unwrap());
-        assert!(!t.is_strong(Fk(8)).unwrap());
-        assert!(t.is_strong(Fk(9)).unwrap());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn strong_partial_bytes_unstrong_range_and_errors() {
-        let dir = tmp();
-        let t = StrongTxTable::create(&dir).unwrap();
-        // Unaligned start so partial-first-byte path runs.
-        t.set_strong_range(Fk(3), 20, Fk(1)).unwrap();
-        for i in 3..23 {
-            assert!(t.is_strong(Fk(i)).unwrap(), "i={i}");
-        }
-        assert!(!t.is_strong(Fk(2)).unwrap());
-        // count==0 no-op
-        t.set_strong_range(Fk(1), 0, Fk(1)).unwrap();
-        t.set_unstrong_range(Fk(1), 0).unwrap();
-        // Clear a mid-range with partial ends.
-        t.set_unstrong_range(Fk(5), 10).unwrap();
-        for i in 5..15 {
-            assert!(!t.is_strong(Fk(i)).unwrap());
-        }
-        assert!(t.is_strong(Fk(4)).unwrap());
-        assert!(t.is_strong(Fk(15)).unwrap());
-        // past allocated → no-op
-        t.set_unstrong(Fk(9999)).unwrap();
-        t.set_unstrong_range(Fk(9000), 10).unwrap();
-        assert!(matches!(
-            t.set_strong(Fk::NULL, Fk(1)),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(
-            t.set_strong(Fk(1), Fk::NULL),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(
-            t.set_strong_range(Fk::NULL, 1, Fk(1)),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(
-            t.set_strong_range(Fk(1), 1, Fk::NULL),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(t.is_strong(Fk::NULL), Err(StoreError::InvalidFk)));
-        t.flush_async().unwrap();
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
-#[cfg(test)]
-mod chain_table_tests {
-    use super::*;
-
-    fn tmp() -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "rbitcoin-chain-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&p).unwrap();
-        p
-    }
-
-    #[allow(clippy::cognitive_complexity)] // one fixture, many chain surface arms
-    #[test]
-    fn confirmed_tx_height_header_txs_surface() {
-        let dir = tmp();
-        // Confirmed
-        let c = ConfirmedTable::create(&dir).unwrap();
-        assert!(c.tip_height().is_none());
-        c.set(Height(0), Fk(1)).unwrap();
-        c.set(Height(1), Fk(2)).unwrap();
-        assert_eq!(c.tip_height(), Some(Height(1)));
-        assert_eq!(c.get(Height(0)).unwrap(), Some(Fk(1)));
-        c.set_many(&[]).unwrap();
-        c.set_many(&[(Height(2), Fk(3)), (Height(3), Fk(4))])
-            .unwrap();
-        assert_eq!(c.tip_height(), Some(Height(3)));
-        assert!(matches!(
-            c.set(Height(4), Fk::NULL),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(
-            c.set_many(&[(Height(5), Fk::NULL)]),
-            Err(StoreError::InvalidFk)
-        ));
-        c.disconnect_tip(Height(3)).unwrap();
-        assert_eq!(c.tip_height(), Some(Height(2)));
-        assert!(matches!(
-            c.disconnect_tip(Height(0)),
-            Err(StoreError::Corrupt(_))
-        ));
-        c.disconnect_tip(Height(2)).unwrap();
-        c.disconnect_tip(Height(1)).unwrap();
-        c.disconnect_tip(Height(0)).unwrap();
-        assert!(c.tip_height().is_none());
-        assert!(matches!(
-            c.disconnect_tip(Height(0)),
-            Err(StoreError::Corrupt(_))
-        ));
-        c.flush().unwrap();
-        c.flush_async().unwrap();
-
-        // HeaderTxs
-        let ht = HeaderTxsTable::create(&dir).unwrap();
-        assert!(ht.get_range(Fk(1)).unwrap().is_none());
-        ht.put_range(Fk(1), Fk(100), 3).unwrap();
-        assert_eq!(ht.get_range(Fk(1)).unwrap(), Some((Fk(100), 3)));
-        assert_eq!(
-            ht.get_list(Fk(1)).unwrap().unwrap(),
-            vec![Fk(100), Fk(101), Fk(102)]
-        );
-        assert!(ht.has_body(Fk(1)).unwrap());
-        assert!(!ht.has_body(Fk(2)).unwrap());
-        ht.put_list(Fk(2), &[Fk(200), Fk(201)]).unwrap();
-        assert!(matches!(
-            ht.put_list(Fk(3), &[]),
-            Err(StoreError::Corrupt(_))
-        ));
-        // Non-contiguous triggers debug_assert in debug builds; only empty is a
-        // stable Err path under RUSTFLAGS=-Dwarnings debug tests.
-        assert!(matches!(
-            ht.put_range(Fk::NULL, Fk(1), 1),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(
-            ht.put_range(Fk(3), Fk::NULL, 1),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(
-            ht.put_range(Fk(3), Fk(1), 0),
-            Err(StoreError::InvalidFk)
-        ));
-        ht.put_lists_batch(&[]).unwrap();
-        ht.put_lists_batch(&[(Fk(3), &[Fk(300)] as &[_]), (Fk(4), &[Fk(400), Fk(401)])])
-            .unwrap();
-        assert!(matches!(
-            ht.put_lists_batch(&[(Fk(5), &[] as &[_])]),
-            Err(StoreError::Corrupt(_))
-        ));
-        ht.put_ranges_batch(&[]).unwrap();
-        ht.put_ranges_batch(&[(Fk(5), Fk(500), 2)]).unwrap();
-        assert!(matches!(
-            ht.put_ranges_batch(&[(Fk::NULL, Fk(1), 1)]),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(matches!(
-            ht.put_ranges_batch(&[(Fk(6), Fk::NULL, 1)]),
-            Err(StoreError::InvalidFk)
-        ));
-        assert_eq!(ht.count_bodies().unwrap(), 5);
-        assert!(matches!(ht.get_range(Fk::NULL), Err(StoreError::InvalidFk)));
-
-        // clear_body: drop association without freeing tx rows (merkle soft-reget path).
-        assert!(matches!(
-            ht.clear_body(Fk::NULL),
-            Err(StoreError::InvalidFk)
-        ));
-        assert!(!ht.clear_body(Fk(99)).unwrap(), "no body → false");
-        assert!(ht.clear_body(Fk(1)).unwrap(), "had body → true");
-        assert!(!ht.has_body(Fk(1)).unwrap());
-        assert!(!ht.clear_body(Fk(1)).unwrap(), "already clear → false");
-        assert_eq!(ht.count_bodies().unwrap(), 4);
-
-        ht.flush().unwrap();
-        ht.flush_async().unwrap();
-        drop(ht);
-        let ht = HeaderTxsTable::open(&dir).unwrap();
-        assert_eq!(ht.get_range(Fk(5)).unwrap(), Some((Fk(500), 2)));
-        assert!(
-            !ht.has_body(Fk(1)).unwrap(),
-            "clear_body durable after reopen"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn header_txs_contains_tx_range_edges() {
-        let dir = tmp();
-        let ht = HeaderTxsTable::create(&dir).unwrap();
-        assert!(!ht.contains_tx(Fk(1), Fk::NULL).unwrap());
-        assert!(!ht.contains_tx(Fk(1), Fk(1)).unwrap(), "no body");
-        ht.put_range(Fk(1), Fk(10), 3).unwrap();
-        assert!(ht.contains_tx(Fk(1), Fk(10)).unwrap());
-        assert!(ht.contains_tx(Fk(1), Fk(12)).unwrap());
-        assert!(!ht.contains_tx(Fk(1), Fk(9)).unwrap());
-        assert!(!ht.contains_tx(Fk(1), Fk(13)).unwrap());
-        assert!(!ht.contains_tx(Fk(2), Fk(10)).unwrap(), "other header");
-        assert_eq!(ht.tx_index(Fk(1), Fk(10)).unwrap(), Some(0));
-        assert_eq!(ht.tx_index(Fk(1), Fk(12)).unwrap(), Some(2));
-        assert_eq!(ht.tx_index(Fk(1), Fk(9)).unwrap(), None);
-        assert_eq!(ht.tx_index(Fk(1), Fk(13)).unwrap(), None);
-        assert_eq!(ht.tx_index(Fk(1), Fk::NULL).unwrap(), None);
-        assert_eq!(ht.tx_index(Fk(2), Fk(10)).unwrap(), None, "other header");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
 /// Per-header **contiguous** tx_fk range (Class A archive body association).
 ///
 /// Schema v2 stores `(first_tx_fk, count)` only — not a u64 fk vector.
@@ -881,8 +473,8 @@ mod chain_table_tests {
 /// - `first.body[header_fk-1]` = first_tx_fk (0 = no body)
 /// - `count.body[header_fk-1]` = n txs (0 = no body)
 pub struct HeaderTxsTable {
-    first: ArrayTable,
-    count: ArrayTable,
+    pub first: ArrayTable,
+    pub count: ArrayTable,
 }
 
 impl HeaderTxsTable {

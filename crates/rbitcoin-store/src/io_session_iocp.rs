@@ -10,12 +10,12 @@ use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::ptr::null_mut;
 
-pub(crate) struct IocpEngine {
-    port: *mut core::ffi::c_void,
-    ready: VecDeque<(u64, i32)>,
+pub struct IocpEngine {
+    pub port: *mut core::ffi::c_void,
+    pub ready: VecDeque<(u64, i32)>,
     /// Handles this port already bound. Recycled HANDLE values after close
     /// are new objects — `CreateIoCompletionPort` succeeds and we re-insert.
-    associated: HashSet<isize>,
+    pub associated: HashSet<isize>,
 }
 
 // IOCP handle is used only from the machine thread (same as uring TLS).
@@ -54,20 +54,23 @@ extern "system" {
 }
 
 #[repr(C)]
-struct Overlapped {
-    internal: usize,
-    internal_high: usize,
-    off: u32,
-    off_high: u32,
-    event: *mut core::ffi::c_void,
-    user_data: u64,
+#[doc(hidden)]
+pub struct Overlapped {
+    pub internal: usize,
+    pub internal_high: usize,
+    pub off: u32,
+    pub off_high: u32,
+    pub event: *mut core::ffi::c_void,
+    pub user_data: u64,
 }
 
-const ERROR_IO_PENDING: u32 = 997;
-const INVALID: *mut core::ffi::c_void = -1isize as *mut core::ffi::c_void;
+#[doc(hidden)]
+pub const ERROR_IO_PENDING: u32 = 997;
+#[doc(hidden)]
+pub const INVALID: *mut core::ffi::c_void = -1isize as *mut core::ffi::c_void;
 
 impl IocpEngine {
-    pub(crate) fn open(_entries: u32) -> Result<Self, StoreError> {
+    pub fn open(_entries: u32) -> Result<Self, StoreError> {
         let port = unsafe { CreateIoCompletionPort(INVALID, null_mut(), 0, 1) };
         if port.is_null() {
             return Err(StoreError::io(
@@ -82,7 +85,8 @@ impl IocpEngine {
         })
     }
 
-    fn associate(&mut self, handle: IoHandle) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn associate(&mut self, handle: IoHandle) -> Result<(), StoreError> {
         let raw = handle.as_raw_handle();
         if self.associated.contains(&raw) {
             return Ok(());
@@ -109,7 +113,7 @@ impl IocpEngine {
         Ok(())
     }
 
-    pub(crate) fn push_pread(
+    pub fn push_pread(
         &mut self,
         handle: IoHandle,
         offset: u64,
@@ -126,7 +130,7 @@ impl IocpEngine {
         )
     }
 
-    pub(crate) fn push_pwrite(
+    pub fn push_pwrite(
         &mut self,
         handle: IoHandle,
         offset: u64,
@@ -143,7 +147,8 @@ impl IocpEngine {
         )
     }
 
-    fn issue(
+    #[doc(hidden)]
+    pub fn issue(
         &mut self,
         handle: IoHandle,
         offset: u64,
@@ -184,25 +189,26 @@ impl IocpEngine {
         Ok(())
     }
 
-    pub(crate) fn harvest_ready(&mut self) -> Vec<(u64, i32)> {
+    pub fn harvest_ready(&mut self) -> Vec<(u64, i32)> {
         self.poll(0);
         self.ready.drain(..).collect()
     }
 
-    pub(crate) fn wait_one_cqe_timeout(&mut self, timeout_ms: u32) -> bool {
+    pub fn wait_one_cqe_timeout(&mut self, timeout_ms: u32) -> bool {
         if self.ready.is_empty() {
             self.poll(timeout_ms);
         }
         !self.ready.is_empty()
     }
 
-    pub(crate) fn wait_idle(&mut self) -> Result<(), StoreError> {
+    pub fn wait_idle(&mut self) -> Result<(), StoreError> {
         // Caller harvests until pending is empty; one long wait then drain.
         self.poll(100);
         Ok(())
     }
 
-    fn poll(&mut self, timeout_ms: u32) {
+    #[doc(hidden)]
+    pub fn poll(&mut self, timeout_ms: u32) {
         loop {
             let mut xfer = 0u32;
             let mut key = 0usize;
@@ -237,126 +243,5 @@ impl Drop for IocpEngine {
             }
             self.port = null_mut();
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::os::windows::fs::OpenOptionsExt;
-
-    const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
-
-    fn tmp(tag: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "rbitcoin-iocp-{tag}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ))
-    }
-
-    fn open_overlapped(path: &Path) -> std::fs::File {
-        std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .custom_flags(FILE_FLAG_OVERLAPPED)
-            .open(path)
-            .expect("overlapped tmp")
-    }
-
-    #[test]
-    fn associate_twice_same_port_ok() {
-        let path = tmp("twice");
-        let f = open_overlapped(&path);
-        let h = IoHandle::from_file(&f);
-        assert!(h.pwrite(0, b"ab") > 0);
-        let mut eng = IocpEngine::open(8).unwrap();
-        eng.associate(h).unwrap();
-        eng.associate(h).unwrap();
-        drop(f);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn associate_non_overlapped_is_error() {
-        let path = tmp("sync");
-        let f = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&path)
-            .expect("sync tmp");
-        let h = IoHandle::from_file(&f);
-        let mut eng = IocpEngine::open(8).unwrap();
-        let err = eng.associate(h).unwrap_err();
-        let s = err.to_string();
-        assert!(
-            s.contains("FILE_FLAG_OVERLAPPED"),
-            "expected overlapped hint, got {s}"
-        );
-        drop(f);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn positional_pread_on_associated_handle_skips_completion_port() {
-        let path = tmp("xfer-skip");
-        let f = open_overlapped(&path);
-        let h = IoHandle::from_file(&f);
-        assert!(h.pwrite(0, b"hello") > 0);
-        let mut eng = IocpEngine::open(8).unwrap();
-        eng.associate(h).unwrap();
-        let mut buf = [0u8; 5];
-        assert_eq!(h.pread(0, &mut buf), 5);
-        assert_eq!(&buf, b"hello");
-        let extra = eng.harvest_ready();
-        assert!(
-            extra.is_empty(),
-            "positional xfer must not post OVERLAPPED to IOCP (harvest would Box::from_raw a stack frame): {extra:?}"
-        );
-        drop(f);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn two_threads_bulk_pread_same_handle_completes() {
-        use crate::bulk_io::{pread_batch, ReadOp};
-        use std::sync::atomic::{AtomicU32, Ordering};
-
-        let path = tmp("two-thread-pread");
-        let f = open_overlapped(&path);
-        let h = IoHandle::from_file(&f);
-        assert!(h.pwrite(0, b"hello") > 0);
-        let done = AtomicU32::new(0);
-        std::thread::scope(|scope| {
-            for _ in 0..2 {
-                scope.spawn(|| {
-                    let mut buf = [0u8; 5];
-                    let mut ops = [ReadOp {
-                        fd: h,
-                        offset: 0,
-                        buf: &mut buf,
-                        result: i32::MIN,
-                    }];
-                    pread_batch(&mut ops);
-                    assert!(
-                        ops[0].result >= 5,
-                        "bulk pread must complete (not drain-hang) result={}",
-                        ops[0].result
-                    );
-                    assert_eq!(&buf, b"hello");
-                    done.fetch_add(1, Ordering::Relaxed);
-                });
-            }
-        });
-        assert_eq!(done.load(Ordering::Relaxed), 2);
-        drop(f);
-        let _ = std::fs::remove_file(&path);
     }
 }

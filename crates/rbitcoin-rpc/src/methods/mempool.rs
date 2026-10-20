@@ -6,18 +6,20 @@ use rbitcoin_net::MempoolHub;
 use rbitcoin_primitives::Height;
 use serde_json::{json, Value};
 
-fn mempool_info_limits(ctx: &RpcContext) -> (u32, u64) {
+#[doc(hidden)]
+pub fn mempool_info_limits(ctx: &RpcContext) -> (u32, u64) {
     ctx.mempool
         .as_ref()
         .map(|mp| mp.cluster_limits())
         .unwrap_or_else(MempoolHub::default_cluster_limits)
 }
 
-fn relay_fee_json() -> Value {
+#[doc(hidden)]
+pub fn relay_fee_json() -> Value {
     sat_btc_json(rbitcoin_consensus::policy::MIN_RELAY_FEE_RATE_SAT_PER_KVB as i64)
 }
 
-pub(crate) fn getmempoolinfo(ctx: &RpcContext) -> Result<Value, Value> {
+pub fn getmempoolinfo(ctx: &RpcContext) -> Result<Value, Value> {
     let (limit_count, limit_vsize) = mempool_info_limits(ctx);
     let Some(mp) = ctx.mempool.as_ref() else {
         return Ok(json!({
@@ -71,11 +73,13 @@ pub(crate) fn getmempoolinfo(ctx: &RpcContext) -> Result<Value, Value> {
 
 /// Exact 8-decimal BTC JSON number (Core `ValueFromAmount`). Avoids f64 drift
 /// against `Decimal` comparisons in the functional suite.
-fn accept_fees_json(fee_sat: u64, weight: u64, wtxid: &str) -> Value {
+#[doc(hidden)]
+pub fn accept_fees_json(fee_sat: u64, weight: u64, wtxid: &str) -> Value {
     accept_fees_parts(fee_sat, fee_sat, weight, &[wtxid.to_string()])
 }
 
-fn accept_fees_parts(base_sat: u64, eff_sat: u64, weight: u64, includes: &[String]) -> Value {
+#[doc(hidden)]
+pub fn accept_fees_parts(base_sat: u64, eff_sat: u64, weight: u64, includes: &[String]) -> Value {
     let vsize = rbitcoin_consensus::policy::vbytes_ceil(weight).max(1);
     let sat_kvb = eff_sat.saturating_mul(1000).checked_div(vsize).unwrap_or(0);
     json!({
@@ -86,7 +90,8 @@ fn accept_fees_parts(base_sat: u64, eff_sat: u64, weight: u64, includes: &[Strin
 }
 
 /// Own modified feerate, or the package remainder when `fee_with` is set.
-fn submit_fees_json(
+#[doc(hidden)]
+pub fn submit_fees_json(
     mp: &MempoolHub,
     txid: &Txid,
     base_fee: u64,
@@ -127,7 +132,7 @@ fn submit_fees_json(
     accept_fees_parts(base_fee, modified, weight, &[wtxid.to_string()])
 }
 
-pub(crate) fn sat_btc_json(sat: i64) -> Value {
+pub fn sat_btc_json(sat: i64) -> Value {
     let sign = if sat < 0 { "-" } else { "" };
     let abs = sat.unsigned_abs();
     let s = format!("{sign}{}.{:08}", abs / 100_000_000, abs % 100_000_000);
@@ -136,7 +141,7 @@ pub(crate) fn sat_btc_json(sat: i64) -> Value {
 
 /// Shared getrawmempool-verbose / getmempoolentry graph + unbroadcast fields.
 /// Shared getrawmempool-verbose / getmempoolentry graph + unbroadcast fields.
-pub(crate) fn mempool_graph_json(mp: &MempoolHub, txid: &Txid, fee: u64, weight: u64) -> Value {
+pub fn mempool_graph_json(mp: &MempoolHub, txid: &Txid, fee: u64, weight: u64) -> Value {
     // Core `vsize` is sigop-adjusted; `weight` stays raw.
     let adj = mp.get_live_adjusted_weight(txid).unwrap_or(weight);
     let vsize = rbitcoin_consensus::policy::vbytes_ceil(adj);
@@ -205,7 +210,7 @@ pub(crate) fn mempool_graph_json(mp: &MempoolHub, txid: &Txid, fee: u64, weight:
     })
 }
 
-pub(crate) fn getrawmempool(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getrawmempool(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["verbose", "mempool_sequence"])?;
     let verbose = params.opt_bool(0, "verbose")?.unwrap_or(false);
     let want_seq = params.opt_bool(1, "mempool_sequence")?.unwrap_or(false);
@@ -243,7 +248,7 @@ pub(crate) fn getrawmempool(ctx: &RpcContext, params: &RpcParams) -> Result<Valu
     Ok(Value::Object(map))
 }
 
-pub(crate) fn getmempoolentry(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getmempoolentry(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["txid"])?;
     let hex = params.req_str(0, "txid")?;
     let want = parse_hash32_display(hex)?;
@@ -261,7 +266,7 @@ pub(crate) fn getmempoolentry(ctx: &RpcContext, params: &RpcParams) -> Result<Va
     ))
 }
 
-pub(crate) fn getrawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getrawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["txid", "verbose", "verbosity", "blockhash"])?;
     let hex = params.req_str(0, "txid")?;
     let want = parse_hash32_display(hex)?;
@@ -358,11 +363,14 @@ pub(crate) fn getrawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result<
 }
 
 /// Default RPC-submit cap: 10_000 sat/vB. `0` is unlimited.
-const DEFAULT_MAX_RAW_TX_FEE_SAT_VB: u64 = 10_000;
+#[doc(hidden)]
+pub const DEFAULT_MAX_RAW_TX_FEE_SAT_VB: u64 = 10_000;
 /// Sanity cap on the `maxfeerate` argument (sat/vB).
-const MAX_ALLOWED_FEERATE_SAT_VB: u64 = 100_000;
+#[doc(hidden)]
+pub const MAX_ALLOWED_FEERATE_SAT_VB: u64 = 100_000;
 
-fn parse_rpc_btc_to_sat(s: &str) -> Result<u64, Value> {
+#[doc(hidden)]
+pub fn parse_rpc_btc_to_sat(s: &str) -> Result<u64, Value> {
     let s = s.trim();
     if s.is_empty() {
         return Err(rpc_error(ERR_INVALID_PARAMETER, "Invalid amount"));
@@ -397,7 +405,8 @@ fn parse_rpc_btc_to_sat(s: &str) -> Result<u64, Value> {
     Ok(whole.saturating_mul(100_000_000).saturating_add(frac_n))
 }
 
-fn amount_sat_from_json(v: &Value) -> Result<u64, Value> {
+#[doc(hidden)]
+pub fn amount_sat_from_json(v: &Value) -> Result<u64, Value> {
     match v {
         Value::Number(n) => {
             if let Some(u) = n.as_u64() {
@@ -421,7 +430,8 @@ fn amount_sat_from_json(v: &Value) -> Result<u64, Value> {
 
 /// RPC-submit `maxfeerate` (sat/vB). Omitted → 10_000. `0` → unlimited.
 /// `>= 100_000` is a parameter error. P2P `accept_tx` does not read this cap.
-fn opt_maxfeerate_sat_vb(params: &RpcParams, index: usize) -> Result<u64, Value> {
+#[doc(hidden)]
+pub fn opt_maxfeerate_sat_vb(params: &RpcParams, index: usize) -> Result<u64, Value> {
     match params.get(index, "maxfeerate") {
         None | Some(Value::Null) => Ok(DEFAULT_MAX_RAW_TX_FEE_SAT_VB),
         Some(v) => {
@@ -437,7 +447,8 @@ fn opt_maxfeerate_sat_vb(params: &RpcParams, index: usize) -> Result<u64, Value>
     }
 }
 
-fn sat_vb_from_json(v: &Value) -> Result<u64, Value> {
+#[doc(hidden)]
+pub fn sat_vb_from_json(v: &Value) -> Result<u64, Value> {
     match v {
         Value::Number(n) => {
             if let Some(u) = n.as_u64() {
@@ -473,7 +484,8 @@ fn sat_vb_from_json(v: &Value) -> Result<u64, Value> {
     }
 }
 
-fn fee_exceeds_max(fee_sat: u64, weight: u64, max_sat_vb: u64) -> bool {
+#[doc(hidden)]
+pub fn fee_exceeds_max(fee_sat: u64, weight: u64, max_sat_vb: u64) -> bool {
     if max_sat_vb == 0 {
         return false;
     }
@@ -481,7 +493,8 @@ fn fee_exceeds_max(fee_sat: u64, weight: u64, max_sat_vb: u64) -> bool {
     fee_sat > max_sat_vb.saturating_mul(vsize)
 }
 
-fn prevout_value_sat(ctx: &RpcContext, op: &OutPoint) -> Option<u64> {
+#[doc(hidden)]
+pub fn prevout_value_sat(ctx: &RpcContext, op: &OutPoint) -> Option<u64> {
     if let Some(mp) = ctx.mempool.as_ref() {
         if let Some(parent) = mp.get_tx(&op.txid) {
             return parent
@@ -497,13 +510,14 @@ fn prevout_value_sat(ctx: &RpcContext, op: &OutPoint) -> Option<u64> {
 }
 
 #[derive(Debug)]
-pub(crate) enum TxFeeLook {
+pub enum TxFeeLook {
     Fee(u64),
     MissingPrevout,
     Overflow,
 }
 
-fn fold_tx_fee_sat(
+#[doc(hidden)]
+pub fn fold_tx_fee_sat(
     in_vals: impl IntoIterator<Item = Option<u64>>,
     out_sum: Option<u64>,
 ) -> TxFeeLook {
@@ -526,13 +540,14 @@ fn fold_tx_fee_sat(
     }
 }
 
-fn tx_output_sum_sat(tx: &Transaction) -> Option<u64> {
+#[doc(hidden)]
+pub fn tx_output_sum_sat(tx: &Transaction) -> Option<u64> {
     tx.output
         .iter()
         .try_fold(0u64, |a, o| a.checked_add(o.value.to_sat()))
 }
 
-pub(crate) fn tx_fee_sat_from_prevouts(ctx: &RpcContext, tx: &Transaction) -> TxFeeLook {
+pub fn tx_fee_sat_from_prevouts(ctx: &RpcContext, tx: &Transaction) -> TxFeeLook {
     fold_tx_fee_sat(
         tx.input
             .iter()
@@ -541,11 +556,13 @@ pub(crate) fn tx_fee_sat_from_prevouts(ctx: &RpcContext, tx: &Transaction) -> Tx
     )
 }
 
-fn package_dialect_from_env(v: Option<&str>) -> bool {
+#[doc(hidden)]
+pub fn package_dialect_from_env(v: Option<&str>) -> bool {
     matches!(v, Some(s) if s == "1" || s.eq_ignore_ascii_case("true"))
 }
 
-fn rpc_package_dialect() -> bool {
+#[doc(hidden)]
+pub fn rpc_package_dialect() -> bool {
     package_dialect_from_env(
         std::env::var("RBITCOIN_RPC_PACKAGE_DIALECT")
             .ok()
@@ -553,16 +570,19 @@ fn rpc_package_dialect() -> bool {
     )
 }
 
-fn submitpackage_topology_disallowed(txs: &[Transaction], dialect: bool) -> bool {
+#[doc(hidden)]
+pub fn submitpackage_topology_disallowed(txs: &[Transaction], dialect: bool) -> bool {
     dialect && txs.len() > 1 && !MempoolHub::package_is_child_with_direct_parents(txs)
 }
 
-fn rpc_tx_version_nonstandard(tx: &Transaction) -> bool {
+#[doc(hidden)]
+pub fn rpc_tx_version_nonstandard(tx: &Transaction) -> bool {
     tx.version != bitcoin::transaction::Version::ONE
         && tx.version != bitcoin::transaction::Version::TWO
 }
 
-fn rpc_tx_fee_exceeds_max(ctx: &RpcContext, tx: &Transaction, max_sat_vb: u64) -> bool {
+#[doc(hidden)]
+pub fn rpc_tx_fee_exceeds_max(ctx: &RpcContext, tx: &Transaction, max_sat_vb: u64) -> bool {
     match tx_fee_sat_from_prevouts(ctx, tx) {
         TxFeeLook::Fee(fee) => fee_exceeds_max(fee, tx.weight().to_wu(), max_sat_vb),
         TxFeeLook::Overflow => max_sat_vb != 0,
@@ -570,7 +590,8 @@ fn rpc_tx_fee_exceeds_max(ctx: &RpcContext, tx: &Transaction, max_sat_vb: u64) -
     }
 }
 
-fn prevout_value_sat_in_package(
+#[doc(hidden)]
+pub fn prevout_value_sat_in_package(
     ctx: &RpcContext,
     op: &OutPoint,
     package: &[Transaction],
@@ -583,7 +604,8 @@ fn prevout_value_sat_in_package(
     prevout_value_sat(ctx, op)
 }
 
-fn package_tx_fee_exceeds_max(
+#[doc(hidden)]
+pub fn package_tx_fee_exceeds_max(
     ctx: &RpcContext,
     tx: &Transaction,
     package: &[Transaction],
@@ -602,14 +624,16 @@ fn package_tx_fee_exceeds_max(
 }
 
 /// RPC-submit `maxburnamount` (BTC). Omitted → 0. Sum of unspendable output values vs cap.
-fn opt_maxburn_sat(params: &RpcParams, index: usize) -> Result<u64, Value> {
+#[doc(hidden)]
+pub fn opt_maxburn_sat(params: &RpcParams, index: usize) -> Result<u64, Value> {
     match params.get(index, "maxburnamount") {
         None | Some(Value::Null) => Ok(0),
         Some(v) => amount_sat_from_json(v),
     }
 }
 
-fn unspendable_output_sat(tx: &Transaction) -> u64 {
+#[doc(hidden)]
+pub fn unspendable_output_sat(tx: &Transaction) -> u64 {
     tx.output
         .iter()
         .filter(|o| crate::blockstats::is_unspendable(o.script_pubkey.as_bytes()))
@@ -617,13 +641,16 @@ fn unspendable_output_sat(tx: &Transaction) -> u64 {
         .sum()
 }
 
-fn burn_exceeds_max(tx: &Transaction, max_burn_sat: u64) -> bool {
+#[doc(hidden)]
+pub fn burn_exceeds_max(tx: &Transaction, max_burn_sat: u64) -> bool {
     unspendable_output_sat(tx) > max_burn_sat
 }
 
-const MAX_BURN_MSG: &str = "Unspendable output exceeds maximum configured by user (maxburnamount)";
+#[doc(hidden)]
+pub const MAX_BURN_MSG: &str =
+    "Unspendable output exceeds maximum configured by user (maxburnamount)";
 
-pub(crate) fn sendrawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn sendrawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["hexstring", "maxfeerate", "maxburnamount"])?;
     let hex = params.req_str(0, "hexstring")?;
     let max_feerate = opt_maxfeerate_sat_vb(params, 1)?;
@@ -685,7 +712,7 @@ pub(crate) fn sendrawtransaction(ctx: &RpcContext, params: &RpcParams) -> Result
     }
 }
 
-pub(crate) fn accept_reject_reason(e: &impl std::fmt::Display) -> String {
+pub fn accept_reject_reason(e: &impl std::fmt::Display) -> String {
     let owned = e.to_string();
     let s = owned.strip_prefix("policy: ").unwrap_or(owned.as_str());
     if s == "coinbase immature" {
@@ -732,10 +759,7 @@ pub(crate) fn accept_reject_reason(e: &impl std::fmt::Display) -> String {
 }
 
 /// Core `reject-details` for mempool rejects.
-pub(crate) fn accept_reject_details(
-    e: &impl std::fmt::Display,
-    tx: &Transaction,
-) -> Option<String> {
+pub fn accept_reject_details(e: &impl std::fmt::Display, tx: &Transaction) -> Option<String> {
     let reason = accept_reject_reason(e);
     if reason == "txn-already-in-mempool" || reason == "txn-same-nonwitness-data-in-mempool" {
         return Some(reason);
@@ -755,7 +779,7 @@ pub(crate) fn accept_reject_details(
     ))
 }
 
-pub(crate) fn testmempoolaccept(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn testmempoolaccept(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["rawtxs", "maxfeerate"])?;
     let max_feerate = opt_maxfeerate_sat_vb(params, 1)?;
     let arr = params
@@ -781,7 +805,11 @@ pub(crate) fn testmempoolaccept(ctx: &RpcContext, params: &RpcParams) -> Result<
     testmempoolaccept_single_rows(ctx, mp, decoded, max_feerate)
 }
 
-fn testmempoolaccept_package_precheck(mp: &MempoolHub, decoded: &[Transaction]) -> Option<Value> {
+#[doc(hidden)]
+pub fn testmempoolaccept_package_precheck(
+    mp: &MempoolHub,
+    decoded: &[Transaction],
+) -> Option<Value> {
     let mut ids = std::collections::HashSet::new();
     if decoded.iter().any(|tx| !ids.insert(tx.compute_txid())) {
         return Some(package_error_rows(decoded, "package-contains-duplicates"));
@@ -802,7 +830,8 @@ fn testmempoolaccept_package_precheck(mp: &MempoolHub, decoded: &[Transaction]) 
     None
 }
 
-fn testmempoolaccept_package_rows(
+#[doc(hidden)]
+pub fn testmempoolaccept_package_rows(
     mp: &MempoolHub,
     decoded: &[Transaction],
     max_feerate: u64,
@@ -875,7 +904,8 @@ fn testmempoolaccept_package_rows(
     json!(out)
 }
 
-fn testmempoolaccept_single_rows(
+#[doc(hidden)]
+pub fn testmempoolaccept_single_rows(
     ctx: &RpcContext,
     mp: &MempoolHub,
     decoded: Vec<Transaction>,
@@ -939,7 +969,8 @@ fn testmempoolaccept_single_rows(
     Ok(json!(out))
 }
 
-fn package_has_conflicts(txs: &[Transaction]) -> bool {
+#[doc(hidden)]
+pub fn package_has_conflicts(txs: &[Transaction]) -> bool {
     let mut spent = std::collections::HashSet::new();
     for tx in txs {
         for inp in &tx.input {
@@ -951,7 +982,8 @@ fn package_has_conflicts(txs: &[Transaction]) -> bool {
     false
 }
 
-fn package_error_rows(txs: &[Transaction], msg: &str) -> Value {
+#[doc(hidden)]
+pub fn package_error_rows(txs: &[Transaction], msg: &str) -> Value {
     json!(txs
         .iter()
         .map(|tx| {
@@ -964,7 +996,8 @@ fn package_error_rows(txs: &[Transaction], msg: &str) -> Value {
         .collect::<Vec<_>>())
 }
 
-fn tx_confirmed_on_active_chain(ctx: &RpcContext, tx: &Transaction) -> Result<bool, Value> {
+#[doc(hidden)]
+pub fn tx_confirmed_on_active_chain(ctx: &RpcContext, tx: &Transaction) -> Result<bool, Value> {
     let txid = tx.compute_txid().to_byte_array();
     match ctx.query.tx_fk_by_txid_tip(&txid) {
         Ok(None) => Ok(false),
@@ -979,7 +1012,7 @@ fn tx_confirmed_on_active_chain(ctx: &RpcContext, tx: &Transaction) -> Result<bo
 
 /// Core `ParseConfirmTarget`: integer in `1..=1008`.
 /// Core `ParseConfirmTarget`: integer in `1..=1008`.
-pub(crate) fn parse_conf_target(v: &Value) -> Result<u32, Value> {
+pub fn parse_conf_target(v: &Value) -> Result<u32, Value> {
     let conf_target = match v {
         Value::Number(n) => n
             .as_u64()
@@ -1011,7 +1044,7 @@ pub(crate) fn parse_conf_target(v: &Value) -> Result<u32, Value> {
 
 /// Map Core `estimatesmartfee` to this node's **10-minute inclusion** product.
 /// Map Core `estimatesmartfee` to this node's **10-minute inclusion** product.
-pub(crate) fn estimatesmartfee(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn estimatesmartfee(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["conf_target", "estimate_mode"])?;
     // Core requires conf_target (`rpc_estimatefee.py`).
     if params.get(0, "conf_target").is_none() {
@@ -1049,7 +1082,8 @@ pub(crate) fn estimatesmartfee(ctx: &RpcContext, params: &RpcParams) -> Result<V
 
 /// Core's `estimatesmartfee` result: `feerate` (at least `mempoolminfee`) and
 /// `blocks` with an estimate; `errors` and `blocks`, and no `feerate`, without one.
-fn smart_fee_result(ctx: &RpcContext, conf_target: u32) -> Result<Value, Value> {
+#[doc(hidden)]
+pub fn smart_fee_result(ctx: &RpcContext, conf_target: u32) -> Result<Value, Value> {
     let blocks = conf_target.max(1);
     let Some(mp) = ctx.mempool.as_ref() else {
         return Ok(json!({ "errors": ["mempool unavailable"], "blocks": blocks }));
@@ -1061,7 +1095,8 @@ fn smart_fee_result(ctx: &RpcContext, conf_target: u32) -> Result<Value, Value> 
 /// Core's result for `rate` (BTC/kvB; negative = no estimate): `feerate` and
 /// `blocks`, or `errors` and `blocks`. An estimate is at least
 /// `mempoolminfee`, which includes `minrelaytxfee`.
-fn smart_fee_json(blocks: u32, rate: f64, mempool_min_fee_sat_kvb: u64) -> Value {
+#[doc(hidden)]
+pub fn smart_fee_json(blocks: u32, rate: f64, mempool_min_fee_sat_kvb: u64) -> Value {
     if rate < 0.0 {
         return json!({
             "errors": ["Insufficient data or no feerate found"],
@@ -1072,39 +1107,8 @@ fn smart_fee_json(blocks: u32, rate: f64, mempool_min_fee_sat_kvb: u64) -> Value
     json!({ "feerate": sat_btc_json(sat_kvb as i64), "blocks": blocks })
 }
 
-#[cfg(test)]
-mod smart_fee_tests {
-    use super::*;
-
-    /// A session answers only once fee history or flow is warm (thousands
-    /// of blocks or a minute of relay), so the success shape is pinned here.
-    #[test]
-    fn an_estimate_is_feerate_and_blocks_floored_at_mempoolminfee() {
-        let r = smart_fee_json(2, 0.000_020_00, 1_000);
-        assert_eq!(r["feerate"], sat_btc_json(2_000), "{r}");
-        assert_eq!(r["blocks"], 2, "{r}");
-        assert_eq!(
-            r.as_object().unwrap().len(),
-            2,
-            "only feerate and blocks: {r}"
-        );
-        let floored = smart_fee_json(2, 0.000_001_00, 5_000);
-        assert_eq!(floored["feerate"], sat_btc_json(5_000), "{floored}");
-        let none = smart_fee_json(6, -1.0, 5_000);
-        assert!(none.get("feerate").is_none(), "{none}");
-        assert_eq!(none["blocks"], 6, "{none}");
-        let off = smart_fee_json(12, 0.000_010_50, 100);
-        assert_eq!(off["blocks"], 12, "{off}");
-        assert!(off.get("feerate").is_some(), "{off}");
-        assert!(off.get("errors").is_none(), "{off}");
-        let far = smart_fee_json(100, 0.000_008_00, 100);
-        assert_eq!(far["blocks"], 100, "{far}");
-        assert!(far.get("feerate").is_some(), "{far}");
-    }
-}
-
 /// Same 10-minute product as [`estimatesmartfee`] under the Core name.
-pub(crate) fn estimaterawfee(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn estimaterawfee(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["conf_target", "threshold"])?;
     if params.get(0, "conf_target").is_none() {
         return Err(rpc_error(ERR_MISC, method_help("estimaterawfee")));
@@ -1127,7 +1131,7 @@ pub(crate) fn estimaterawfee(ctx: &RpcContext, params: &RpcParams) -> Result<Val
     estimate_fee_result(ctx, conf_target)
 }
 
-pub(crate) fn estimate_fee_result(ctx: &RpcContext, conf_target: u32) -> Result<Value, Value> {
+pub fn estimate_fee_result(ctx: &RpcContext, conf_target: u32) -> Result<Value, Value> {
     let Some(mp) = ctx.mempool.as_ref() else {
         return Ok(json!({
             "feerate": -1.0,
@@ -1151,7 +1155,7 @@ pub(crate) fn estimate_fee_result(ctx: &RpcContext, conf_target: u32) -> Result<
     }))
 }
 
-pub(crate) fn prioritisetransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn prioritisetransaction(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["txid", "dummy", "fee_delta"])?;
     let missing = params.get(0, "txid").is_none() || params.get(2, "fee_delta").is_none();
     let extra_pos = params.pos_len() > 3;
@@ -1210,10 +1214,7 @@ pub(crate) fn prioritisetransaction(ctx: &RpcContext, params: &RpcParams) -> Res
     Ok(json!(true))
 }
 
-pub(crate) fn getprioritisedtransactions(
-    ctx: &RpcContext,
-    params: &RpcParams,
-) -> Result<Value, Value> {
+pub fn getprioritisedtransactions(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&[])?;
     if params.pos_len() != 0 {
         return Err(rpc_error(ERR_MISC, "getprioritisedtransactions"));
@@ -1239,7 +1240,7 @@ pub(crate) fn getprioritisedtransactions(
     Ok(Value::Object(out))
 }
 
-pub(crate) fn getmempoolcluster(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getmempoolcluster(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["txid"])?;
     let hex = params.req_str(0, "txid")?;
     let tid = Txid::from_byte_array(parse_hash32_display(hex)?);
@@ -1270,21 +1271,21 @@ pub(crate) fn getmempoolcluster(ctx: &RpcContext, params: &RpcParams) -> Result<
     }))
 }
 
-pub(crate) fn getmempoolancestors(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getmempoolancestors(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["txid", "verbose"])?;
     let hex = params.req_str(0, "txid")?;
     let verbose = params.opt_bool(1, "verbose")?.unwrap_or(false);
     mempool_relatives(ctx, hex, verbose, true)
 }
 
-pub(crate) fn getmempooldescendants(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getmempooldescendants(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["txid", "verbose"])?;
     let hex = params.req_str(0, "txid")?;
     let verbose = params.opt_bool(1, "verbose")?.unwrap_or(false);
     mempool_relatives(ctx, hex, verbose, false)
 }
 
-pub(crate) fn mempool_relatives(
+pub fn mempool_relatives(
     ctx: &RpcContext,
     hex: &str,
     verbose: bool,
@@ -1326,10 +1327,7 @@ pub(crate) fn mempool_relatives(
     Ok(Value::Object(map))
 }
 
-pub(crate) fn getmempoolfeeratediagram(
-    ctx: &RpcContext,
-    params: &RpcParams,
-) -> Result<Value, Value> {
+pub fn getmempoolfeeratediagram(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&[])?;
     let Some(mp) = ctx.mempool.as_ref() else {
         return Ok(json!([]));
@@ -1347,7 +1345,7 @@ pub(crate) fn getmempoolfeeratediagram(
     Ok(json!(pts))
 }
 
-pub(crate) fn submitpackage(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn submitpackage(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["package", "maxfeerate", "maxburnamount"])?;
     let max_feerate = opt_maxfeerate_sat_vb(params, 1)?;
     let max_burn = opt_maxburn_sat(params, 2)?;
@@ -1396,7 +1394,8 @@ pub(crate) fn submitpackage(ctx: &RpcContext, params: &RpcParams) -> Result<Valu
     Ok(submitpackage_admit(ctx, mp, &txs, max_feerate))
 }
 
-fn submitpackage_conflict_result(txs: &[Transaction]) -> Value {
+#[doc(hidden)]
+pub fn submitpackage_conflict_result(txs: &[Transaction]) -> Value {
     let mut tx_results = serde_json::Map::new();
     for tx in txs {
         tx_results.insert(
@@ -1414,7 +1413,8 @@ fn submitpackage_conflict_result(txs: &[Transaction]) -> Value {
     })
 }
 
-fn submitpackage_fee_burn_precheck(
+#[doc(hidden)]
+pub fn submitpackage_fee_burn_precheck(
     ctx: &RpcContext,
     txs: &[Transaction],
     max_feerate: u64,
@@ -1458,7 +1458,8 @@ fn submitpackage_fee_burn_precheck(
     })))
 }
 
-fn submitpackage_admit(
+#[doc(hidden)]
+pub fn submitpackage_admit(
     ctx: &RpcContext,
     mp: &MempoolHub,
     txs: &[Transaction],
@@ -1578,7 +1579,8 @@ fn submitpackage_admit(
     })
 }
 
-fn submitpackage_member_error(e: &impl std::fmt::Display) -> String {
+#[doc(hidden)]
+pub fn submitpackage_member_error(e: &impl std::fmt::Display) -> String {
     let mapped = accept_reject_reason(e);
     if mapped == "missing-inputs" {
         return "bad-txns-inputs-missingorspent".into();
@@ -1586,7 +1588,7 @@ fn submitpackage_member_error(e: &impl std::fmt::Display) -> String {
     mapped
 }
 
-pub(crate) fn gettxspendingprevout(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn gettxspendingprevout(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["outputs"])?;
     let arr = params
         .get_array(0, "outputs")
@@ -1624,7 +1626,7 @@ pub(crate) fn gettxspendingprevout(ctx: &RpcContext, params: &RpcParams) -> Resu
     Ok(json!(out))
 }
 
-pub(crate) fn getorphantxs(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getorphantxs(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["verbosity"])?;
     let verbosity = match params.get(0, "verbosity") {
         None | Some(Value::Null) => 0i64,
@@ -1672,75 +1674,4 @@ pub(crate) fn getorphantxs(ctx: &RpcContext, params: &RpcParams) -> Result<Value
         out.push(row);
     }
     Ok(json!(out))
-}
-
-#[cfg(test)]
-mod fee_look_tests {
-    use super::{fold_tx_fee_sat, package_dialect_from_env, TxFeeLook};
-
-    #[test]
-    fn package_dialect_from_env_only_one_and_true() {
-        assert!(!package_dialect_from_env(None));
-        assert!(!package_dialect_from_env(Some("")));
-        assert!(!package_dialect_from_env(Some("0")));
-        assert!(!package_dialect_from_env(Some("false")));
-        assert!(package_dialect_from_env(Some("1")));
-        assert!(package_dialect_from_env(Some("true")));
-        assert!(package_dialect_from_env(Some("TRUE")));
-    }
-
-    #[test]
-    fn topology_gate_only_when_dialect() {
-        use super::submitpackage_topology_disallowed;
-        use bitcoin::absolute::LockTime;
-        use bitcoin::hashes::Hash;
-        use bitcoin::transaction::Version;
-        use bitcoin::{OutPoint, Sequence, Transaction, TxIn, TxOut, Witness};
-        let dummy = |n: u8| Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint {
-                    txid: bitcoin::Txid::from_byte_array([n; 32]),
-                    vout: 0,
-                },
-                script_sig: bitcoin::ScriptBuf::new(),
-                sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
-                witness: Witness::new(),
-            }],
-            output: vec![TxOut {
-                value: bitcoin::Amount::from_sat(1),
-                script_pubkey: bitcoin::ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let txs = [dummy(1), dummy(2)];
-        assert!(!submitpackage_topology_disallowed(&txs, false));
-        assert!(submitpackage_topology_disallowed(&txs, true));
-        assert!(!submitpackage_topology_disallowed(&txs[..1], true));
-    }
-
-    #[test]
-    fn overflow_in_sum_is_overflow_not_missing() {
-        let half = (u64::MAX / 2) + 2;
-        match fold_tx_fee_sat([Some(half), Some(half)], Some(0)) {
-            TxFeeLook::Overflow => {}
-            other => panic!("expected Overflow, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn missing_prevout_is_not_overflow() {
-        match fold_tx_fee_sat([Some(50), None], Some(1)) {
-            TxFeeLook::MissingPrevout => {}
-            other => panic!("expected MissingPrevout, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn known_fee_subtracts() {
-        match fold_tx_fee_sat([Some(50_000), Some(25_000)], Some(74_000)) {
-            TxFeeLook::Fee(1_000) => {}
-            other => panic!("expected Fee(1000), got {other:?}"),
-        }
-    }
 }

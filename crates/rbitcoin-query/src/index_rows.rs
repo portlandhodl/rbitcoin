@@ -17,29 +17,29 @@ use rbitcoin_consensus::script_pool::start_for_each_owned_chunk;
 use rbitcoin_consensus::ConsensusError;
 
 /// Per-tx tweak (`None` = ineligible), block order.
-pub(crate) type HeightTweaks = Vec<Option<[u8; 33]>>;
+pub type HeightTweaks = Vec<Option<[u8; 33]>>;
 
 /// Filter bytes and tweak vecs for a run of heights. Heights travel with the rows.
 #[derive(Default)]
-pub(crate) struct IndexRows {
+pub struct IndexRows {
     pub filters: Vec<(Height, BlockFilter, Fk)>,
     pub tweaks: Vec<(Height, Fk, HeightTweaks)>,
 }
 
-pub(crate) struct IndexHeightOut {
+pub struct IndexHeightOut {
     pub filter: Option<(Height, BlockFilter, Fk)>,
     pub tweaks: Option<(Height, Fk, HeightTweaks)>,
 }
 
 /// Result of [`commit_index_rows`].
-pub(crate) struct IndexCommit {
+pub struct IndexCommit {
     pub put_ns: u64,
     /// Watermark or `confirmed[h]` moved, or the rows leave a hole at `next`.
     pub moved: bool,
 }
 
 /// Claim one height per job. `f` writes its [`IndexHeightOut`] into the job.
-pub(crate) fn finish_wave<T: Sync>(
+pub fn finish_wave<T: Sync>(
     jobs: Vec<T>,
     f: fn(&T) -> Result<(), ConsensusError>,
 ) -> Result<(), ConfirmError> {
@@ -49,7 +49,7 @@ pub(crate) fn finish_wave<T: Sync>(
     Ok(())
 }
 
-pub(crate) fn rows_from_slots(slots: &[Arc<Mutex<Option<IndexHeightOut>>>]) -> IndexRows {
+pub fn rows_from_slots(slots: &[Arc<Mutex<Option<IndexHeightOut>>>]) -> IndexRows {
     let mut rows = IndexRows::default();
     for slot in slots {
         let Some(done) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() else {
@@ -66,10 +66,7 @@ pub(crate) fn rows_from_slots(slots: &[Arc<Mutex<Option<IndexHeightOut>>>]) -> I
 }
 
 /// Commit each index from its watermark. Empty rows are a no-op.
-pub(crate) fn commit_index_rows(
-    query: &Query,
-    rows: IndexRows,
-) -> Result<IndexCommit, ConfirmError> {
+pub fn commit_index_rows(query: &Query, rows: IndexRows) -> Result<IndexCommit, ConfirmError> {
     let t0 = Instant::now();
     let moved = commit_filters(query, rows.filters)? || commit_tweaks(query, rows.tweaks)?;
     Ok(IndexCommit {
@@ -79,7 +76,8 @@ pub(crate) fn commit_index_rows(
 }
 
 /// `true` when the rows do not start at `next`, or the put returned 0.
-fn commit_filters(
+#[doc(hidden)]
+pub fn commit_filters(
     query: &Query,
     filters: Vec<(Height, BlockFilter, Fk)>,
 ) -> Result<bool, ConfirmError> {
@@ -104,7 +102,8 @@ fn commit_filters(
     Ok(query.commit_window_filters(next, &items)? == 0)
 }
 
-fn commit_tweaks(
+#[doc(hidden)]
+pub fn commit_tweaks(
     query: &Query,
     tweaks: Vec<(Height, Fk, HeightTweaks)>,
 ) -> Result<bool, ConfirmError> {

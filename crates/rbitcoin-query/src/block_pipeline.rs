@@ -16,8 +16,9 @@ use std::time::Instant;
 
 use crate::{ConfirmError, FkMap, Query, U32Map, U64Map};
 
-#[cfg(test)]
-pub(crate) mod test_phase {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub mod test_phase {
     use std::cell::Cell;
     thread_local! {
         static TL_COLD_WHY: Cell<(u64, u64, u64, u64)> = const { Cell::new((0, 0, 0, 0)) };
@@ -58,19 +59,19 @@ pub(crate) mod test_phase {
 
 /// Block-local prevout path counts; the confirm pipeline flushes once.
 #[derive(Default)]
-pub(crate) struct AsmPrevoutAcc {
-    in_n: u64,
-    same_n: u64,
-    batch_n: u64,
-    cold_n: u64,
-    cold_null_fk_n: u64,
-    cold_not_pin_n: u64,
-    cold_txid_mismatch_n: u64,
-    cold_vout_miss_n: u64,
+pub struct AsmPrevoutAcc {
+    pub in_n: u64,
+    pub same_n: u64,
+    pub batch_n: u64,
+    pub cold_n: u64,
+    pub cold_null_fk_n: u64,
+    pub cold_not_pin_n: u64,
+    pub cold_txid_mismatch_n: u64,
+    pub cold_vout_miss_n: u64,
 }
 
 impl AsmPrevoutAcc {
-    pub(crate) fn flush(&self, stats: &crate::ConfirmStats) {
+    pub fn flush(&self, stats: &crate::ConfirmStats) {
         crate::note_confirm(&stats.asm_in_n, self.in_n);
         crate::note_confirm(&stats.asm_prev_same_n, self.same_n);
         crate::note_confirm(&stats.asm_prev_batch_n, self.batch_n);
@@ -85,7 +86,7 @@ impl AsmPrevoutAcc {
     }
 }
 
-pub(crate) struct AssembleMeters {
+pub struct AssembleMeters {
     pub prev_ns: u64,
     pub job_ns: u64,
     pub acc: AsmPrevoutAcc,
@@ -248,7 +249,8 @@ pub fn assemble_block_prevouts(
     ))
 }
 
-fn assemble_prevout_guards(
+#[doc(hidden)]
+pub fn assemble_prevout_guards(
     block: &Block,
     archived_tx_fks: Option<&[rbitcoin_primitives::Fk]>,
     create_txids: &[[u8; 32]],
@@ -262,7 +264,7 @@ fn assemble_prevout_guards(
     Ok(())
 }
 
-pub(crate) fn assemble_lock_time_cutoff(
+pub fn assemble_lock_time_cutoff(
     ctx: &rbitcoin_consensus::ValidationContext<'_>,
     block: &Block,
     prev_mtp: u32,
@@ -277,7 +279,8 @@ pub(crate) fn assemble_lock_time_cutoff(
 }
 
 #[allow(clippy::too_many_arguments)] // one non-coinbase assemble; call site stays unbundled
-fn assemble_non_cb_tx(
+#[doc(hidden)]
+pub fn assemble_non_cb_tx(
     params: &ChainParams,
     block: &Block,
     tx: &Transaction,
@@ -368,7 +371,8 @@ fn assemble_non_cb_tx(
 }
 
 #[allow(clippy::too_many_arguments)] // one non-coinbase input walk; call site stays unbundled
-fn assemble_non_cb_inputs(
+#[doc(hidden)]
+pub fn assemble_non_cb_inputs(
     params: &ChainParams,
     block: &Block,
     tx: &Transaction,
@@ -467,7 +471,7 @@ fn assemble_non_cb_inputs(
 /// Measured with `Instant` — **not** deltas of window atomics (those race with
 /// `sample_and_reset` mid-batch and produced false `spent=0` on slow writes).
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct StructuralPhaseNs {
+pub struct StructuralPhaseNs {
     pub spent_ns: u64,
     /// Pin abs collect + bulk on-disk 8-byte spender meta pread.
     pub spent_abs_ns: u64,
@@ -494,7 +498,7 @@ pub(crate) struct StructuralPhaseNs {
 ///
 /// Filled during spentness and passed to annotate. No second edge copy.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct AnnotateSlots {
+pub struct AnnotateSlots {
     pub abs_edges: Vec<(
         u64,
         rbitcoin_primitives::Fk,
@@ -506,7 +510,7 @@ pub(crate) struct AnnotateSlots {
 }
 
 impl AnnotateSlots {
-    pub(crate) fn push(
+    pub fn push(
         &mut self,
         edge: (
             u64,
@@ -524,28 +528,28 @@ impl AnnotateSlots {
 
 /// Per-block spentness scratch. Capacity stays across blocks in one write batch.
 /// [`AnnotateSlots`] accumulate for the whole batch.
-pub(crate) struct StructuralScratch {
-    abs_jobs: Vec<StructuralAbsJob>,
-    unique_fks: Vec<rbitcoin_primitives::Fk>,
-    pub(crate) height_by_id: U64Map<u32>,
-    skip_n: std::collections::HashMap<
+pub struct StructuralScratch {
+    pub abs_jobs: Vec<StructuralAbsJob>,
+    pub unique_fks: Vec<rbitcoin_primitives::Fk>,
+    pub height_by_id: U64Map<u32>,
+    pub skip_n: std::collections::HashMap<
         (u64, u32),
         u32,
         BuildHasherDefault<rbitcoin_consensus::OutPointHasher>,
     >,
-    skip: OverlayMetaSkip,
-    disk_jobs: Vec<StructuralAbsJob>,
-    abs_offs: Vec<u64>,
-    field_fks: Vec<rbitcoin_primitives::Fk>,
-    field_seen: crate::U64Set,
-    pub(crate) field_h_by_id: U64Map<u32>,
-    durable_spent: DurableSpentSet,
-    height_list: Vec<u32>,
-    create_height_by_fk: FkMap<u32>,
+    pub skip: OverlayMetaSkip,
+    pub disk_jobs: Vec<StructuralAbsJob>,
+    pub abs_offs: Vec<u64>,
+    pub field_fks: Vec<rbitcoin_primitives::Fk>,
+    pub field_seen: crate::U64Set,
+    pub field_h_by_id: U64Map<u32>,
+    pub durable_spent: DurableSpentSet,
+    pub height_list: Vec<u32>,
+    pub create_height_by_fk: FkMap<u32>,
     /// BIP30 inside one batch: each txid already created here, with its height
     /// and the span of `batch_vouts` holding its spendable outputs.
-    batch_creates: TxidMap<(u32, u32, u32)>,
-    batch_vouts: Vec<u32>,
+    pub batch_creates: TxidMap<(u32, u32, u32)>,
+    pub batch_vouts: Vec<u32>,
     pub slots: AnnotateSlots,
 }
 
@@ -575,14 +579,15 @@ impl Default for StructuralScratch {
 impl StructuralScratch {
     /// Drop annotate slots from the previous write batch. Per-block buffers
     /// stay for [`Self::begin_block`]; slots accumulate inside one batch.
-    pub(crate) fn begin_batch(&mut self) {
+    pub fn begin_batch(&mut self) {
         self.slots.abs_edges.clear();
         self.slots.known.clear();
         self.batch_creates.clear();
         self.batch_vouts.clear();
     }
 
-    fn begin_block(&mut self) {
+    #[doc(hidden)]
+    pub fn begin_block(&mut self) {
         self.abs_jobs.clear();
         self.unique_fks.clear();
         self.height_by_id.clear();
@@ -697,7 +702,7 @@ pub fn structural_validate_spends(
     })
 }
 
-pub(crate) type StructuralAbsJob = (u64, u32, u64, rbitcoin_primitives::Fk, u32);
+pub type StructuralAbsJob = (u64, u32, u64, rbitcoin_primitives::Fk, u32);
 
 /// Creates this write batch's Class A append committed.
 ///
@@ -705,15 +710,16 @@ pub(crate) type StructuralAbsJob = (u64, u32, u64, rbitcoin_primitives::Fk, u32)
 /// create archived by an earlier wave has whatever that wave and later
 /// annotates left on disk, so structural reads and annotates it.
 #[derive(Default)]
-pub(crate) struct ClassAWave(Vec<rbitcoin_primitives::Fk>);
+pub struct ClassAWave(Vec<rbitcoin_primitives::Fk>);
 
 impl ClassAWave {
-    pub(crate) fn new(mut fks: Vec<rbitcoin_primitives::Fk>) -> Self {
+    pub fn new(mut fks: Vec<rbitcoin_primitives::Fk>) -> Self {
         fks.sort_unstable_by_key(|f| f.0);
         Self(fks)
     }
 
-    fn contains(&self, fk: rbitcoin_primitives::Fk) -> bool {
+    #[doc(hidden)]
+    pub fn contains(&self, fk: rbitcoin_primitives::Fk) -> bool {
         self.0.binary_search_by_key(&fk.0, |f| f.0).is_ok()
     }
 }
@@ -723,13 +729,13 @@ impl ClassAWave {
 /// Contiguous per-block fk spans are the IBD shape (`first` + count). A gap
 /// or overlap uses the map so a fk between spans does not inherit a height.
 /// Each block's first fk is its coinbase: a span's `first`, or the map's flag.
-pub(crate) enum RunCreateHeight {
+pub enum RunCreateHeight {
     Spans(Vec<(u64, u64, u32)>),
     Map(FkMap<(u32, bool)>),
 }
 
 impl RunCreateHeight {
-    pub(crate) fn from_blocks<'a>(
+    pub fn from_blocks<'a>(
         blocks: impl IntoIterator<Item = (u32, &'a [rbitcoin_primitives::Fk])>,
     ) -> Self {
         let blocks: Vec<(u32, &'a [rbitcoin_primitives::Fk])> = blocks.into_iter().collect();
@@ -746,12 +752,12 @@ impl RunCreateHeight {
         }
     }
 
-    pub(crate) fn get(&self, fk: rbitcoin_primitives::Fk) -> Option<u32> {
+    pub fn get(&self, fk: rbitcoin_primitives::Fk) -> Option<u32> {
         self.create(fk).map(|(height, _)| height)
     }
 
     /// Height of a create in this batch and whether it is its block's coinbase.
-    pub(crate) fn create(&self, fk: rbitcoin_primitives::Fk) -> Option<(u32, bool)> {
+    pub fn create(&self, fk: rbitcoin_primitives::Fk) -> Option<(u32, bool)> {
         match self {
             Self::Map(map) => map.get(&fk).copied(),
             Self::Spans(spans) => {
@@ -768,7 +774,8 @@ impl RunCreateHeight {
 ///
 /// A null fk, a gap, or an id that would wrap is `None` so the caller uses the map.
 /// A wrapped end must not cover fks that are not in the block.
-fn contiguous_create_spans(
+#[doc(hidden)]
+pub fn contiguous_create_spans(
     blocks: &[(u32, &[rbitcoin_primitives::Fk])],
 ) -> Option<Vec<(u64, u64, u32)>> {
     let mut spans = Vec::with_capacity(blocks.len());
@@ -798,15 +805,18 @@ fn contiguous_create_spans(
     }
     Some(spans)
 }
-type DurableSpentSet =
+#[doc(hidden)]
+pub type DurableSpentSet =
     std::collections::HashSet<(u64, u32), BuildHasherDefault<rbitcoin_consensus::OutPointHasher>>;
-type OverlayMetaSkip = std::collections::HashMap<
+#[doc(hidden)]
+pub type OverlayMetaSkip = std::collections::HashMap<
     (u64, u32),
     (rbitcoin_primitives::Fk, u32),
     BuildHasherDefault<rbitcoin_consensus::OutPointHasher>,
 >;
 
-fn fill_overlay_skip(
+#[doc(hidden)]
+pub fn fill_overlay_skip(
     spends: &[(
         [u8; 32],
         u32,
@@ -834,7 +844,8 @@ fn fill_overlay_skip(
         .retain(|k, _| skip_n.get(k).copied() == Some(1));
 }
 
-fn overlay_meta_is_skip(
+#[doc(hidden)]
+pub fn overlay_meta_is_skip(
     id: u64,
     vout: u32,
     sfk: rbitcoin_primitives::Fk,
@@ -844,7 +855,8 @@ fn overlay_meta_is_skip(
     skip.get(&(id, vout)) == Some(&(sfk, vin))
 }
 
-fn structural_abs_heights(
+#[doc(hidden)]
+pub fn structural_abs_heights(
     query: &Query,
     run_create_height: &RunCreateHeight,
     scratch: &mut StructuralScratch,
@@ -875,7 +887,8 @@ fn structural_abs_heights(
     Ok(())
 }
 
-fn structural_load_durable_spent(
+#[doc(hidden)]
+pub fn structural_load_durable_spent(
     query: &Query,
     tip: Option<u32>,
     scratch: &mut StructuralScratch,
@@ -956,7 +969,7 @@ fn structural_load_durable_spent(
 }
 
 #[allow(clippy::too_many_arguments)] // one spent-slot apply; call site stays unbundled
-pub(crate) fn structural_apply_one_meta(
+pub fn structural_apply_one_meta(
     query: &Query,
     meta: Option<(rbitcoin_primitives::Fk, u8, u32)>,
     id: u64,
@@ -1015,7 +1028,8 @@ pub(crate) fn structural_apply_one_meta(
     Ok(0)
 }
 
-fn structural_mark_pending(
+#[doc(hidden)]
+pub fn structural_mark_pending(
     spends: &[(
         [u8; 32],
         u32,
@@ -1051,7 +1065,8 @@ fn structural_mark_pending(
     Ok(())
 }
 
-fn structural_create_heights(
+#[doc(hidden)]
+pub fn structural_create_heights(
     query: &Query,
     batch_parents: &crate::BatchParents,
     run_create_height: &RunCreateHeight,
@@ -1115,7 +1130,7 @@ fn structural_create_heights(
     Ok(())
 }
 
-pub(crate) fn structural_bip68(
+pub fn structural_bip68(
     query: &Query,
     block: &Block,
     ctx: &rbitcoin_consensus::ValidationContext<'_>,
@@ -1194,7 +1209,8 @@ pub(crate) fn structural_bip68(
 /// is this network's BIP34 hash and the block is below
 /// [`crate::params::BIP34_IMPLIES_BIP30_LIMIT`]. Signet and regtest have no
 /// BIP34 hash, so every block is checked. Just-archived self is unconnected.
-fn reject_bip30_unspent_overwrite(
+#[doc(hidden)]
+pub fn reject_bip30_unspent_overwrite(
     query: &Query,
     block: &Block,
     ctx: &rbitcoin_consensus::ValidationContext<'_>,
@@ -1298,7 +1314,7 @@ fn reject_bip30_unspent_overwrite(
 /// created again once its first copy is spent (below BIP34, or a pre-BIP34
 /// coinbase whose scriptSig already pushes a later height), so a spend of the
 /// new copy is not a second spend of the old one.
-pub(crate) type BatchSpent = std::collections::HashMap<
+pub type BatchSpent = std::collections::HashMap<
     ([u8; 32], u32),
     rbitcoin_primitives::Fk,
     BuildHasherDefault<rbitcoin_consensus::OutPointHasher>,
@@ -1306,7 +1322,8 @@ pub(crate) type BatchSpent = std::collections::HashMap<
 
 /// One block holds one copy of a txid, so two copies created in this batch are
 /// the same copy when they have the same height.
-fn same_copy(
+#[doc(hidden)]
+pub fn same_copy(
     run_create_height: &RunCreateHeight,
     a: rbitcoin_primitives::Fk,
     b: rbitcoin_primitives::Fk,
@@ -1320,7 +1337,8 @@ fn same_copy(
 /// A txid can be created again once its first copy is spent (see [`BatchSpent`]).
 /// Its outputs are coins again (Core overwrites them in the view), so this
 /// load batch's earlier spends of the old copy no longer block the new one.
-fn release_repeated_outputs(
+#[doc(hidden)]
+pub fn release_repeated_outputs(
     pending_spent: &mut rbitcoin_consensus::OutPointSet,
     txid: [u8; 32],
     n_out: usize,
@@ -1330,7 +1348,8 @@ fn release_repeated_outputs(
     }
 }
 
-fn bip34_ancestry_skips_bip30(
+#[doc(hidden)]
+pub fn bip34_ancestry_skips_bip30(
     ctx: &rbitcoin_consensus::ValidationContext<'_>,
     ancestor: Option<bitcoin::BlockHash>,
 ) -> bool {
@@ -1344,7 +1363,8 @@ fn bip34_ancestry_skips_bip30(
         .bip30_skipped_for_bip34_ancestry(height, ancestor)
 }
 
-fn mtp_at(query: &Query, height: Height, cache: &mut U32Map<u32>) -> Result<u32, ConfirmError> {
+#[doc(hidden)]
+pub fn mtp_at(query: &Query, height: Height, cache: &mut U32Map<u32>) -> Result<u32, ConfirmError> {
     if let Some(&t) = cache.get(&height.0) {
         return Ok(t);
     }
@@ -1353,19 +1373,19 @@ fn mtp_at(query: &Query, height: Height, cache: &mut U32Map<u32>) -> Result<u32,
     Ok(t)
 }
 
-pub(crate) struct ResolvedPrevout {
-    txout: TxOut,
+pub struct ResolvedPrevout {
+    pub txout: TxOut,
     /// Set when the script bytes stay in a block or pin `Arc`.
-    shared: Option<rbitcoin_consensus::block::SharedPrevout>,
+    pub shared: Option<rbitcoin_consensus::block::SharedPrevout>,
     /// P2SH+witness sigop cost for this input's prevout script (not legacy).
-    input_sigops: u64,
+    pub input_sigops: u64,
     /// Class A create fk for this prevout (or `NULL` for same-block). Load pin
     /// denserels must carry identity matching wire `prev_txid` for this fk.
-    create_fk: rbitcoin_primitives::Fk,
+    pub create_fk: rbitcoin_primitives::Fk,
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-pub(crate) fn resolve_prevout(
+pub fn resolve_prevout(
     block: &Block,
     op: OutPoint,
     inp: &bitcoin::TxIn,
@@ -1427,7 +1447,7 @@ pub(crate) fn resolve_prevout(
         if let Some((pinned, parent_txid)) = batch_parents.share_parent_prevout(prev_fk, op.vout) {
             if parent_txid != prev_txid {
                 acc.cold_txid_mismatch_n = acc.cold_txid_mismatch_n.saturating_add(1);
-                #[cfg(test)]
+                #[cfg(debug_assertions)]
                 crate::block_pipeline::test_phase::tl_note_cold_why_txid_mismatch();
                 return Err(ConfirmError::Store(rbitcoin_store::StoreError::Corrupt(
                     "invariant: pin parent create identity mismatch wire prev_txid",
@@ -1449,7 +1469,7 @@ pub(crate) fn resolve_prevout(
                 rbitcoin_consensus::block::prevout_spk_sigops(inp, script, bip16, witness);
             acc.in_n = acc.in_n.saturating_add(1);
             acc.batch_n = acc.batch_n.saturating_add(1);
-            #[cfg(test)]
+            #[cfg(debug_assertions)]
             crate::block_pipeline::test_phase::tl_note_batch_hit();
             return Ok(ResolvedPrevout {
                 txout: TxOut {
@@ -1462,7 +1482,7 @@ pub(crate) fn resolve_prevout(
             });
         } else if batch_parents.contains(prev_fk) {
             acc.cold_vout_miss_n = acc.cold_vout_miss_n.saturating_add(1);
-            #[cfg(test)]
+            #[cfg(debug_assertions)]
             crate::block_pipeline::test_phase::tl_note_cold_why_vout_miss();
             return Err(ConfirmError::Store(rbitcoin_store::StoreError::Corrupt(
                 "invariant: pin incomplete outs for spent parent vout",
@@ -1473,112 +1493,4 @@ pub(crate) fn resolve_prevout(
     Err(ConfirmError::Store(rbitcoin_store::StoreError::Corrupt(
         "invariant: lookup stage miss (assemble parent create_fk)",
     )))
-}
-
-#[cfg(test)]
-mod overlay_meta_skip_tests {
-    use super::*;
-    use rbitcoin_primitives::Fk;
-
-    fn spends(rows: &[(u32, Fk, Fk, u32)]) -> Vec<([u8; 32], u32, Fk, Fk, u32)> {
-        rows.iter()
-            .map(|&(vout, sfk, cfk, vin)| ([0u8; 32], vout, sfk, cfk, vin))
-            .collect()
-    }
-
-    #[test]
-    fn overlay_meta_skip_omits_matching_abs() {
-        let wave = ClassAWave::new(vec![Fk(10)]);
-        let mut map = FkMap::default();
-        map.insert(Fk(10), (5, false));
-        let run = RunCreateHeight::Map(map);
-        assert_eq!(run.create(Fk(10)), Some((5, false)));
-        let spends = spends(&[(0, Fk(11), Fk(10), 0)]);
-        let mut scratch = StructuralScratch::default();
-        fill_overlay_skip(&spends, &wave, &mut scratch);
-        assert!(overlay_meta_is_skip(10, 0, Fk(11), 0, &scratch.skip));
-        assert!(!overlay_meta_is_skip(10, 0, Fk(11), 1, &scratch.skip));
-        assert!(!overlay_meta_is_skip(10, 1, Fk(11), 0, &scratch.skip));
-        assert!(!overlay_meta_is_skip(99, 0, Fk(11), 0, &scratch.skip));
-    }
-
-    #[test]
-    fn overlay_meta_skip_keeps_conflicting_spender_on_disk_list() {
-        let wave = ClassAWave::new(vec![Fk(10)]);
-        let mut map = FkMap::default();
-        map.insert(Fk(10), (5, false));
-        let run = RunCreateHeight::Map(map);
-        assert_eq!(run.create(Fk(10)), Some((5, false)));
-        let spends = spends(&[(0, Fk(11), Fk(10), 0), (0, Fk(12), Fk(10), 0)]);
-        let mut scratch = StructuralScratch::default();
-        fill_overlay_skip(&spends, &wave, &mut scratch);
-        assert!(!overlay_meta_is_skip(10, 0, Fk(11), 0, &scratch.skip));
-        assert!(!overlay_meta_is_skip(10, 0, Fk(12), 0, &scratch.skip));
-    }
-
-    #[test]
-    fn overlay_meta_skip_historical_create_stays_on_disk() {
-        let wave = ClassAWave::default();
-        let spends = spends(&[(0, Fk(11), Fk(10), 0)]);
-        let mut scratch = StructuralScratch::default();
-        fill_overlay_skip(&spends, &wave, &mut scratch);
-        assert!(!overlay_meta_is_skip(10, 0, Fk(11), 0, &scratch.skip));
-    }
-}
-
-#[cfg(test)]
-mod run_create_height_tests {
-    use super::RunCreateHeight;
-    use rbitcoin_primitives::Fk;
-
-    fn fk(id: u64) -> Fk {
-        Fk(id)
-    }
-
-    #[test]
-    fn run_create_height_span_misses_gaps() {
-        let one = [fk(10), fk(11)];
-        let idx = RunCreateHeight::from_blocks([(7u32, one.as_slice())]);
-        assert!(matches!(idx, RunCreateHeight::Spans(_)));
-        assert_eq!(idx.get(fk(10)), Some(7));
-        assert_eq!(idx.get(fk(11)), Some(7));
-        assert_eq!(idx.get(fk(9)), None);
-        assert_eq!(idx.get(fk(12)), None);
-
-        let low = [fk(10), fk(11)];
-        let high = [fk(20), fk(21)];
-        let idx = RunCreateHeight::from_blocks([(1u32, low.as_slice()), (2, high.as_slice())]);
-        assert_eq!(idx.get(fk(15)), None);
-        assert_eq!(idx.get(fk(10)), Some(1));
-        assert_eq!(idx.get(fk(21)), Some(2));
-
-        let gapped = [fk(1), fk(2), fk(4)];
-        let idx = RunCreateHeight::from_blocks([(3u32, gapped.as_slice())]);
-        assert!(matches!(idx, RunCreateHeight::Map(_)));
-        assert_eq!(idx.get(fk(3)), None);
-        assert_eq!(idx.get(fk(1)), Some(3));
-        assert_eq!(idx.get(fk(2)), Some(3));
-        assert_eq!(idx.get(fk(4)), Some(3));
-    }
-
-    #[test]
-    fn run_create_height_marks_each_block_first_fk_coinbase() {
-        let low = [fk(10), fk(11)];
-        let high = [fk(12), fk(13)];
-        let idx = RunCreateHeight::from_blocks([(1u32, low.as_slice()), (2, high.as_slice())]);
-        assert!(matches!(idx, RunCreateHeight::Spans(_)));
-        assert_eq!(idx.create(fk(10)), Some((1, true)));
-        assert_eq!(idx.create(fk(11)), Some((1, false)));
-        assert_eq!(idx.create(fk(12)), Some((2, true)));
-        assert_eq!(idx.create(fk(13)), Some((2, false)));
-
-        let gapped = [fk(20), fk(22)];
-        let idx = RunCreateHeight::from_blocks([(1u32, low.as_slice()), (2, gapped.as_slice())]);
-        assert!(matches!(idx, RunCreateHeight::Map(_)));
-        assert_eq!(idx.create(fk(10)), Some((1, true)));
-        assert_eq!(idx.create(fk(11)), Some((1, false)));
-        assert_eq!(idx.create(fk(20)), Some((2, true)));
-        assert_eq!(idx.create(fk(22)), Some((2, false)));
-        assert_eq!(idx.create(fk(21)), None);
-    }
 }

@@ -34,9 +34,12 @@ use rbitcoin_primitives::{Fk, Height, TableKind};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
 
-const SLOT: u64 = 80;
-const IDX_FMT: u32 = 1;
-const HDR: u64 = FILE_HEADER_LEN as u64;
+#[doc(hidden)]
+pub const SLOT: u64 = 80;
+#[doc(hidden)]
+pub const IDX_FMT: u32 = 1;
+#[doc(hidden)]
+pub const HDR: u64 = FILE_HEADER_LEN as u64;
 
 /// Per-height idx facts (no filter bytes).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,42 +56,48 @@ pub struct BlockFilterRecord<'a> {
     pub filter: &'a [u8],
 }
 
-struct Inner {
-    segs: Vec<SegPair>,
+#[doc(hidden)]
+pub struct Inner {
+    pub segs: Vec<SegPair>,
     /// End of the last committed record in the last pair (`HDR` when empty).
-    tail_end: u64,
+    pub tail_end: u64,
 }
 
 impl Inner {
-    fn next(&self) -> u64 {
+    #[doc(hidden)]
+    pub fn next(&self) -> u64 {
         self.segs.iter().map(|s| s.n_slots).sum()
     }
 
-    fn locate(&self, height: Height) -> Option<(usize, u64)> {
+    #[doc(hidden)]
+    pub fn locate(&self, height: Height) -> Option<(usize, u64)> {
         locate(&self.segs, u64::from(height.0))
     }
 }
 
 /// Height-dense basic filter table.
 pub struct BlockFilterTable {
-    dirs: SegDirs,
-    inner: RwLock<Inner>,
+    pub dirs: SegDirs,
+    pub inner: RwLock<Inner>,
     /// Serializes `put` and `truncate_through` (one writer at a time).
-    writer: Mutex<()>,
+    pub writer: Mutex<()>,
 }
 
 /// A filter's bytes and idx facts.
 pub type StoredBlockFilter = (Vec<u8>, BlockFilterSlot);
 /// Idx rows grouped by segment index.
-type SegRows = Vec<(usize, Vec<SlotRow>)>;
+#[doc(hidden)]
+pub type SegRows = Vec<(usize, Vec<SlotRow>)>;
 
-struct SlotRow {
-    off: u32,
-    len: u32,
-    slot: BlockFilterSlot,
+#[doc(hidden)]
+pub struct SlotRow {
+    pub off: u32,
+    pub len: u32,
+    pub slot: BlockFilterSlot,
 }
 
-fn encode_slot(off: u32, len: u32, s: &BlockFilterSlot) -> [u8; SLOT as usize] {
+#[doc(hidden)]
+pub fn encode_slot(off: u32, len: u32, s: &BlockFilterSlot) -> [u8; SLOT as usize] {
     let mut b = [0u8; SLOT as usize];
     b[0..4].copy_from_slice(&off.to_le_bytes());
     b[4..8].copy_from_slice(&len.to_le_bytes());
@@ -98,7 +107,8 @@ fn encode_slot(off: u32, len: u32, s: &BlockFilterSlot) -> [u8; SLOT as usize] {
     b
 }
 
-fn decode_slot(b: &[u8]) -> SlotRow {
+#[doc(hidden)]
+pub fn decode_slot(b: &[u8]) -> SlotRow {
     let mut filter_hash = [0u8; 32];
     filter_hash.copy_from_slice(&b[16..48]);
     let mut filter_header = [0u8; 32];
@@ -115,19 +125,22 @@ fn decode_slot(b: &[u8]) -> SlotRow {
 }
 
 impl SlotRow {
-    fn end(&self) -> u64 {
+    #[doc(hidden)]
+    pub fn end(&self) -> u64 {
         u64::from(self.off) + u64::from(self.len)
     }
 }
 
-fn read_rows(seg: &SegPair, local: u64, n: u64) -> Result<Vec<SlotRow>, StoreError> {
+#[doc(hidden)]
+pub fn read_rows(seg: &SegPair, local: u64, n: u64) -> Result<Vec<SlotRow>, StoreError> {
     let mut b = vec![0u8; (n * SLOT) as usize];
     seg.idx.read_at(HDR + local * SLOT, &mut b)?;
     Ok(b.chunks_exact(SLOT as usize).map(decode_slot).collect())
 }
 
 /// End of the last record in `seg` (`HDR` when empty).
-fn seg_end(seg: &SegPair) -> Result<u64, StoreError> {
+#[doc(hidden)]
+pub fn seg_end(seg: &SegPair) -> Result<u64, StoreError> {
     match seg.n_slots.checked_sub(1) {
         None => Ok(HDR),
         Some(last) => Ok(read_rows(seg, last, 1)?[0].end()),
@@ -135,19 +148,23 @@ fn seg_end(seg: &SegPair) -> Result<u64, StoreError> {
 }
 
 impl BlockFilterTable {
-    fn idx_dir(dir: &Path) -> PathBuf {
+    #[doc(hidden)]
+    pub fn idx_dir(dir: &Path) -> PathBuf {
         dir.join("blockfilter.idx")
     }
 
-    fn body_dir(dir: &Path) -> PathBuf {
+    #[doc(hidden)]
+    pub fn body_dir(dir: &Path) -> PathBuf {
         dir.join("blockfilter.body")
     }
 
-    fn meta_path(dir: &Path) -> PathBuf {
+    #[doc(hidden)]
+    pub fn meta_path(dir: &Path) -> PathBuf {
         Self::idx_dir(dir).join("meta")
     }
 
-    fn seg_dirs(dir: &Path) -> SegDirs {
+    #[doc(hidden)]
+    pub fn seg_dirs(dir: &Path) -> SegDirs {
         SegDirs::new(
             Self::idx_dir(dir),
             Self::body_dir(dir),
@@ -155,7 +172,8 @@ impl BlockFilterTable {
         )
     }
 
-    fn with_segs(dir: &Path, segs: Vec<SegPair>, tail_end: u64) -> Self {
+    #[doc(hidden)]
+    pub fn with_segs(dir: &Path, segs: Vec<SegPair>, tail_end: u64) -> Self {
         Self {
             dirs: Self::seg_dirs(dir),
             inner: RwLock::new(Inner { segs, tail_end }),
@@ -163,7 +181,8 @@ impl BlockFilterTable {
         }
     }
 
-    fn create(dir: &Path) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn create(dir: &Path) -> Result<Self, StoreError> {
         std::fs::create_dir_all(Self::idx_dir(dir)).map_err(|e| StoreError::io(dir, e))?;
         std::fs::create_dir_all(Self::body_dir(dir)).map_err(|e| StoreError::io(dir, e))?;
         let meta = TableFile::create(Self::meta_path(dir), TableKind::ArrayLink)?;
@@ -176,7 +195,8 @@ impl BlockFilterTable {
         ))
     }
 
-    fn open(dir: &Path) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn open(dir: &Path) -> Result<Self, StoreError> {
         let meta = TableFile::open(Self::meta_path(dir), TableKind::ArrayLink)?;
         if meta.logical_len() < HDR + 4 {
             return Err(StoreError::Corrupt("blockfilter.idx/meta short"));
@@ -200,7 +220,8 @@ impl BlockFilterTable {
     ///
     /// Commits only append, so a crash can only tear the tail: this reads a
     /// few slots at the end, not the whole idx.
-    fn clamp_torn_tail(seg: &mut SegPair) -> Result<u64, StoreError> {
+    #[doc(hidden)]
+    pub fn clamp_torn_tail(seg: &mut SegPair) -> Result<u64, StoreError> {
         let body_len = seg.body.logical_len();
         let mut keep = seg.n_slots;
         let end = loop {
@@ -246,11 +267,13 @@ impl BlockFilterTable {
         Self::create(dir)
     }
 
-    fn read(&self) -> std::sync::RwLockReadGuard<'_, Inner> {
+    #[doc(hidden)]
+    pub fn read(&self) -> std::sync::RwLockReadGuard<'_, Inner> {
         self.inner.read().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn write(&self) -> std::sync::RwLockWriteGuard<'_, Inner> {
+    #[doc(hidden)]
+    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, Inner> {
         self.inner.write().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -265,7 +288,8 @@ impl BlockFilterTable {
     }
 
     /// Idx rows for `start..=end` grouped by segment (one pread each).
-    fn rows(inner: &Inner, start: Height, end: Height) -> Result<Option<SegRows>, StoreError> {
+    #[doc(hidden)]
+    pub fn rows(inner: &Inner, start: Height, end: Height) -> Result<Option<SegRows>, StoreError> {
         if start > end || inner.locate(end).is_none() {
             return Ok(None);
         }
@@ -426,168 +450,5 @@ impl BlockFilterTable {
         inner.tail_end = seg_end(&inner.segs[si])?;
         self.dirs.drop_after(&mut inner.segs, si + 1);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::io::{Read, Seek, SeekFrom, Write};
-
-    fn tmp_dir() -> crate::testutil::TempDir {
-        crate::testutil::TempDir::labeled("blockfilter").unwrap()
-    }
-
-    fn slot(h: u32) -> BlockFilterSlot {
-        BlockFilterSlot {
-            header_fk: Fk(u64::from(h) + 100),
-            filter_hash: [h as u8; 32],
-            filter_header: [h as u8 ^ 0xff; 32],
-        }
-    }
-
-    fn put_range(t: &BlockFilterTable, from: u32, to: u32) {
-        let bodies: Vec<Vec<u8>> = (from..=to).map(|h| vec![h as u8; 3 + h as usize]).collect();
-        let recs: Vec<BlockFilterRecord<'_>> = (from..=to)
-            .zip(&bodies)
-            .map(|(h, b)| BlockFilterRecord {
-                height: Height(h),
-                slot: slot(h),
-                filter: b,
-            })
-            .collect();
-        t.put(&recs).unwrap();
-    }
-
-    fn set_file_hwm(path: &Path, hwm: u64) {
-        let mut f = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)
-            .unwrap();
-        f.set_len(hwm.max(FILE_HEADER_LEN as u64)).unwrap();
-        let mut hdr = [0u8; FILE_HEADER_LEN];
-        f.seek(SeekFrom::Start(0)).unwrap();
-        f.read_exact(&mut hdr).unwrap();
-        hdr[8..16].copy_from_slice(&hwm.to_le_bytes());
-        f.seek(SeekFrom::Start(0)).unwrap();
-        f.write_all(&hdr).unwrap();
-    }
-
-    #[test]
-    fn filter_at_height_reads_only_its_record_and_survives_reopen() {
-        let dir = tmp_dir();
-        let t = BlockFilterTable::open_or_create(&dir).unwrap();
-        assert_eq!(t.next_height(), Height(0));
-        assert!(t.filter(Height(0)).unwrap().is_none());
-        put_range(&t, 0, 9);
-        assert_eq!(t.next_height(), Height(10));
-        drop(t);
-
-        // Scribble over every other record's body bytes: a lookup must not
-        // walk earlier records to find its own.
-        let body = BlockFilterTable::seg_dirs(&dir).body_path(0);
-        let mut raw = fs::read(&body).unwrap();
-        let start7 = FILE_HEADER_LEN + (0..7).map(|h| 3 + h).sum::<usize>();
-        let len7 = 3 + 7;
-        for (i, b) in raw.iter_mut().enumerate().skip(FILE_HEADER_LEN) {
-            if !(start7..start7 + len7).contains(&i) {
-                *b = 0xee;
-            }
-        }
-        fs::write(&body, &raw).unwrap();
-
-        let t = BlockFilterTable::open_or_create(&dir).unwrap();
-        assert_eq!(t.next_height(), Height(10));
-        let (bytes, s) = t.filter(Height(7)).unwrap().unwrap();
-        assert_eq!(bytes, vec![7u8; 10]);
-        assert_eq!(s, slot(7));
-        assert_eq!(t.slot(Height(9)).unwrap(), Some(slot(9)));
-        assert_eq!(
-            t.slots(Height(3), Height(9)).unwrap().unwrap(),
-            (3..=9).map(slot).collect::<Vec<_>>()
-        );
-        assert!(t.slots(Height(3), Height(10)).unwrap().is_none());
-        let run = t.filters(Height(6), Height(8)).unwrap().unwrap();
-        assert_eq!(
-            run[1],
-            (vec![7u8; 10], slot(7)),
-            "range read matches single"
-        );
-        assert!(t.slot(Height(10)).unwrap().is_none());
-        let gap = t.put(&[BlockFilterRecord {
-            height: Height(11),
-            slot: slot(11),
-            filter: &[1],
-        }]);
-        assert!(matches!(gap, Err(StoreError::Corrupt(m)) if m.contains("next height")));
-    }
-
-    /// Crash states a live session cannot produce on demand: a commit that
-    /// synced body bytes but not its slots, then an idx HWM covering a slot
-    /// whose record is cut short. Open keeps the committed prefix each time.
-    #[test]
-    fn open_keeps_the_committed_prefix_after_torn_commits() {
-        let dir = tmp_dir();
-        let body = BlockFilterTable::seg_dirs(&dir).body_path(0);
-        let end_of = |h: u64| FILE_HEADER_LEN as u64 + (0..=h).map(|i| 3 + i).sum::<u64>();
-        let t = BlockFilterTable::open_or_create(&dir).unwrap();
-        put_range(&t, 0, 4);
-        drop(t);
-
-        set_file_hwm(&body, end_of(4) + 50);
-        {
-            let mut f = fs::OpenOptions::new().write(true).open(&body).unwrap();
-            f.seek(SeekFrom::Start(end_of(4))).unwrap();
-            f.write_all(&[0xab; 50]).unwrap();
-        }
-        let t = BlockFilterTable::open_or_create(&dir).unwrap();
-        assert_eq!(t.next_height(), Height(5));
-        assert_eq!(t.filter(Height(4)).unwrap().unwrap().0, vec![4u8; 7]);
-        put_range(&t, 5, 5);
-        assert_eq!(t.filter(Height(5)).unwrap().unwrap().0, vec![5u8; 8]);
-        drop(t);
-
-        set_file_hwm(&body, end_of(2) + 1);
-        let t = BlockFilterTable::open_or_create(&dir).unwrap();
-        assert_eq!(t.next_height(), Height(3), "record 3 is torn");
-        put_range(&t, 3, 4);
-        assert_eq!(t.filter(Height(4)).unwrap().unwrap().0, vec![4u8; 7]);
-    }
-
-    #[test]
-    fn rolls_a_segment_when_the_next_start_passes_u32() {
-        let dir = tmp_dir();
-        let t = BlockFilterTable::open_or_create(&dir).unwrap();
-        put_range(&t, 0, 0);
-        drop(t);
-        // Record 0 now ends one past u32::MAX (sparse body, slot len widened).
-        let big = u32::MAX - FILE_HEADER_LEN as u32 + 1;
-        let idx = BlockFilterTable::seg_dirs(&dir).idx_path(0);
-        let mut raw = fs::read(&idx).unwrap();
-        raw[FILE_HEADER_LEN + 4..FILE_HEADER_LEN + 8].copy_from_slice(&big.to_le_bytes());
-        fs::write(&idx, &raw).unwrap();
-        set_file_hwm(
-            &BlockFilterTable::seg_dirs(&dir).body_path(0),
-            u64::from(u32::MAX) + 1,
-        );
-
-        let t = BlockFilterTable::open_or_create(&dir).unwrap();
-        assert_eq!(t.next_height(), Height(1));
-        put_range(&t, 1, 2);
-        assert!(BlockFilterTable::seg_dirs(&dir).body_path(1).is_file());
-        assert_eq!(
-            t.filters(Height(1), Height(2)).unwrap().unwrap(),
-            vec![(vec![1u8; 4], slot(1)), (vec![2u8; 5], slot(2))]
-        );
-        assert_eq!(
-            t.slots(Height(0), Height(2)).unwrap().unwrap(),
-            (0..=2).map(slot).collect::<Vec<_>>(),
-            "range read crosses the segment roll"
-        );
-        t.truncate_through(Some(Height(0))).unwrap();
-        assert!(!BlockFilterTable::seg_dirs(&dir).body_path(1).exists());
-        assert_eq!(t.next_height(), Height(1));
     }
 }

@@ -22,48 +22,50 @@ pub struct Frame {
 /// `SubmitSolution`: 20 fixed bytes plus a `B064K` coinbase (2-byte length,
 /// ≤ 65535 bytes). The 24-bit frame length would otherwise let a client
 /// make the session buffer ~16 MB per frame.
-pub(crate) const MAX_CLIENT_PAYLOAD: usize = 20 + 2 + u16::MAX as usize;
+pub const MAX_CLIENT_PAYLOAD: usize = 20 + 2 + u16::MAX as usize;
 
 /// Encrypted bytes on the wire for a frame carrying `payload` bytes.
-const fn encrypted_frame_len(payload: usize) -> usize {
+#[doc(hidden)]
+pub const fn encrypted_frame_len(payload: usize) -> usize {
     ENCRYPTED_SV2_FRAME_HEADER_SIZE
         + payload
         + payload.div_ceil(SV2_FRAME_PLAINTEXT_CHUNK_SIZE) * AEAD_MAC_LEN
 }
 
-pub(crate) struct NoiseConn {
-    reader: NoiseReader,
-    writer: NoiseWriter,
+pub struct NoiseConn {
+    pub reader: NoiseReader,
+    pub writer: NoiseWriter,
 }
 
 /// Receive half. `recv` is not cancel-safe: a dropped call loses a partly
 /// read frame, so a session that selects over input reads from a task.
-pub(crate) struct NoiseReader {
-    stream: OwnedReadHalf,
-    decoder: NoiseDecoder,
+pub struct NoiseReader {
+    pub stream: OwnedReadHalf,
+    pub decoder: NoiseDecoder,
     // `next_transport_frame` consumes the state; a failed round leaves `None`
     // and the connection must close (codec_sv2 nonce rule).
-    rx: Option<TransportDecryptState>,
+    pub rx: Option<TransportDecryptState>,
     /// Encrypted bytes one frame may take; see [`MAX_CLIENT_PAYLOAD`].
-    max_frame: usize,
+    pub max_frame: usize,
     /// Encrypted bytes read so far for the frame being decoded.
-    frame_read: usize,
+    pub frame_read: usize,
 }
 
-pub(crate) struct NoiseWriter {
-    stream: OwnedWriteHalf,
-    encoder: NoiseEncoder,
-    tx: TransportEncryptState,
+pub struct NoiseWriter {
+    pub stream: OwnedWriteHalf,
+    pub encoder: NoiseEncoder,
+    pub tx: TransportEncryptState,
     /// Longest one socket write may make no progress.
-    write_timeout: Duration,
+    pub write_timeout: Duration,
 }
 
-fn codec_err(e: codec_sv2::Error) -> io::Error {
+#[doc(hidden)]
+pub fn codec_err(e: codec_sv2::Error) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, format!("sv2 codec: {e:?}"))
 }
 
 impl NoiseConn {
-    pub(crate) async fn accept(
+    pub async fn accept(
         mut stream: TcpStream,
         responder: Box<Responder>,
         write_timeout: Duration,
@@ -102,7 +104,7 @@ impl NoiseConn {
         ))
     }
 
-    pub(crate) async fn connect(
+    pub async fn connect(
         mut stream: TcpStream,
         initiator: Box<Initiator>,
         write_timeout: Duration,
@@ -141,7 +143,8 @@ impl NoiseConn {
         ))
     }
 
-    fn new(
+    #[doc(hidden)]
+    pub fn new(
         stream: TcpStream,
         encoder: NoiseEncoder,
         decoder: NoiseDecoder,
@@ -168,29 +171,21 @@ impl NoiseConn {
         }
     }
 
-    pub(crate) fn into_split(self) -> (NoiseReader, NoiseWriter) {
+    pub fn into_split(self) -> (NoiseReader, NoiseWriter) {
         (self.reader, self.writer)
     }
 
-    pub(crate) async fn send<T: Serialize + GetSize>(
-        &mut self,
-        msg_type: u8,
-        msg: T,
-    ) -> io::Result<()> {
+    pub async fn send<T: Serialize + GetSize>(&mut self, msg_type: u8, msg: T) -> io::Result<()> {
         self.writer.send(msg_type, msg).await
     }
 
-    pub(crate) async fn recv(&mut self) -> io::Result<Frame> {
+    pub async fn recv(&mut self) -> io::Result<Frame> {
         self.reader.recv().await
     }
 }
 
 impl NoiseWriter {
-    pub(crate) async fn send<T: Serialize + GetSize>(
-        &mut self,
-        msg_type: u8,
-        msg: T,
-    ) -> io::Result<()> {
+    pub async fn send<T: Serialize + GetSize>(&mut self, msg_type: u8, msg: T) -> io::Result<()> {
         let frame = MessageFrame::from_message(msg, msg_type, 0, false).map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidInput, format!("sv2 frame: {e:?}"))
         })?;
@@ -216,7 +211,7 @@ impl NoiseWriter {
 }
 
 impl NoiseReader {
-    pub(crate) async fn recv(&mut self) -> io::Result<Frame> {
+    pub async fn recv(&mut self) -> io::Result<Frame> {
         loop {
             let state = self
                 .rx

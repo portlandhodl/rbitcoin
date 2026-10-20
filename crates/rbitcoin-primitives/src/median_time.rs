@@ -9,19 +9,3 @@ pub fn median_time_past_times(times: &[u32]) -> Result<u32, &'static str> {
     sorted.sort_unstable();
     Ok(sorted[sorted.len() / 2])
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unsorted_three() {
-        assert_eq!(median_time_past_times(&[3, 1, 2]).unwrap(), 2);
-    }
-
-    #[test]
-    fn empty_median_time_is_an_error() {
-        let err = median_time_past_times(&[]).unwrap_err();
-        assert!(err.contains("median"), "{err}");
-    }
-}

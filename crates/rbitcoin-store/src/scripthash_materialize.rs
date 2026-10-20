@@ -33,53 +33,75 @@ use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const MATERIALIZE_STATUS_INTERVAL: Duration = Duration::from_secs(10);
+#[doc(hidden)]
+pub const MATERIALIZE_STATUS_INTERVAL: Duration = Duration::from_secs(10);
 
 pub const UNSORTED_SHARD_DIR: &str = "scripthash.unsorted";
-const KEYS_SUBDIR: &str = "keys";
-const POST_SUBDIR: &str = "post";
-const MULTI_SUBDIR: &str = "multi";
-#[cfg(test)]
-const MPHF_SUBDIR: &str = "mphf";
-const KEYS_DONE_NAME: &str = "DONE.keys";
-const POST_DONE_NAME: &str = "DONE.post";
-const KEYS_DONE_MAGIC: &[u8; 8] = b"SHKEYS02";
-const POST_DONE_MAGIC: &[u8; 8] = b"SHPOST02";
-const LEGACY_DONE_NAME: &str = "DONE";
+#[doc(hidden)]
+pub const KEYS_SUBDIR: &str = "keys";
+#[doc(hidden)]
+pub const POST_SUBDIR: &str = "post";
+#[doc(hidden)]
+pub const MULTI_SUBDIR: &str = "multi";
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub const MPHF_SUBDIR: &str = "mphf";
+#[doc(hidden)]
+pub const KEYS_DONE_NAME: &str = "DONE.keys";
+#[doc(hidden)]
+pub const POST_DONE_NAME: &str = "DONE.post";
+#[doc(hidden)]
+pub const KEYS_DONE_MAGIC: &[u8; 8] = b"SHKEYS02";
+#[doc(hidden)]
+pub const POST_DONE_MAGIC: &[u8; 8] = b"SHPOST02";
+#[doc(hidden)]
+pub const LEGACY_DONE_NAME: &str = "DONE";
 
-const KEY16_LEN: usize = SH_HEAD_KEY_LEN;
+#[doc(hidden)]
+pub const KEY16_LEN: usize = SH_HEAD_KEY_LEN;
 /// One keys-body codec. Anything else is leftover (refuse, do not open).
-const KEYS_SPILL_MAGIC: &[u8; 8] = b"SHKSP01\0";
-const KEYS_SPILL_HDR: usize = 16;
+#[doc(hidden)]
+pub const KEYS_SPILL_MAGIC: &[u8; 8] = b"SHKSP01\0";
+#[doc(hidden)]
+pub const KEYS_SPILL_HDR: usize = 16;
 /// Collect-map estimate: `64 × n_keys` (HashMap overhead, not a prefault).
-const KEYS_COLLECT_BYTES_PER_KEY: u64 = 64;
-const INDEX_REFUSE_KEYS_LEFTOVER: &str = "scripthash unsorted keys leftover from an older extract; wipe store/scripthash.unsorted and rematerialize";
-const INDEX_REFUSE_POST_LEFTOVER: &str = "scripthash unsorted post leftover from an older extract; wipe store/scripthash.unsorted and rematerialize";
+#[doc(hidden)]
+pub const KEYS_COLLECT_BYTES_PER_KEY: u64 = 64;
+#[doc(hidden)]
+pub const INDEX_REFUSE_KEYS_LEFTOVER: &str = "scripthash unsorted keys leftover from an older extract; wipe store/scripthash.unsorted and rematerialize";
+#[doc(hidden)]
+pub const INDEX_REFUSE_POST_LEFTOVER: &str = "scripthash unsorted post leftover from an older extract; wipe store/scripthash.unsorted and rematerialize";
 /// Inner loc/body batch inside a static worker fk span.
-pub(crate) const CLASS_A_CHUNK_FKS: u64 = 1 << 16;
+pub const CLASS_A_CHUNK_FKS: u64 = 1 << 16;
 /// One posts-body codec. Anything else is leftover (refuse, do not open).
-const POSTS_SPILL_MAGIC: &[u8; 8] = b"SHPST01\0";
-const POSTS_SPILL_HDR: usize = 12;
+#[doc(hidden)]
+pub const POSTS_SPILL_MAGIC: &[u8; 8] = b"SHPST01\0";
+#[doc(hidden)]
+pub const POSTS_SPILL_HDR: usize = 12;
 /// Collect-map estimate: `80 × n_keys + 8 × n_fks`.
-const POST_MAP_KEY_BYTES: usize = 80;
-const POST_MAP_FK_BYTES: usize = 8;
+#[doc(hidden)]
+pub const POST_MAP_KEY_BYTES: usize = 80;
+#[doc(hidden)]
+pub const POST_MAP_FK_BYTES: usize = 8;
 
 /// One extract worker: BDZ `g` + fuse + maps (~1.5 GiB).
 pub const SH_EXTRACT_WORKER_RAM_BYTES: u64 = 3 << 29;
 
-struct MaterializeProgress {
-    recs_packed: AtomicU64,
-    keys_packed: AtomicU64,
-    shards_published: AtomicU32,
-    creates_published: AtomicU64,
-    merge_ns: AtomicU64,
-    pack_ns: AtomicU64,
-    mphf_ns: AtomicU64,
-    body_flush_ns: AtomicU64,
+#[doc(hidden)]
+pub struct MaterializeProgress {
+    pub recs_packed: AtomicU64,
+    pub keys_packed: AtomicU64,
+    pub shards_published: AtomicU32,
+    pub creates_published: AtomicU64,
+    pub merge_ns: AtomicU64,
+    pub pack_ns: AtomicU64,
+    pub mphf_ns: AtomicU64,
+    pub body_flush_ns: AtomicU64,
 }
 
 impl MaterializeProgress {
-    fn new() -> Self {
+    #[doc(hidden)]
+    pub fn new() -> Self {
         Self {
             recs_packed: AtomicU64::new(0),
             keys_packed: AtomicU64::new(0),
@@ -92,7 +114,8 @@ impl MaterializeProgress {
         }
     }
 
-    fn stages(&self) -> MaterializeStageNs {
+    #[doc(hidden)]
+    pub fn stages(&self) -> MaterializeStageNs {
         MaterializeStageNs {
             merge_ns: self.merge_ns.load(Ordering::Relaxed),
             pack_ns: self.pack_ns.load(Ordering::Relaxed),
@@ -123,7 +146,8 @@ pub struct ShShardMaterialize {
 }
 
 impl ShShardMaterialize {
-    fn with_stages(mut self, stages: MaterializeStageNs) -> Self {
+    #[doc(hidden)]
+    pub fn with_stages(mut self, stages: MaterializeStageNs) -> Self {
         self.merge_ns = stages.merge_ns;
         self.pack_ns = stages.pack_ns;
         self.mphf_ns = stages.mphf_ns;
@@ -133,7 +157,8 @@ impl ShShardMaterialize {
     }
 }
 
-fn check_cancel(cancel: Option<&AtomicBool>, what: &'static str) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn check_cancel(cancel: Option<&AtomicBool>, what: &'static str) -> Result<(), StoreError> {
     if cancel.map(|c| c.load(Ordering::Relaxed)).unwrap_or(false) {
         Err(StoreError::Cancelled(what))
     } else {
@@ -149,28 +174,28 @@ pub fn unsorted_shard_path(dir: &Path, shard: usize) -> PathBuf {
     dir.join(format!("{shard:02x}"))
 }
 
-pub(crate) fn unsorted_keys_path(dir: &Path, shard: usize) -> PathBuf {
+pub fn unsorted_keys_path(dir: &Path, shard: usize) -> PathBuf {
     dir.join(KEYS_SUBDIR).join(format!("{shard:02x}"))
 }
 
-pub(crate) fn unsorted_keys_spill_path(dir: &Path, shard: usize, seq: u32) -> PathBuf {
+pub fn unsorted_keys_spill_path(dir: &Path, shard: usize, seq: u32) -> PathBuf {
     unsorted_keys_path(dir, shard).join(format!("{seq:06}"))
 }
 
-pub(crate) fn unsorted_post_path(dir: &Path, shard: usize) -> PathBuf {
+pub fn unsorted_post_path(dir: &Path, shard: usize) -> PathBuf {
     dir.join(POST_SUBDIR).join(format!("{shard:02x}"))
 }
 
-pub(crate) fn unsorted_post_spill_path(dir: &Path, shard: usize, seq: u32) -> PathBuf {
+pub fn unsorted_post_spill_path(dir: &Path, shard: usize, seq: u32) -> PathBuf {
     unsorted_post_path(dir, shard).join(format!("{seq:06}"))
 }
 
-pub(crate) fn unsorted_multi_fuse_path(dir: &Path, shard: usize) -> PathBuf {
+pub fn unsorted_multi_fuse_path(dir: &Path, shard: usize) -> PathBuf {
     dir.join(MULTI_SUBDIR).join(format!("{shard:02x}.fuse8"))
 }
 
-#[cfg(test)]
-pub(crate) fn unsorted_mphf_base(dir: &Path, shard: usize) -> PathBuf {
+#[cfg(debug_assertions)]
+pub fn unsorted_mphf_base(dir: &Path, shard: usize) -> PathBuf {
     dir.join(MPHF_SUBDIR).join(format!("{shard:02x}"))
 }
 
@@ -208,13 +233,15 @@ pub struct UnsortedCollect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UnsortedCollectAction {
+#[doc(hidden)]
+pub enum UnsortedCollectAction {
     Full,
     Append { first: u64, last: u64 },
     Skip,
 }
 
-fn plan_unsorted_collect(
+#[doc(hidden)]
+pub fn plan_unsorted_collect(
     done_last: Option<u64>,
     class_a_last: u64,
     any_sealed_shards: bool,
@@ -232,19 +259,22 @@ fn plan_unsorted_collect(
     }
 }
 
-fn any_unsorted_keys(dir: &Path, n_shards: usize) -> bool {
+#[doc(hidden)]
+pub fn any_unsorted_keys(dir: &Path, n_shards: usize) -> bool {
     (0..n_shards).any(|si| {
         let p = unsorted_keys_path(dir, si);
         p.is_file() || p.is_dir()
     })
 }
 
-struct PhaseDone {
-    last_fk: u64,
-    counts: Vec<u64>,
+#[doc(hidden)]
+pub struct PhaseDone {
+    pub last_fk: u64,
+    pub counts: Vec<u64>,
 }
 
-fn write_phase_done(
+#[doc(hidden)]
+pub fn write_phase_done(
     dir: &Path,
     name: &str,
     magic: &[u8; 8],
@@ -273,7 +303,13 @@ fn write_phase_done(
     Ok(())
 }
 
-fn read_phase_done(dir: &Path, name: &str, magic: &[u8; 8], n_shards: usize) -> Option<PhaseDone> {
+#[doc(hidden)]
+pub fn read_phase_done(
+    dir: &Path,
+    name: &str,
+    magic: &[u8; 8],
+    n_shards: usize,
+) -> Option<PhaseDone> {
     let buf = fs::read(dir.join(name)).ok()?;
     if buf.len() < 20 || &buf[0..8] != magic {
         return None;
@@ -298,7 +334,8 @@ pub fn unsorted_done_last_fk(dir: &Path, n_shards: usize) -> Option<u64> {
     read_phase_done(dir, KEYS_DONE_NAME, KEYS_DONE_MAGIC, n_shards).map(|d| d.last_fk)
 }
 
-fn leftover_legacy_unsorted(dir: &Path) -> bool {
+#[doc(hidden)]
+pub fn leftover_legacy_unsorted(dir: &Path) -> bool {
     if !dir.is_dir() {
         return false;
     }
@@ -319,7 +356,8 @@ fn leftover_legacy_unsorted(dir: &Path) -> bool {
     false
 }
 
-fn chunk_ranges(first: u64, last: u64, chunk: u64) -> Vec<(u64, u64)> {
+#[doc(hidden)]
+pub fn chunk_ranges(first: u64, last: u64, chunk: u64) -> Vec<(u64, u64)> {
     if last < first {
         return Vec::new();
     }
@@ -338,7 +376,8 @@ fn chunk_ranges(first: u64, last: u64, chunk: u64) -> Vec<(u64, u64)> {
 
 /// Contiguous, covering, disjoint create-fk spans. Remainder on the last span.
 /// `n_workers` clamps to `[1, span]`.
-fn worker_fk_spans(first: u64, last: u64, n_workers: usize) -> Vec<(u64, u64)> {
+#[doc(hidden)]
+pub fn worker_fk_spans(first: u64, last: u64, n_workers: usize) -> Vec<(u64, u64)> {
     if last < first {
         return Vec::new();
     }
@@ -362,12 +401,14 @@ fn worker_fk_spans(first: u64, last: u64, n_workers: usize) -> Vec<(u64, u64)> {
 }
 
 /// Finished create-fks, not the max fk. A late span must not look like the scan is done.
-fn note_scanned_fks(scanned: &AtomicU64, lo: u64, hi: u64) -> u64 {
+#[doc(hidden)]
+pub fn note_scanned_fks(scanned: &AtomicU64, lo: u64, hi: u64) -> u64 {
     let n = hi.saturating_sub(lo).saturating_add(1);
     scanned.fetch_add(n, Ordering::Relaxed).saturating_add(n)
 }
 
-fn key16_halves_bytes(bytes: &[u8]) -> (u64, u64) {
+#[doc(hidden)]
+pub fn key16_halves_bytes(bytes: &[u8]) -> (u64, u64) {
     let a = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
     let b = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
     (a, b)
@@ -376,7 +417,8 @@ fn key16_halves_bytes(bytes: &[u8]) -> (u64, u64) {
 /// Identity hasher for uniform key16: `finish()` is the xor of the two LE u64 halves.
 /// Does not FNV-mix bytes ([`crate::int_map::U64IdentityHasher::write`]).
 #[derive(Default, Clone, Copy)]
-struct Key16IdentityHasher(u64);
+#[doc(hidden)]
+pub struct Key16IdentityHasher(u64);
 
 impl Hasher for Key16IdentityHasher {
     #[inline]
@@ -400,20 +442,27 @@ impl Hasher for Key16IdentityHasher {
     }
 }
 
-type Key16PackMap = HashMap<ShHeadKey, u64, BuildHasherDefault<Key16IdentityHasher>>;
-type KeysSpillJob = (usize, Key16PackMap);
-type KeysSpillTx = SyncSender<KeysSpillJob>;
-type KeysSpillRx = Receiver<KeysSpillJob>;
+#[doc(hidden)]
+pub type Key16PackMap = HashMap<ShHeadKey, u64, BuildHasherDefault<Key16IdentityHasher>>;
+#[doc(hidden)]
+pub type KeysSpillJob = (usize, Key16PackMap);
+#[doc(hidden)]
+pub type KeysSpillTx = SyncSender<KeysSpillJob>;
+#[doc(hidden)]
+pub type KeysSpillRx = Receiver<KeysSpillJob>;
 
-fn keys_map_estimated_bytes(map: &Key16PackMap) -> u64 {
+#[doc(hidden)]
+pub fn keys_map_estimated_bytes(map: &Key16PackMap) -> u64 {
     (map.len() as u64).saturating_mul(KEYS_COLLECT_BYTES_PER_KEY)
 }
 
-fn keys_maps_estimated_bytes(maps: &[Key16PackMap]) -> u64 {
+#[doc(hidden)]
+pub fn keys_maps_estimated_bytes(maps: &[Key16PackMap]) -> u64 {
     maps.iter().map(keys_map_estimated_bytes).sum()
 }
 
-fn largest_keys_shard(maps: &[Key16PackMap]) -> Option<usize> {
+#[doc(hidden)]
+pub fn largest_keys_shard(maps: &[Key16PackMap]) -> Option<usize> {
     maps.iter()
         .enumerate()
         .filter(|(_, m)| !m.is_empty())
@@ -421,12 +470,14 @@ fn largest_keys_shard(maps: &[Key16PackMap]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
-fn refuse_keys_leftover() -> StoreError {
+#[doc(hidden)]
+pub fn refuse_keys_leftover() -> StoreError {
     StoreError::Corrupt(INDEX_REFUSE_KEYS_LEFTOVER)
 }
 
 /// Vacant stores `word`; occupied nonzero becomes `0` (multi) unless `word` matches.
-fn insert_key_word(map: &mut Key16PackMap, key: ShHeadKey, word: u64) {
+#[doc(hidden)]
+pub fn insert_key_word(map: &mut Key16PackMap, key: ShHeadKey, word: u64) {
     match map.entry(key) {
         Entry::Vacant(v) => {
             v.insert(word);
@@ -439,14 +490,16 @@ fn insert_key_word(map: &mut Key16PackMap, key: ShHeadKey, word: u64) {
     }
 }
 
-struct CollectTally {
-    recs: u64,
-    hits: u64,
-    per: Vec<u64>,
+#[doc(hidden)]
+pub struct CollectTally {
+    pub recs: u64,
+    pub hits: u64,
+    pub per: Vec<u64>,
 }
 
 impl CollectTally {
-    fn new(n_shards: usize) -> Self {
+    #[doc(hidden)]
+    pub fn new(n_shards: usize) -> Self {
         Self {
             recs: 0,
             hits: 0,
@@ -456,7 +509,8 @@ impl CollectTally {
 }
 
 /// Add a worker's batch counts once. A zero tally does not touch the atomics.
-fn flush_collect_tally(
+#[doc(hidden)]
+pub fn flush_collect_tally(
     tally: &mut CollectTally,
     recs: &AtomicU64,
     hits: Option<&AtomicU64>,
@@ -482,14 +536,16 @@ fn flush_collect_tally(
     }
 }
 
-fn insert_key_pack(map: &mut Key16PackMap, key: ShHeadKey, fk: Fk) {
+#[doc(hidden)]
+pub fn insert_key_pack(map: &mut Key16PackMap, key: ShHeadKey, fk: Fk) {
     if fk.is_null() {
         return;
     }
     insert_key_word(map, key, fk.0);
 }
 
-fn encode_keys_spill(map: &Key16PackMap) -> Vec<u8> {
+#[doc(hidden)]
+pub fn encode_keys_spill(map: &Key16PackMap) -> Vec<u8> {
     let mut multis = Vec::new();
     let mut singles = Vec::new();
     for (k, w) in map {
@@ -518,7 +574,8 @@ fn encode_keys_spill(map: &Key16PackMap) -> Vec<u8> {
     bytes
 }
 
-fn fold_keys_spill_bytes(map: &mut Key16PackMap, bytes: &[u8]) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn fold_keys_spill_bytes(map: &mut Key16PackMap, bytes: &[u8]) -> Result<(), StoreError> {
     if bytes.len() < KEYS_SPILL_HDR || bytes[0..8] != KEYS_SPILL_MAGIC[..] {
         return Err(refuse_keys_leftover());
     }
@@ -555,7 +612,8 @@ fn fold_keys_spill_bytes(map: &mut Key16PackMap, bytes: &[u8]) -> Result<(), Sto
     Ok(())
 }
 
-fn parse_spill_seq(name: &str) -> Option<u32> {
+#[doc(hidden)]
+pub fn parse_spill_seq(name: &str) -> Option<u32> {
     if name.len() == 6 && name.bytes().all(|b| b.is_ascii_digit()) {
         name.parse().ok()
     } else {
@@ -563,7 +621,8 @@ fn parse_spill_seq(name: &str) -> Option<u32> {
     }
 }
 
-fn list_keys_spill_paths(dir: &Path, shard: usize) -> Result<Vec<PathBuf>, StoreError> {
+#[doc(hidden)]
+pub fn list_keys_spill_paths(dir: &Path, shard: usize) -> Result<Vec<PathBuf>, StoreError> {
     let p = unsorted_keys_path(dir, shard);
     if p.is_file() {
         return Err(refuse_keys_leftover());
@@ -589,7 +648,8 @@ fn list_keys_spill_paths(dir: &Path, shard: usize) -> Result<Vec<PathBuf>, Store
     Ok(seqs.into_iter().map(|(_, path)| path).collect())
 }
 
-fn load_keys_shard_map(dir: &Path, shard: usize) -> Result<Key16PackMap, StoreError> {
+#[doc(hidden)]
+pub fn load_keys_shard_map(dir: &Path, shard: usize) -> Result<Key16PackMap, StoreError> {
     let mut map = Key16PackMap::default();
     for path in list_keys_spill_paths(dir, shard)? {
         let bytes = fs::read(&path).map_err(|e| StoreError::io(&path, e))?;
@@ -598,7 +658,8 @@ fn load_keys_shard_map(dir: &Path, shard: usize) -> Result<Key16PackMap, StoreEr
     Ok(map)
 }
 
-fn write_keys_spill(
+#[doc(hidden)]
+pub fn write_keys_spill(
     dir: &Path,
     shard: usize,
     seq: u32,
@@ -608,7 +669,8 @@ fn write_keys_spill(
     crate::file::write_tmp_rename(&path, &encode_keys_spill(map))
 }
 
-fn next_keys_spill_seq(dir: &Path, shard: usize) -> Result<u32, StoreError> {
+#[doc(hidden)]
+pub fn next_keys_spill_seq(dir: &Path, shard: usize) -> Result<u32, StoreError> {
     let paths = list_keys_spill_paths(dir, shard)?;
     let mut max_seq = None;
     for p in &paths {
@@ -620,8 +682,8 @@ fn next_keys_spill_seq(dir: &Path, shard: usize) -> Result<u32, StoreError> {
     Ok(max_seq.map(|s| s.saturating_add(1)).unwrap_or(0))
 }
 
-#[cfg(test)]
-pub(crate) fn write_keys_spill_entries(
+#[cfg(debug_assertions)]
+pub fn write_keys_spill_entries(
     dir: &Path,
     shard: usize,
     seq: u32,
@@ -637,7 +699,8 @@ pub(crate) fn write_keys_spill_entries(
     write_keys_spill(dir, shard, seq, &map)
 }
 
-fn unlink_keys_shard(dir: &Path, shard: usize) {
+#[doc(hidden)]
+pub fn unlink_keys_shard(dir: &Path, shard: usize) {
     let p = unsorted_keys_path(dir, shard);
     if p.is_dir() {
         let _ = fs::remove_dir_all(&p);
@@ -646,36 +709,43 @@ fn unlink_keys_shard(dir: &Path, shard: usize) {
     }
 }
 
-type Key16FkMap = HashMap<ShHeadKey, Vec<u64>, BuildHasherDefault<Key16IdentityHasher>>;
+#[doc(hidden)]
+pub type Key16FkMap = HashMap<ShHeadKey, Vec<u64>, BuildHasherDefault<Key16IdentityHasher>>;
 
 #[derive(Default, Debug)]
-struct PostPackMap {
-    map: Key16FkMap,
-    n_fks: usize,
+#[doc(hidden)]
+pub struct PostPackMap {
+    pub map: Key16FkMap,
+    pub n_fks: usize,
 }
 
 impl PostPackMap {
-    fn estimated_bytes(&self) -> usize {
+    #[doc(hidden)]
+    pub fn estimated_bytes(&self) -> usize {
         self.map
             .len()
             .saturating_mul(POST_MAP_KEY_BYTES)
             .saturating_add(self.n_fks.saturating_mul(POST_MAP_FK_BYTES))
     }
 
-    fn is_empty(&self) -> bool {
+    #[doc(hidden)]
+    pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
 }
 
-fn refuse_posts_leftover() -> StoreError {
+#[doc(hidden)]
+pub fn refuse_posts_leftover() -> StoreError {
     StoreError::Corrupt(INDEX_REFUSE_POST_LEFTOVER)
 }
 
-fn posts_maps_estimated_bytes(maps: &[PostPackMap]) -> u64 {
+#[doc(hidden)]
+pub fn posts_maps_estimated_bytes(maps: &[PostPackMap]) -> u64 {
     maps.iter().map(|m| m.estimated_bytes() as u64).sum()
 }
 
-fn largest_posts_shard(maps: &[PostPackMap]) -> Option<usize> {
+#[doc(hidden)]
+pub fn largest_posts_shard(maps: &[PostPackMap]) -> Option<usize> {
     maps.iter()
         .enumerate()
         .filter(|(_, m)| !m.is_empty())
@@ -683,12 +753,14 @@ fn largest_posts_shard(maps: &[PostPackMap]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
-fn fks_strictly_increasing(fks: &[u64]) -> bool {
+#[doc(hidden)]
+pub fn fks_strictly_increasing(fks: &[u64]) -> bool {
     fks.windows(2).all(|w| w[0] < w[1])
 }
 
 /// Keep `Vec<fk>` strictly increasing. Scan order appends; an older fk inserts.
-fn insert_post_fk(map: &mut PostPackMap, key: ShHeadKey, fk: u64) {
+#[doc(hidden)]
+pub fn insert_post_fk(map: &mut PostPackMap, key: ShHeadKey, fk: u64) {
     if fk == 0 {
         return;
     }
@@ -721,7 +793,8 @@ fn insert_post_fk(map: &mut PostPackMap, key: ShHeadKey, fk: u64) {
 }
 
 /// Linear merge of two strictly increasing fk runs. Equals collapse.
-fn merge_sorted_unique_fks(dst: &mut Vec<u64>, src: Vec<u64>) {
+#[doc(hidden)]
+pub fn merge_sorted_unique_fks(dst: &mut Vec<u64>, src: Vec<u64>) {
     if src.is_empty() {
         return;
     }
@@ -767,7 +840,8 @@ fn merge_sorted_unique_fks(dst: &mut Vec<u64>, src: Vec<u64>) {
     *dst = out;
 }
 
-fn fold_post_map(dst: &mut PostPackMap, src: PostPackMap) {
+#[doc(hidden)]
+pub fn fold_post_map(dst: &mut PostPackMap, src: PostPackMap) {
     for (k, fks) in src.map {
         match dst.map.entry(k) {
             Entry::Vacant(v) => {
@@ -789,7 +863,8 @@ fn fold_post_map(dst: &mut PostPackMap, src: PostPackMap) {
     }
 }
 
-fn encode_posts_spill(map: &PostPackMap) -> Vec<u8> {
+#[doc(hidden)]
+pub fn encode_posts_spill(map: &PostPackMap) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(
         POSTS_SPILL_HDR
             + map
@@ -813,7 +888,8 @@ fn encode_posts_spill(map: &PostPackMap) -> Vec<u8> {
     bytes
 }
 
-fn fold_posts_spill_bytes(map: &mut PostPackMap, bytes: &[u8]) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn fold_posts_spill_bytes(map: &mut PostPackMap, bytes: &[u8]) -> Result<(), StoreError> {
     if bytes.len() < POSTS_SPILL_HDR || bytes[0..8] != POSTS_SPILL_MAGIC[..] {
         return Err(refuse_posts_leftover());
     }
@@ -850,7 +926,8 @@ fn fold_posts_spill_bytes(map: &mut PostPackMap, bytes: &[u8]) -> Result<(), Sto
     Ok(())
 }
 
-fn list_posts_spill_paths(dir: &Path, shard: usize) -> Result<Vec<PathBuf>, StoreError> {
+#[doc(hidden)]
+pub fn list_posts_spill_paths(dir: &Path, shard: usize) -> Result<Vec<PathBuf>, StoreError> {
     let p = unsorted_post_path(dir, shard);
     if p.is_file() {
         return Err(refuse_posts_leftover());
@@ -876,7 +953,8 @@ fn list_posts_spill_paths(dir: &Path, shard: usize) -> Result<Vec<PathBuf>, Stor
     Ok(seqs.into_iter().map(|(_, path)| path).collect())
 }
 
-fn load_post_shard_map(dir: &Path, shard: usize) -> Result<PostPackMap, StoreError> {
+#[doc(hidden)]
+pub fn load_post_shard_map(dir: &Path, shard: usize) -> Result<PostPackMap, StoreError> {
     let mut map = PostPackMap::default();
     for path in list_posts_spill_paths(dir, shard)? {
         let bytes = fs::read(&path).map_err(|e| StoreError::io(&path, e))?;
@@ -885,7 +963,8 @@ fn load_post_shard_map(dir: &Path, shard: usize) -> Result<PostPackMap, StoreErr
     Ok(map)
 }
 
-fn write_posts_spill(
+#[doc(hidden)]
+pub fn write_posts_spill(
     dir: &Path,
     shard: usize,
     seq: u32,
@@ -895,7 +974,8 @@ fn write_posts_spill(
     crate::file::write_tmp_rename(&path, &encode_posts_spill(map))
 }
 
-fn next_post_spill_seq(dir: &Path, shard: usize) -> Result<u32, StoreError> {
+#[doc(hidden)]
+pub fn next_post_spill_seq(dir: &Path, shard: usize) -> Result<u32, StoreError> {
     let paths = list_posts_spill_paths(dir, shard)?;
     let mut max_seq = None;
     for p in &paths {
@@ -907,7 +987,8 @@ fn next_post_spill_seq(dir: &Path, shard: usize) -> Result<u32, StoreError> {
     Ok(max_seq.map(|s| s.saturating_add(1)).unwrap_or(0))
 }
 
-fn spill_post_shard_map(
+#[doc(hidden)]
+pub fn spill_post_shard_map(
     dir: &Path,
     shard: usize,
     seqs: &[AtomicU32],
@@ -920,7 +1001,8 @@ fn spill_post_shard_map(
     write_posts_spill(dir, shard, seq, &map)
 }
 
-fn spill_largest_posts_while_over(
+#[doc(hidden)]
+pub fn spill_largest_posts_while_over(
     maps: &mut [PostPackMap],
     budget: u64,
     mut spill: impl FnMut(usize, PostPackMap) -> Result<(), StoreError>,
@@ -935,7 +1017,8 @@ fn spill_largest_posts_while_over(
     Ok(())
 }
 
-fn spill_all_post_maps(
+#[doc(hidden)]
+pub fn spill_all_post_maps(
     maps: &mut [PostPackMap],
     mut spill: impl FnMut(usize, PostPackMap) -> Result<(), StoreError>,
 ) -> Result<(), StoreError> {
@@ -946,15 +1029,24 @@ fn spill_all_post_maps(
     Ok(())
 }
 
-type PostSpillJob = (usize, PostPackMap);
-type PostSpillTx = SyncSender<PostSpillJob>;
-type PostSpillRx = Receiver<PostSpillJob>;
+#[doc(hidden)]
+pub type PostSpillJob = (usize, PostPackMap);
+#[doc(hidden)]
+pub type PostSpillTx = SyncSender<PostSpillJob>;
+#[doc(hidden)]
+pub type PostSpillRx = Receiver<PostSpillJob>;
 
-fn posts_spill_channel() -> (PostSpillTx, PostSpillRx) {
+#[doc(hidden)]
+pub fn posts_spill_channel() -> (PostSpillTx, PostSpillRx) {
     mpsc::sync_channel(1)
 }
 
-fn send_posts_spill(tx: &PostSpillTx, shard: usize, map: PostPackMap) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn send_posts_spill(
+    tx: &PostSpillTx,
+    shard: usize,
+    map: PostPackMap,
+) -> Result<(), StoreError> {
     if map.is_empty() {
         return Ok(());
     }
@@ -962,7 +1054,8 @@ fn send_posts_spill(tx: &PostSpillTx, shard: usize, map: PostPackMap) -> Result<
         .map_err(|_| StoreError::Corrupt("scripthash post spill writer stopped"))
 }
 
-fn posts_spill_writer(
+#[doc(hidden)]
+pub fn posts_spill_writer(
     rx: PostSpillRx,
     dir: &Path,
     seqs: &[AtomicU32],
@@ -981,7 +1074,8 @@ fn posts_spill_writer(
     }
 }
 
-fn unlink_post_shard(dir: &Path, shard: usize) {
+#[doc(hidden)]
+pub fn unlink_post_shard(dir: &Path, shard: usize) {
     let p = unsorted_post_path(dir, shard);
     if p.is_dir() {
         let _ = fs::remove_dir_all(&p);
@@ -990,8 +1084,8 @@ fn unlink_post_shard(dir: &Path, shard: usize) {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn write_post_spill_entries(
+#[cfg(debug_assertions)]
+pub fn write_post_spill_entries(
     dir: &Path,
     shard: usize,
     seq: u32,
@@ -1006,8 +1100,8 @@ pub(crate) fn write_post_spill_entries(
     write_posts_spill(dir, shard, seq, &map)
 }
 
-#[cfg(test)]
-pub(crate) fn load_post_shard_entries(
+#[cfg(debug_assertions)]
+pub fn load_post_shard_entries(
     dir: &Path,
     shard: usize,
 ) -> Result<Vec<(ShHeadKey, Vec<u64>)>, StoreError> {
@@ -1015,7 +1109,8 @@ pub(crate) fn load_post_shard_entries(
     Ok(map.map.into_iter().collect())
 }
 
-fn finish_key_shard(
+#[doc(hidden)]
+pub fn finish_key_shard(
     table: &ScriptHashTable,
     dir: &Path,
     shard: usize,
@@ -1027,7 +1122,8 @@ fn finish_key_shard(
     Ok(times)
 }
 
-fn spill_shard_map(
+#[doc(hidden)]
+pub fn spill_shard_map(
     dir: &Path,
     shard: usize,
     seqs: &[AtomicU32],
@@ -1040,7 +1136,8 @@ fn spill_shard_map(
     write_keys_spill(dir, shard, seq, &map)
 }
 
-fn spill_largest_keys_while_over(
+#[doc(hidden)]
+pub fn spill_largest_keys_while_over(
     maps: &mut [Key16PackMap],
     budget: u64,
     mut spill: impl FnMut(usize, Key16PackMap) -> Result<(), StoreError>,
@@ -1055,7 +1152,8 @@ fn spill_largest_keys_while_over(
     Ok(())
 }
 
-fn spill_all_keys_maps(
+#[doc(hidden)]
+pub fn spill_all_keys_maps(
     maps: &mut [Key16PackMap],
     mut spill: impl FnMut(usize, Key16PackMap) -> Result<(), StoreError>,
 ) -> Result<(), StoreError> {
@@ -1067,11 +1165,17 @@ fn spill_all_keys_maps(
 }
 
 /// One in-flight map. The next spill blocks until the writer takes this one.
-fn keys_spill_channel() -> (KeysSpillTx, KeysSpillRx) {
+#[doc(hidden)]
+pub fn keys_spill_channel() -> (KeysSpillTx, KeysSpillRx) {
     mpsc::sync_channel(1)
 }
 
-fn send_keys_spill(tx: &KeysSpillTx, shard: usize, map: Key16PackMap) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn send_keys_spill(
+    tx: &KeysSpillTx,
+    shard: usize,
+    map: Key16PackMap,
+) -> Result<(), StoreError> {
     if map.is_empty() {
         return Ok(());
     }
@@ -1079,7 +1183,8 @@ fn send_keys_spill(tx: &KeysSpillTx, shard: usize, map: Key16PackMap) -> Result<
         .map_err(|_| StoreError::Corrupt("scripthash keys spill writer stopped"))
 }
 
-fn keys_spill_writer(
+#[doc(hidden)]
+pub fn keys_spill_writer(
     rx: KeysSpillRx,
     dir: &Path,
     seqs: &[AtomicU32],
@@ -1098,7 +1203,8 @@ fn keys_spill_writer(
     }
 }
 
-fn collect_keys_from_txs(
+#[doc(hidden)]
+pub fn collect_keys_from_txs(
     txs: &TxTable,
     table: &ScriptHashTable,
     dir: &Path,
@@ -1308,7 +1414,7 @@ pub fn collect_unsorted_shard_files(
     collect_unsorted_covering_class_a(store, dir, n_shards, workers, false, cancel)
 }
 
-pub(crate) fn collect_unsorted_covering_class_a(
+pub fn collect_unsorted_covering_class_a(
     store: &Store,
     dir: &Path,
     n_shards: usize,
@@ -1327,7 +1433,7 @@ pub(crate) fn collect_unsorted_covering_class_a(
     )
 }
 
-pub(crate) fn collect_unsorted_covering_txs(
+pub fn collect_unsorted_covering_txs(
     txs: &TxTable,
     table: &ScriptHashTable,
     dir: &Path,
@@ -1370,7 +1476,8 @@ pub(crate) fn collect_unsorted_covering_txs(
     }
 }
 
-fn write_multi_fuse_keys(dir: &Path, si: usize, dupes: &[u64]) -> Result<u64, StoreError> {
+#[doc(hidden)]
+pub fn write_multi_fuse_keys(dir: &Path, si: usize, dupes: &[u64]) -> Result<u64, StoreError> {
     let path = unsorted_multi_fuse_path(dir, si);
     if dupes.is_empty() {
         let _ = fs::remove_file(&path);
@@ -1384,7 +1491,8 @@ fn write_multi_fuse_keys(dir: &Path, si: usize, dupes: &[u64]) -> Result<u64, St
     Ok(dupes.len() as u64)
 }
 
-fn seal_pack_map_to_head_and_fuse(
+#[doc(hidden)]
+pub fn seal_pack_map_to_head_and_fuse(
     table: &ScriptHashTable,
     dir: &Path,
     si: usize,
@@ -1423,7 +1531,7 @@ fn seal_pack_map_to_head_and_fuse(
     Ok((nkeys, fold_ns, bdz_ns))
 }
 
-pub(crate) fn seal_mphf_from_keys(
+pub fn seal_mphf_from_keys(
     table: &ScriptHashTable,
     dir: &Path,
     n_shards: usize,
@@ -1511,7 +1619,8 @@ pub(crate) fn seal_mphf_from_keys(
     Ok(())
 }
 
-fn seal_one_mphf_shard(
+#[doc(hidden)]
+pub fn seal_one_mphf_shard(
     table: &ScriptHashTable,
     dir: &Path,
     si: usize,
@@ -1523,7 +1632,11 @@ fn seal_one_mphf_shard(
     Ok((nkeys as usize, fold_ns, bdz_ns))
 }
 
-fn open_multi_fuses(dir: &Path, n_shards: usize) -> Result<Vec<Option<SealedFuse8>>, StoreError> {
+#[doc(hidden)]
+pub fn open_multi_fuses(
+    dir: &Path,
+    n_shards: usize,
+) -> Result<Vec<Option<SealedFuse8>>, StoreError> {
     let mut out = Vec::with_capacity(n_shards);
     for si in 0..n_shards {
         let p = unsorted_multi_fuse_path(dir, si);
@@ -1536,11 +1649,13 @@ fn open_multi_fuses(dir: &Path, n_shards: usize) -> Result<Vec<Option<SealedFuse
     Ok(out)
 }
 
-fn leftover_post_file(dir: &Path) -> bool {
+#[doc(hidden)]
+pub fn leftover_post_file(dir: &Path) -> bool {
     (0..256).any(|i| unsorted_post_path(dir, i).is_file())
 }
 
-fn collect_posts_from_txs(
+#[doc(hidden)]
+pub fn collect_posts_from_txs(
     txs: &TxTable,
     table: &ScriptHashTable,
     dir: &Path,
@@ -1687,7 +1802,7 @@ fn collect_posts_from_txs(
     })
 }
 
-pub(crate) fn collect_posts_covering(
+pub fn collect_posts_covering(
     txs: &TxTable,
     table: &ScriptHashTable,
     dir: &Path,
@@ -1728,7 +1843,8 @@ pub(crate) fn collect_posts_covering(
     }
 }
 
-fn pack_post_shard(
+#[doc(hidden)]
+pub fn pack_post_shard(
     table: &ScriptHashTable,
     unsorted_dir: &Path,
     shard: usize,
@@ -1763,7 +1879,8 @@ fn pack_post_shard(
     Ok(pack)
 }
 
-fn seal_shard(
+#[doc(hidden)]
+pub fn seal_shard(
     table: &ScriptHashTable,
     shard: usize,
     pack: ShShardPack,
@@ -1788,20 +1905,23 @@ fn seal_shard(
     Ok(())
 }
 
-struct ShardPool {
-    jobs: Mutex<VecDeque<usize>>,
-    err: Mutex<Option<StoreError>>,
+#[doc(hidden)]
+pub struct ShardPool {
+    pub jobs: Mutex<VecDeque<usize>>,
+    pub err: Mutex<Option<StoreError>>,
 }
 
-struct PackShardDone {
-    shard: usize,
-    keys: u64,
-    creates: u64,
-    fp_singles: u64,
-    elapsed: Duration,
+#[doc(hidden)]
+pub struct PackShardDone {
+    pub shard: usize,
+    pub keys: u64,
+    pub creates: u64,
+    pub fp_singles: u64,
+    pub elapsed: Duration,
 }
 
-fn log_unsorted_pack_shard(n_shards: usize, published: u32, d: &PackShardDone) {
+#[doc(hidden)]
+pub fn log_unsorted_pack_shard(n_shards: usize, published: u32, d: &PackShardDone) {
     rbitcoin_log::info!(
         "store: scripthash unsorted pack shard={:02x} keys={} creates={} fp_singles={} \
          shards={published}/{n_shards} elapsed={:?}",
@@ -1813,7 +1933,8 @@ fn log_unsorted_pack_shard(n_shards: usize, published: u32, d: &PackShardDone) {
     );
 }
 
-fn pack_and_seal_unsorted_shard(
+#[doc(hidden)]
+pub fn pack_and_seal_unsorted_shard(
     table: &ScriptHashTable,
     unsorted_dir: &Path,
     shard: usize,
@@ -1848,8 +1969,8 @@ fn pack_and_seal_unsorted_shard(
     Ok(done)
 }
 
-#[cfg(test)]
-pub(crate) fn pack_one_extract_shard(
+#[cfg(debug_assertions)]
+pub fn pack_one_extract_shard(
     table: &ScriptHashTable,
     unsorted_dir: &Path,
     shard: usize,
@@ -2068,7 +2189,7 @@ pub fn materialize_sh_unsorted_from_class_a(
 }
 
 /// Seal extract MPHF, scan Class A into postings, pack unsealed shards.
-pub(crate) fn materialize_sh_from_unsorted_from_txs(
+pub fn materialize_sh_from_unsorted_from_txs(
     table: &ScriptHashTable,
     txs: &TxTable,
     unsorted_dir: &Path,
@@ -2088,566 +2209,4 @@ pub(crate) fn materialize_sh_from_unsorted_from_txs(
         cancel,
     )?;
     materialize_sh_from_unsorted(table, unsorted_dir, pack_workers, cancel)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::scripthash_layout::ShHeadKey;
-    use std::hash::{Hash, Hasher};
-
-    fn prefix_key(b0: u8) -> ShHeadKey {
-        let mut k = [0u8; KEY16_LEN];
-        k[0] = b0;
-        k
-    }
-
-    #[test]
-    fn key16_identity_hasher_is_xor_of_u64_halves() {
-        let mut k = [0u8; KEY16_LEN];
-        k[0..8].copy_from_slice(&0x0102_0304_0506_0708u64.to_le_bytes());
-        k[8..16].copy_from_slice(&0x1112_1314_1516_1718u64.to_le_bytes());
-        let mut h = Key16IdentityHasher::default();
-        k.hash(&mut h);
-        assert_eq!(h.finish(), 0x0102_0304_0506_0708u64 ^ 0x1112_1314_1516_1718);
-        let mut h2 = Key16IdentityHasher::default();
-        k.hash(&mut h2);
-        assert_eq!(h.finish(), h2.finish());
-    }
-
-    #[test]
-    fn key16_identity_try_insert_first_second_third_is_pack8_word() {
-        let mut map = Key16PackMap::default();
-        let k = prefix_key(1);
-        insert_key_pack(&mut map, k, Fk(10));
-        assert_eq!(map.get(&k).copied(), Some(10));
-        insert_key_pack(&mut map, k, Fk(11));
-        assert_eq!(map.get(&k).copied(), Some(0));
-        insert_key_pack(&mut map, k, Fk(12));
-        assert_eq!(map.get(&k).copied(), Some(0), "third hit must not write");
-        assert_eq!(KEYS_SPILL_MAGIC, b"SHKSP01\0");
-        assert_eq!(KEYS_COLLECT_BYTES_PER_KEY, 64);
-        assert_eq!(SH_EXTRACT_WORKER_RAM_BYTES, 3 << 29);
-    }
-
-    #[test]
-    fn flush_collect_tally_matches_per_item_and_skips_zeros() {
-        let recs = AtomicU64::new(0);
-        let hits = AtomicU64::new(0);
-        let per = [AtomicU64::new(0), AtomicU64::new(0)];
-        let mut one = CollectTally::new(2);
-        for _ in 0..3 {
-            one.recs = one.recs.saturating_add(1);
-            one.hits = one.hits.saturating_add(1);
-            one.per[0] = one.per[0].saturating_add(1);
-            flush_collect_tally(&mut one, &recs, Some(&hits), Some(&per));
-        }
-        let batch_recs = AtomicU64::new(0);
-        let batch_hits = AtomicU64::new(0);
-        let batch_per = [AtomicU64::new(0), AtomicU64::new(0)];
-        let mut batch = CollectTally {
-            recs: 3,
-            hits: 3,
-            per: vec![3, 0],
-        };
-        flush_collect_tally(&mut batch, &batch_recs, Some(&batch_hits), Some(&batch_per));
-        assert_eq!(
-            recs.load(Ordering::Relaxed),
-            batch_recs.load(Ordering::Relaxed)
-        );
-        assert_eq!(
-            hits.load(Ordering::Relaxed),
-            batch_hits.load(Ordering::Relaxed)
-        );
-        assert_eq!(
-            per[0].load(Ordering::Relaxed),
-            batch_per[0].load(Ordering::Relaxed)
-        );
-        assert_eq!(per[1].load(Ordering::Relaxed), 0);
-        let snap = (
-            batch_recs.load(Ordering::Relaxed),
-            batch_hits.load(Ordering::Relaxed),
-            batch_per[0].load(Ordering::Relaxed),
-        );
-        flush_collect_tally(&mut batch, &batch_recs, Some(&batch_hits), Some(&batch_per));
-        assert_eq!(
-            snap,
-            (
-                batch_recs.load(Ordering::Relaxed),
-                batch_hits.load(Ordering::Relaxed),
-                batch_per[0].load(Ordering::Relaxed),
-            )
-        );
-    }
-
-    #[test]
-    fn scanned_fks_count_finished_spans_not_max_fk() {
-        let spans = worker_fk_spans(1, 100, 4);
-        assert_eq!(spans[3], (76, 100));
-        let scanned = AtomicU64::new(0);
-        let one = note_scanned_fks(&scanned, spans[3].0, spans[3].0);
-        assert_eq!(one, 1, "finishing one fk of the late span is not fk 76");
-        note_scanned_fks(&scanned, spans[0].0, spans[0].1);
-        assert_eq!(scanned.load(Ordering::Relaxed), 1 + 25);
-    }
-
-    #[test]
-    fn keys_spill_channel_is_one_slot() {
-        let (tx, rx) = keys_spill_channel();
-        let mut first = Key16PackMap::default();
-        insert_key_pack(&mut first, prefix_key(1), Fk(1));
-        tx.send((0, first)).unwrap();
-        let mut second = Key16PackMap::default();
-        insert_key_pack(&mut second, prefix_key(2), Fk(2));
-        match tx.try_send((0, second)) {
-            Err(mpsc::TrySendError::Full(_)) => {}
-            other => panic!("second spill must block on the one-slot queue, got {other:?}"),
-        }
-        assert_eq!(rx.recv().unwrap().0, 0);
-    }
-
-    #[test]
-    fn keys_spill_writer_folds_two_senders() {
-        let dir = crate::testutil::TempDir::labeled("sh-spill-writer").expect("temp");
-        let seqs = [AtomicU32::new(0)];
-        let err = Mutex::new(None);
-        let (tx, rx) = keys_spill_channel();
-        std::thread::scope(|scope| {
-            scope.spawn(|| keys_spill_writer(rx, dir.path(), &seqs, &err));
-            let tx_b = tx.clone();
-            scope.spawn(move || {
-                let mut map = Key16PackMap::default();
-                insert_key_pack(&mut map, prefix_key(1), Fk(1));
-                send_keys_spill(&tx_b, 0, map).unwrap();
-            });
-            let mut map = Key16PackMap::default();
-            insert_key_pack(&mut map, prefix_key(2), Fk(9));
-            send_keys_spill(&tx, 0, map).unwrap();
-            drop(tx);
-        });
-        assert!(err.lock().unwrap().is_none());
-        let got = load_keys_shard_map(dir.path(), 0).unwrap();
-        assert_eq!(got.get(&prefix_key(1)).copied(), Some(1));
-        assert_eq!(got.get(&prefix_key(2)).copied(), Some(9));
-    }
-
-    #[test]
-    fn leftover_keys_file_refuses_to_open() {
-        let dir = crate::testutil::TempDir::labeled("sh-leftover-file").expect("temp");
-        std::fs::create_dir_all(dir.join(KEYS_SUBDIR)).unwrap();
-        let path = unsorted_keys_path(dir.path(), 0);
-        crate::file::write_synced_tmp_rename(&path, b"not-a-spill-dir").unwrap();
-        match load_keys_shard_map(dir.path(), 0) {
-            Err(StoreError::Corrupt(m)) => {
-                assert!(m.contains("wipe store/scripthash.unsorted"), "{m}");
-            }
-            other => panic!("must refuse leftover keys file, got {other:?}"),
-        }
-        assert!(leftover_legacy_unsorted(dir.path()));
-    }
-
-    #[test]
-    fn two_spills_fold_repeat_key_to_zero_without_sort() {
-        let dir = crate::testutil::TempDir::labeled("sh-two-spill").expect("temp");
-        let a = prefix_key(1);
-        let b = prefix_key(2);
-        write_keys_spill_entries(dir.path(), 0, 0, &[(b, Some(Fk(5))), (a, Some(Fk(1)))]).unwrap();
-        write_keys_spill_entries(dir.path(), 0, 1, &[(a, Some(Fk(9)))]).unwrap();
-        assert!(unsorted_keys_spill_path(dir.path(), 0, 0).is_file());
-        assert!(unsorted_keys_spill_path(dir.path(), 0, 1).is_file());
-        assert!(unsorted_keys_path(dir.path(), 0).is_dir());
-        let map = load_keys_shard_map(dir.path(), 0).unwrap();
-        assert_eq!(map.get(&a).copied(), Some(0), "cross-spill repeat is multi");
-        assert_eq!(map.get(&b).copied(), Some(5));
-        assert_eq!(map.len(), 2);
-    }
-
-    #[test]
-    fn keys_spill_magic_wrong_refuses() {
-        let dir = crate::testutil::TempDir::labeled("sh-bad-magic").expect("temp");
-        std::fs::create_dir_all(unsorted_keys_path(dir.path(), 0)).unwrap();
-        let path = unsorted_keys_spill_path(dir.path(), 0, 0);
-        crate::file::write_synced_tmp_rename(&path, b"SHKEYS02........").unwrap();
-        match load_keys_shard_map(dir.path(), 0) {
-            Err(StoreError::Corrupt(m)) => {
-                assert!(m.contains("wipe store/scripthash.unsorted"), "{m}");
-            }
-            other => panic!("wrong magic must refuse, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn spill_largest_keys_writes_fattest_and_spills_while_over() {
-        let dir = crate::testutil::TempDir::labeled("sh-spill-largest").expect("temp");
-        let mut maps: Vec<Key16PackMap> = (0..3).map(|_| Key16PackMap::default()).collect();
-        insert_key_pack(&mut maps[0], prefix_key(1), Fk(1));
-        insert_key_pack(&mut maps[0], prefix_key(2), Fk(2));
-        insert_key_pack(&mut maps[0], prefix_key(3), Fk(3));
-        insert_key_pack(&mut maps[1], prefix_key(4), Fk(4));
-        insert_key_pack(&mut maps[2], prefix_key(5), Fk(5));
-        let seqs: Vec<AtomicU32> = (0..3).map(|_| AtomicU32::new(0)).collect();
-        let budget = 2 * KEYS_COLLECT_BYTES_PER_KEY;
-        spill_largest_keys_while_over(&mut maps, budget, |si, map| {
-            spill_shard_map(dir.path(), si, &seqs, map)
-        })
-        .unwrap();
-        assert!(maps[0].is_empty(), "fattest shard spilled first");
-        assert!(
-            maps[1].is_empty() ^ maps[2].is_empty(),
-            "second while-over spill empties exactly one remaining shard"
-        );
-        let leftover = if maps[1].is_empty() { 2 } else { 1 };
-        assert_eq!(maps[leftover].len(), 1, "one shard stays under budget");
-        assert!(unsorted_keys_spill_path(dir.path(), 0, 0).is_file());
-        let n_files = [0, 1, 2]
-            .iter()
-            .filter(|si| unsorted_keys_spill_path(dir.path(), **si, 0).is_file())
-            .count();
-        assert_eq!(n_files, 2);
-        let got0 = load_keys_shard_map(dir.path(), 0).unwrap();
-        assert_eq!(got0.len(), 3);
-    }
-
-    #[test]
-    fn multi_fuse8_contains_inserted_mix64() {
-        let k = prefix_key(9);
-        let mixed = mix_key16(&k);
-        let fuse = SealedFuse8::build(&[mixed]).unwrap();
-        assert!(fuse.contains(mixed));
-    }
-
-    #[test]
-    fn sh_extract_workers_cap_at_1_5gib() {
-        assert_eq!(SH_EXTRACT_WORKER_RAM_BYTES, 3 << 29);
-        assert_eq!(
-            crate::sorted_run::workers_for_free_ram(8, 3 << 30, SH_EXTRACT_WORKER_RAM_BYTES),
-            2
-        );
-        assert_eq!(
-            crate::sorted_run::workers_for_free_ram(16, 24 << 30, SH_EXTRACT_WORKER_RAM_BYTES),
-            16
-        );
-    }
-
-    #[test]
-    fn keys_done_magic_is_shkeys02() {
-        assert_eq!(KEYS_DONE_MAGIC, b"SHKEYS02");
-        assert_eq!(POST_DONE_MAGIC, b"SHPOST02");
-        assert_eq!(POSTS_SPILL_MAGIC, b"SHPST01\0");
-        assert_eq!(POST_MAP_KEY_BYTES, 80);
-        assert_eq!(POST_MAP_FK_BYTES, 8);
-    }
-
-    #[test]
-    fn spill_largest_posts_writes_fattest_shard() {
-        let dir = crate::testutil::TempDir::labeled("sh-post-largest").expect("temp");
-        let mut maps: Vec<PostPackMap> = (0..2).map(|_| PostPackMap::default()).collect();
-        insert_post_fk(&mut maps[0], prefix_key(1), 1);
-        insert_post_fk(&mut maps[0], prefix_key(1), 2);
-        insert_post_fk(&mut maps[1], prefix_key(2), 3);
-        let seqs: Vec<AtomicU32> = (0..2).map(|_| AtomicU32::new(0)).collect();
-        let fat = maps[0].estimated_bytes() as u64;
-        spill_largest_posts_while_over(&mut maps, fat.saturating_sub(1), |si, map| {
-            spill_post_shard_map(dir.path(), si, &seqs, map)
-        })
-        .unwrap();
-        assert!(maps[0].is_empty());
-        assert_eq!(maps[1].map.len(), 1);
-        let folded = load_post_shard_map(dir.path(), 0).unwrap();
-        assert_eq!(
-            folded.map.get(&prefix_key(1)).map(|v| v.as_slice()),
-            Some(&[1u64, 2][..])
-        );
-    }
-
-    #[test]
-    fn leftover_shunsrt3_done_is_not_ok() {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-sh-done-v3-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let n_shards = 2usize;
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"SHUNSRT3");
-        buf.extend_from_slice(&(n_shards as u32).to_le_bytes());
-        buf.extend_from_slice(&1u64.to_le_bytes());
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        fs::write(dir.join("DONE"), &buf).unwrap();
-        fs::write(unsorted_shard_path(&dir, 0), [0u8; 24]).unwrap();
-        fs::write(unsorted_shard_path(&dir, 1), []).unwrap();
-        assert!(
-            unsorted_done_last_fk(&dir, n_shards).is_none(),
-            "SHUNSRT3 must not count as DONE.keys"
-        );
-        assert!(leftover_legacy_unsorted(&dir));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn leftover_shunsrt2_done_is_not_ok() {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-sh-done-v2-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let n_shards = 2usize;
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"SHUNSRT2");
-        buf.extend_from_slice(&(n_shards as u32).to_le_bytes());
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        fs::write(dir.join("DONE"), &buf).unwrap();
-        fs::write(unsorted_shard_path(&dir, 0), []).unwrap();
-        fs::write(unsorted_shard_path(&dir, 1), []).unwrap();
-        assert!(
-            unsorted_done_last_fk(&dir, n_shards).is_none(),
-            "SHUNSRT2 without last_fk must restart collect"
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn plan_unsorted_collect_appends_only_when_no_shards() {
-        assert!(matches!(
-            plan_unsorted_collect(None, 10, false, true),
-            UnsortedCollectAction::Full
-        ));
-        assert!(matches!(
-            plan_unsorted_collect(Some(10), 10, false, true),
-            UnsortedCollectAction::Skip
-        ));
-        assert!(matches!(
-            plan_unsorted_collect(Some(4), 10, false, true),
-            UnsortedCollectAction::Append { first: 5, last: 10 }
-        ));
-        assert!(matches!(
-            plan_unsorted_collect(Some(4), 10, true, true),
-            UnsortedCollectAction::Skip
-        ));
-        assert!(matches!(
-            plan_unsorted_collect(Some(4), 10, false, false),
-            UnsortedCollectAction::Full
-        ));
-    }
-
-    #[test]
-    fn keys_spill_delta_roundtrip_first_fk_order() {
-        let mut map = Key16PackMap::default();
-        insert_key_pack(&mut map, prefix_key(3), Fk(100));
-        insert_key_word(&mut map, prefix_key(1), 0);
-        insert_key_pack(&mut map, prefix_key(2), Fk(20));
-        let bytes = encode_keys_spill(&map);
-        assert_eq!(&bytes[0..8], KEYS_SPILL_MAGIC);
-        let mut got = Key16PackMap::default();
-        fold_keys_spill_bytes(&mut got, &bytes).unwrap();
-        assert_eq!(got.get(&prefix_key(1)).copied(), Some(0));
-        assert_eq!(got.get(&prefix_key(2)).copied(), Some(20));
-        assert_eq!(got.get(&prefix_key(3)).copied(), Some(100));
-    }
-
-    #[test]
-    fn reused_script_two_spans_one_spill_rec_under_cap() {
-        let mut map = Key16PackMap::default();
-        let k = prefix_key(7);
-        insert_key_pack(&mut map, k, Fk(1));
-        insert_key_pack(&mut map, k, Fk(65_536));
-        assert_eq!(map.len(), 1);
-        assert_eq!(map.get(&k).copied(), Some(0));
-        let bytes = encode_keys_spill(&map);
-        let n_multi = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
-        let n_single = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
-        assert_eq!(n_multi, 1, "one rec while the map has not filled");
-        assert_eq!(n_single, 0);
-    }
-
-    #[test]
-    fn hashmap_iteration_order_seals_valid_mphf() {
-        let mut map = Key16PackMap::default();
-        insert_key_pack(&mut map, prefix_key(1), Fk(10));
-        insert_key_pack(&mut map, prefix_key(2), Fk(20));
-        insert_key_word(&mut map, prefix_key(3), 0);
-        let mut recs = Vec::with_capacity(map.len());
-        let mut mixed = Vec::with_capacity(map.len());
-        for (k, w) in &map {
-            mixed.push(mix_key16(k));
-            recs.push((*k, *w));
-        }
-        let dir = crate::testutil::TempDir::labeled("sh-map-mphf").expect("temp");
-        let base = dir.join("00");
-        MphfHead::write_pack8_mixed(&base, &recs, &mixed).unwrap();
-        let h = MphfHead::open(&base).unwrap();
-        assert_eq!(
-            h.get(&prefix_key(1)).unwrap().unwrap(),
-            crate::scripthash_layout::ShHeadValue::inline_one(Fk(10))
-        );
-        assert_eq!(
-            h.get(&prefix_key(2)).unwrap().unwrap(),
-            crate::scripthash_layout::ShHeadValue::inline_one(Fk(20))
-        );
-        assert_eq!(
-            h.get(&prefix_key(3)).unwrap().unwrap(),
-            crate::scripthash_layout::ShHeadValue::Empty
-        );
-    }
-
-    #[test]
-    fn insert_post_fk_out_of_order_stays_strict_and_roundtrips() {
-        let mut map = PostPackMap::default();
-        let k = prefix_key(4);
-        insert_post_fk(&mut map, k, 3);
-        insert_post_fk(&mut map, k, 1);
-        insert_post_fk(&mut map, k, 3);
-        assert_eq!(map.map.get(&k).map(|v| v.as_slice()), Some(&[1u64, 3][..]));
-        assert_eq!(map.n_fks, 2);
-        let bytes = encode_posts_spill(&map);
-        let mut round = PostPackMap::default();
-        fold_posts_spill_bytes(&mut round, &bytes).unwrap();
-        assert_eq!(
-            round.map.get(&k).map(|v| v.as_slice()),
-            Some(&[1u64, 3][..])
-        );
-    }
-
-    #[test]
-    fn fold_post_spills_merges_sorted_runs() {
-        let dir = crate::testutil::TempDir::labeled("sh-post-merge-order").expect("temp");
-        let k = prefix_key(8);
-        write_post_spill_entries(dir.path(), 0, 0, &[(k, &[1u64, 5][..])]).unwrap();
-        write_post_spill_entries(dir.path(), 0, 1, &[(k, &[3u64, 5, 9][..])]).unwrap();
-        let map = load_post_shard_map(dir.path(), 0).unwrap();
-        assert_eq!(
-            map.map.get(&k).map(|v| v.as_slice()),
-            Some(&[1u64, 3, 5, 9][..])
-        );
-        assert_eq!(map.n_fks, 4);
-    }
-
-    #[test]
-    fn posts_two_fks_one_spill_rec_under_cap() {
-        let mut map = PostPackMap::default();
-        let k = prefix_key(7);
-        insert_post_fk(&mut map, k, 2);
-        insert_post_fk(&mut map, k, 2);
-        insert_post_fk(&mut map, k, 11);
-        assert_eq!(map.map.get(&k).map(|v| v.as_slice()), Some(&[2u64, 11][..]));
-        assert_eq!(map.n_fks, 2);
-        assert_eq!(
-            map.estimated_bytes(),
-            POST_MAP_KEY_BYTES + 2 * POST_MAP_FK_BYTES
-        );
-        let bytes = encode_posts_spill(&map);
-        assert_eq!(&bytes[0..8], POSTS_SPILL_MAGIC);
-        let n_keys = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
-        assert_eq!(n_keys, 1);
-        let mut round = PostPackMap::default();
-        fold_posts_spill_bytes(&mut round, &bytes).unwrap();
-        assert_eq!(
-            round.map.get(&k).map(|v| v.as_slice()),
-            Some(&[2u64, 11][..])
-        );
-    }
-
-    #[test]
-    fn tiny_post_budget_spills_then_flush() {
-        let dir = crate::testutil::TempDir::labeled("sh-tiny-post").expect("temp");
-        let mut maps = vec![PostPackMap::default()];
-        let seqs = [AtomicU32::new(0)];
-        insert_post_fk(&mut maps[0], prefix_key(1), 1);
-        insert_post_fk(&mut maps[0], prefix_key(1), 2);
-        insert_post_fk(&mut maps[0], prefix_key(2), 3);
-        spill_largest_posts_while_over(&mut maps, 100, |si, map| {
-            spill_post_shard_map(dir.path(), si, &seqs, map)
-        })
-        .unwrap();
-        assert!(maps[0].is_empty());
-        insert_post_fk(&mut maps[0], prefix_key(2), 4);
-        spill_all_post_maps(&mut maps, |si, map| {
-            spill_post_shard_map(dir.path(), si, &seqs, map)
-        })
-        .unwrap();
-        assert!(unsorted_post_spill_path(dir.path(), 0, 0).is_file());
-        assert!(unsorted_post_spill_path(dir.path(), 0, 1).is_file());
-        assert!(unsorted_post_path(dir.path(), 0).is_dir());
-        let folded = load_post_shard_map(dir.path(), 0).unwrap();
-        assert_eq!(
-            folded.map.get(&prefix_key(1)).map(|v| v.as_slice()),
-            Some(&[1u64, 2][..])
-        );
-        assert_eq!(
-            folded.map.get(&prefix_key(2)).map(|v| v.as_slice()),
-            Some(&[3u64, 4][..])
-        );
-    }
-
-    #[test]
-    fn two_post_spills_fold_same_key() {
-        let dir = crate::testutil::TempDir::labeled("sh-post-fold").expect("temp");
-        let k = prefix_key(9);
-        write_post_spill_entries(dir.path(), 0, 0, &[(k, &[1u64, 3][..])]).unwrap();
-        write_post_spill_entries(dir.path(), 0, 1, &[(k, &[3u64, 5][..])]).unwrap();
-        let map = load_post_shard_map(dir.path(), 0).unwrap();
-        assert_eq!(
-            map.map.get(&k).map(|v| v.as_slice()),
-            Some(&[1u64, 3, 5][..])
-        );
-    }
-
-    #[test]
-    fn leftover_post_file_refuses_to_open() {
-        let dir = crate::testutil::TempDir::labeled("sh-leftover-post").expect("temp");
-        std::fs::create_dir_all(dir.join(POST_SUBDIR)).unwrap();
-        let path = unsorted_post_path(dir.path(), 0);
-        crate::file::write_synced_tmp_rename(&path, b"not-a-spill-dir").unwrap();
-        match load_post_shard_map(dir.path(), 0) {
-            Err(StoreError::Corrupt(m)) => {
-                assert!(m.contains("wipe store/scripthash.unsorted"), "{m}");
-            }
-            other => panic!("must refuse leftover post file, got {other:?}"),
-        }
-        assert!(leftover_legacy_unsorted(dir.path()));
-        assert!(leftover_post_file(dir.path()));
-    }
-
-    #[test]
-    fn leftover_post_spill_wrong_magic_refuses() {
-        let dir = crate::testutil::TempDir::labeled("sh-post-bad-magic").expect("temp");
-        std::fs::create_dir_all(unsorted_post_path(dir.path(), 0)).unwrap();
-        let path = unsorted_post_spill_path(dir.path(), 0, 0);
-        crate::file::write_synced_tmp_rename(&path, b"SHPOST02........").unwrap();
-        match load_post_shard_map(dir.path(), 0) {
-            Err(StoreError::Corrupt(m)) => {
-                assert!(m.contains("wipe store/scripthash.unsorted"), "{m}");
-            }
-            other => panic!("wrong magic must refuse, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn posts_spill_fallocate_padding_refuses() {
-        let mut map = PostPackMap::default();
-        insert_post_fk(&mut map, prefix_key(1), 7);
-        let mut bytes = encode_posts_spill(&map);
-        bytes.extend_from_slice(&[0u8; 64]);
-        match fold_posts_spill_bytes(&mut PostPackMap::default(), &bytes) {
-            Err(StoreError::Corrupt(m)) => {
-                assert!(
-                    m.contains("trailing bytes"),
-                    "padding after SHPST01 must not scan as recs, got {m}"
-                );
-            }
-            other => panic!("fallocate padding must refuse, got {other:?}"),
-        }
-    }
 }

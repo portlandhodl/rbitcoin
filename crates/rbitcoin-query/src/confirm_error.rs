@@ -72,7 +72,7 @@ impl ConfirmError {
     /// Script-pool jobs only return [`ConsensusError`]. A store fault becomes
     /// [`ConsensusError::Internal`] so the pool does not grow a second taxonomy.
     /// io_uring text stays recognizable to [`StoreError::is_uring_session_fault_msg`].
-    pub(crate) fn into_pool(self) -> ConsensusError {
+    pub fn into_pool(self) -> ConsensusError {
         match self {
             ConfirmError::Rules(e) => e,
             ConfirmError::Store(StoreError::Cancelled(_)) => ConsensusError::Cancelled,
@@ -84,54 +84,5 @@ impl ConfirmError {
             ConfirmError::Store(StoreError::Corrupt(m)) => ConsensusError::Internal(m),
             ConfirmError::Store(_) => ConsensusError::Internal("index assemble store fault"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn uring_session_fault_covers_leftover_and_submit() {
-        for m in [
-            "invariant: io_uring leftover cqe",
-            "io_uring submit failed",
-            "invariant: io_uring undrained",
-        ] {
-            let e = ConfirmError::Store(StoreError::Corrupt(m));
-            assert!(e.is_uring_session_fault(), "{m}");
-        }
-        assert!(!ConfirmError::Store(StoreError::NotFound).is_uring_session_fault());
-        assert!(!ConfirmError::Rules(ConsensusError::PrevoutSpent).is_uring_session_fault());
-    }
-
-    #[test]
-    fn archive_unresolved_parent_is_missing_prevout_not_corrupt() {
-        let e = ConfirmError::from(StoreError::Corrupt(
-            "archive: parent create_fk unresolved (contiguous batch required)",
-        ));
-        assert!(
-            matches!(e, ConfirmError::Rules(ConsensusError::MissingPrevout)),
-            "got {e:?}"
-        );
-        assert!(!e.to_string().contains("corrupt"));
-    }
-
-    #[test]
-    fn from_store_error_keeps_not_found() {
-        let e = ConfirmError::from(StoreError::NotFound);
-        assert!(matches!(e, ConfirmError::Store(StoreError::NotFound)));
-    }
-
-    #[test]
-    fn cancelled_stays_a_store_error() {
-        let e = ConfirmError::from(StoreError::Cancelled("stop"));
-        assert!(matches!(
-            e,
-            ConfirmError::Store(StoreError::Cancelled("stop"))
-        ));
-        assert!(e.is_cancelled());
-        assert_eq!(e.to_string(), "store: cancelled: stop");
-        assert!(matches!(e.into_pool(), ConsensusError::Cancelled));
     }
 }

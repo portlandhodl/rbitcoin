@@ -6,12 +6,18 @@ use sha3::{Digest, Sha3_256};
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
+use std::time::Duration;
 
-const B32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-const ONION_VERSION: u8 = 3;
-const ONION_NAME_LEN: usize = 56;
-const I2P_B32_LEN: usize = 52;
-const I2P_SUFFIX: &str = ".b32.i2p";
+#[doc(hidden)]
+pub const B32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+#[doc(hidden)]
+pub const ONION_VERSION: u8 = 3;
+#[doc(hidden)]
+pub const ONION_NAME_LEN: usize = 56;
+#[doc(hidden)]
+pub const I2P_B32_LEN: usize = 52;
+#[doc(hidden)]
+pub const I2P_SUFFIX: &str = ".b32.i2p";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OnlyNet {
@@ -46,7 +52,7 @@ impl OnlyNet {
     }
 }
 
-pub(crate) fn addr_allowed(addr: NetAddr, only: &[OnlyNet]) -> bool {
+pub fn addr_allowed(addr: NetAddr, only: &[OnlyNet]) -> bool {
     only.is_empty() || only.iter().any(|n| n.matches_addr(addr))
 }
 
@@ -55,7 +61,8 @@ pub(crate) fn addr_allowed(addr: NetAddr, only: &[OnlyNet]) -> bool {
 /// `2001:db8::/32` and `3fff::/20` documentation, `2001:2::/48` benchmarking,
 /// `2001:10::/28` ORCHID, `2001:20::/28` ORCHIDv2, and `100::/64` discard.
 /// `is_documentation` is still unstable.
-fn ipv6_special_unroutable(v: Ipv6Addr) -> bool {
+#[doc(hidden)]
+pub fn ipv6_special_unroutable(v: Ipv6Addr) -> bool {
     let o = v.octets();
     if o[0] == 0x20 && o[1] == 0x01 && o[2] == 0x0d && o[3] == 0xb8 {
         return true;
@@ -87,7 +94,8 @@ fn ipv6_special_unroutable(v: Ipv6Addr) -> bool {
 /// key and would fill the flat 8192 book. Teredo `2001::/32` is dropped
 /// entirely: the server address is 32 free bits, so a canonical suffix
 /// still fills the book. IPv4-mapped `::ffff:0:0/96` is unwrapped earlier.
-fn ipv6_embedded_bogon(v: Ipv6Addr) -> bool {
+#[doc(hidden)]
+pub fn ipv6_embedded_bogon(v: Ipv6Addr) -> bool {
     let o = v.octets();
     // Teredo. Client IPv4 is bit-flipped; server, flags, and port are free.
     if o[0] == 0x20 && o[1] == 0x01 && o[2] == 0x00 && o[3] == 0x00 {
@@ -125,28 +133,33 @@ fn ipv6_embedded_bogon(v: Ipv6Addr) -> bool {
 }
 
 /// `100.64.0.0/10`. `Ipv4Addr::is_shared` is still unstable on 1.95.
-fn ipv4_shared(v: Ipv4Addr) -> bool {
+#[doc(hidden)]
+pub fn ipv4_shared(v: Ipv4Addr) -> bool {
     let o = v.octets();
     o[0] == 100 && (o[1] & 0xc0) == 64
 }
 
 /// `198.18.0.0/15`. `Ipv4Addr::is_benchmarking` is still unstable on 1.95.
-fn ipv4_benchmarking(v: Ipv4Addr) -> bool {
+#[doc(hidden)]
+pub fn ipv4_benchmarking(v: Ipv4Addr) -> bool {
     let o = v.octets();
     o[0] == 198 && (o[1] & 0xfe) == 18
 }
 
 /// `240.0.0.0/4`. `Ipv4Addr::is_reserved` is still unstable on 1.95.
-fn ipv4_reserved(v: Ipv4Addr) -> bool {
+#[doc(hidden)]
+pub fn ipv4_reserved(v: Ipv4Addr) -> bool {
     v.octets()[0] & 0xf0 == 240
 }
 
 /// `0.0.0.0/8`. `is_unspecified` is only `0.0.0.0`.
-fn ipv4_this_network(v: Ipv4Addr) -> bool {
+#[doc(hidden)]
+pub fn ipv4_this_network(v: Ipv4Addr) -> bool {
     v.octets()[0] == 0
 }
 
-fn ipv4_unroutable(v: Ipv4Addr) -> bool {
+#[doc(hidden)]
+pub fn ipv4_unroutable(v: Ipv4Addr) -> bool {
     v.is_unspecified()
         || v.is_loopback()
         || v.is_private()
@@ -161,7 +174,7 @@ fn ipv4_unroutable(v: Ipv4Addr) -> bool {
 }
 
 /// Clearnet bogon. CJDNS `fc00::/8` is an overlay, not a unique-local bogon.
-pub(crate) fn clearnet_unroutable(ip: IpAddr) -> bool {
+pub fn clearnet_unroutable(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v) => ipv4_unroutable(v),
         IpAddr::V6(v) => {
@@ -185,7 +198,7 @@ pub(crate) fn clearnet_unroutable(ip: IpAddr) -> bool {
 /// Seed inject, IBD and steady-state addr gossip, getaddr, and peers-file
 /// load. Onion, I2P, and CJDNS are not IP bogons. `add_learned` stays open
 /// for `addpeeraddress` and `--connect`.
-pub(crate) fn netaddr_unroutable_gossip(addr: NetAddr) -> bool {
+pub fn netaddr_unroutable_gossip(addr: NetAddr) -> bool {
     match addr {
         NetAddr::Ip(s) => clearnet_unroutable(s.ip()),
         NetAddr::Onion { .. } | NetAddr::I2p { .. } | NetAddr::Cjdns { .. } => false,
@@ -198,7 +211,7 @@ pub(crate) fn netaddr_unroutable_gossip(addr: NetAddr) -> bool {
 /// port 0. Tor v2 and CJDNS outside `fc00::/8` never become a [`NetAddr`],
 /// so the unroutable check would not see them. Unknown BIP155 network ids
 /// are still forwarded.
-pub(crate) fn addrv2_skip_relay(msg: &AddrV2Message) -> bool {
+pub fn addrv2_skip_relay(msg: &AddrV2Message) -> bool {
     match &msg.addr {
         AddrV2::I2p(_) => false,
         AddrV2::TorV2(_) => true,
@@ -333,7 +346,16 @@ impl NetAddr {
     }
 }
 
-fn parse_net_addr(s: &str) -> Result<NetAddr, NetError> {
+/// I2P STREAM CONNECT waits on tunnel + leaseset lookup; 8s is a clearnet RTT.
+pub fn connect_timeout_for(addr: NetAddr, base: Duration) -> Duration {
+    match addr {
+        NetAddr::I2p { .. } => base.max(Duration::from_secs(90)),
+        _ => base,
+    }
+}
+
+#[doc(hidden)]
+pub fn parse_net_addr(s: &str) -> Result<NetAddr, NetError> {
     let Some((host, port_s)) = s.rsplit_once(':') else {
         return Err(NetError::Encode(format!("bad peer address {s}")));
     };
@@ -358,7 +380,8 @@ fn parse_net_addr(s: &str) -> Result<NetAddr, NetError> {
         .map_err(|_| NetError::Encode(format!("bad peer address {s}")))
 }
 
-fn strip_i2p_suffix(host: &str) -> Option<&str> {
+#[doc(hidden)]
+pub fn strip_i2p_suffix(host: &str) -> Option<&str> {
     let b = host.as_bytes();
     let suf = I2P_SUFFIX.as_bytes();
     if b.len() <= suf.len() {
@@ -370,7 +393,8 @@ fn strip_i2p_suffix(host: &str) -> Option<&str> {
     Some(&host[..host.len() - suf.len()])
 }
 
-fn encode_i2p_name(dest: &[u8; 32]) -> String {
+#[doc(hidden)]
+pub fn encode_i2p_name(dest: &[u8; 32]) -> String {
     let mut out = String::with_capacity(I2P_B32_LEN);
     let mut acc = 0u32;
     let mut bits = 0u32;
@@ -388,7 +412,8 @@ fn encode_i2p_name(dest: &[u8; 32]) -> String {
     out
 }
 
-fn decode_i2p_name(name: &str) -> Option<[u8; 32]> {
+#[doc(hidden)]
+pub fn decode_i2p_name(name: &str) -> Option<[u8; 32]> {
     if name.len() != I2P_B32_LEN {
         return None;
     }
@@ -420,7 +445,8 @@ fn decode_i2p_name(name: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
-fn strip_onion_suffix(host: &str) -> Option<&str> {
+#[doc(hidden)]
+pub fn strip_onion_suffix(host: &str) -> Option<&str> {
     let b = host.as_bytes();
     if b.len() < 6 {
         return None;
@@ -431,7 +457,8 @@ fn strip_onion_suffix(host: &str) -> Option<&str> {
     Some(&host[..host.len() - 6])
 }
 
-fn onion_checksum(pk: &[u8; 32]) -> [u8; 2] {
+#[doc(hidden)]
+pub fn onion_checksum(pk: &[u8; 32]) -> [u8; 2] {
     let mut h = Sha3_256::new();
     h.update(b".onion checksum");
     h.update(pk);
@@ -440,7 +467,8 @@ fn onion_checksum(pk: &[u8; 32]) -> [u8; 2] {
     [d[0], d[1]]
 }
 
-fn encode_onion_name(pk: &[u8; 32]) -> String {
+#[doc(hidden)]
+pub fn encode_onion_name(pk: &[u8; 32]) -> String {
     let mut payload = [0u8; 35];
     payload[..32].copy_from_slice(pk);
     let sum = onion_checksum(pk);
@@ -449,7 +477,8 @@ fn encode_onion_name(pk: &[u8; 32]) -> String {
     b32_encode(&payload)
 }
 
-fn decode_onion_name(name: &str) -> Option<[u8; 32]> {
+#[doc(hidden)]
+pub fn decode_onion_name(name: &str) -> Option<[u8; 32]> {
     if name.len() != ONION_NAME_LEN {
         return None;
     }
@@ -465,7 +494,8 @@ fn decode_onion_name(name: &str) -> Option<[u8; 32]> {
     Some(pk)
 }
 
-fn b32_encode(bytes: &[u8; 35]) -> String {
+#[doc(hidden)]
+pub fn b32_encode(bytes: &[u8; 35]) -> String {
     let mut out = String::with_capacity(ONION_NAME_LEN);
     let mut acc = 0u32;
     let mut bits = 0u32;
@@ -480,7 +510,8 @@ fn b32_encode(bytes: &[u8; 35]) -> String {
     out
 }
 
-fn b32_decode(s: &str) -> Option<[u8; 35]> {
+#[doc(hidden)]
+pub fn b32_decode(s: &str) -> Option<[u8; 35]> {
     let mut out = [0u8; 35];
     let mut acc = 0u32;
     let mut bits = 0u32;
@@ -507,144 +538,4 @@ fn b32_decode(s: &str) -> Option<[u8; 35]> {
         return None;
     }
     Some(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-
-    #[test]
-    fn netaddr_onion_parse_roundtrip() {
-        let s = "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion:8333";
-        let a: NetAddr = s.parse().expect("valid v3 onion");
-        assert_eq!(a.to_string(), s);
-        assert_eq!(a, s.parse().unwrap());
-        match a {
-            NetAddr::Onion { pk, port } => {
-                assert_eq!(
-                    pk,
-                    [
-                        0x79, 0xbc, 0xc6, 0x25, 0x18, 0x4b, 0x05, 0x19, 0x49, 0x75, 0xc2, 0x8b,
-                        0x66, 0xb6, 0x6b, 0x04, 0x69, 0xf7, 0xf6, 0x55, 0x6f, 0xb1, 0xac, 0x31,
-                        0x89, 0xa7, 0x9b, 0x40, 0xdd, 0xa3, 0x2f, 0x1f,
-                    ]
-                );
-                assert_eq!(port, 8333);
-            }
-            NetAddr::Ip(_) | NetAddr::I2p { .. } | NetAddr::Cjdns { .. } => {
-                panic!("expected onion")
-            }
-        }
-        assert!(
-            "qg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion:8333"
-                .parse::<NetAddr>()
-                .is_err()
-        );
-        assert!(
-            "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscry.onion:8333"
-                .parse::<NetAddr>()
-                .is_err()
-        );
-        assert!("short.onion:8333".parse::<NetAddr>().is_err());
-        assert!("not-an-addr".parse::<NetAddr>().is_err());
-    }
-
-    #[test]
-    fn netaddr_ip_parse_roundtrip() {
-        let s = "1.2.3.4:8333";
-        let a: NetAddr = s.parse().expect("ipv4");
-        assert_eq!(
-            a,
-            NetAddr::Ip(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 8333))
-        );
-        assert_eq!(a.to_string(), s);
-    }
-
-    #[test]
-    fn netaddr_i2p_addrv2_roundtrip() {
-        let dest = [0x11u8; 32];
-        let msg = AddrV2Message {
-            time: 1,
-            services: bitcoin::p2p::ServiceFlags::NETWORK,
-            addr: AddrV2::I2p(dest),
-            port: 8333,
-        };
-        let a = NetAddr::from_addrv2(&msg).expect("i2p addrv2");
-        assert_eq!(a, NetAddr::I2p { dest, port: 8333 });
-        assert_eq!(a.to_addrv2(), AddrV2::I2p(dest));
-        let s = a.to_string();
-        assert!(s.ends_with(".b32.i2p:8333"), "{s}");
-        assert_eq!(s.parse::<NetAddr>().unwrap(), a);
-        assert_eq!(a.network_label(), "i2p");
-        assert_eq!(a.port(), 8333);
-        assert!(a.socket_addr().is_none());
-        let zeros = NetAddr::I2p {
-            dest: [0u8; 32],
-            port: 1,
-        };
-        assert_eq!(
-            zeros.to_string(),
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.b32.i2p:1"
-        );
-        assert!("short.b32.i2p:1".parse::<NetAddr>().is_err());
-    }
-
-    /// Core SAM 3.1 advertises I2P with port 0. Other networks still reject port 0.
-    #[test]
-    fn netaddr_i2p_port_zero_is_core_sam() {
-        let dest = [0x11u8; 32];
-        let msg = AddrV2Message {
-            time: 1,
-            services: bitcoin::p2p::ServiceFlags::NETWORK,
-            addr: AddrV2::I2p(dest),
-            port: 0,
-        };
-        let a = NetAddr::from_addrv2(&msg).expect("core i2p port 0");
-        assert_eq!(a, NetAddr::I2p { dest, port: 0 });
-        assert_eq!(a.port(), 0);
-        let s = a.to_string();
-        assert!(s.ends_with(".b32.i2p:0"), "{s}");
-        assert_eq!(s.parse::<NetAddr>().unwrap(), a);
-        let onion = AddrV2Message {
-            time: 1,
-            services: bitcoin::p2p::ServiceFlags::NETWORK,
-            addr: AddrV2::TorV3([0x22; 32]),
-            port: 0,
-        };
-        assert!(NetAddr::from_addrv2(&onion).is_none());
-    }
-
-    #[test]
-    fn netaddr_cjdns_addrv2_roundtrip() {
-        let ip = Ipv6Addr::new(0xfc00, 1, 2, 3, 4, 5, 6, 7);
-        let msg = AddrV2Message {
-            time: 1,
-            services: bitcoin::p2p::ServiceFlags::NETWORK,
-            addr: AddrV2::Cjdns(ip),
-            port: 8333,
-        };
-        let a = NetAddr::from_addrv2(&msg).expect("cjdns addrv2");
-        assert_eq!(a, NetAddr::Cjdns { ip, port: 8333 });
-        assert_eq!(a.to_addrv2(), AddrV2::Cjdns(ip));
-        assert_eq!(a.network_label(), "cjdns");
-        assert_eq!(a.port(), 8333);
-        assert_eq!(a.socket_addr(), Some(SocketAddr::from((ip, 8333))));
-        let parsed: NetAddr = a.to_string().parse().unwrap();
-        assert_eq!(parsed, a);
-        assert!(OnlyNet::Cjdns.matches_addr(a));
-        assert!(!OnlyNet::Ipv6.matches_addr(a));
-    }
-
-    #[test]
-    fn cjdns_rejects_global_unicast() {
-        let ip = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
-        let msg = AddrV2Message {
-            time: 1,
-            services: bitcoin::p2p::ServiceFlags::NETWORK,
-            addr: AddrV2::Cjdns(ip),
-            port: 8333,
-        };
-        assert!(NetAddr::from_addrv2(&msg).is_none());
-    }
 }

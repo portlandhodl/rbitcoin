@@ -17,7 +17,7 @@ Open the row that matches the change. Leave the other owners closed.
 
 ## Verify
 
-`cargo test -p rbitcoin-rpc --lib`
+`cargo test -p rbitcoin-rpc --test suite`
 
 Core functional (labeled job only, not the default pin):
 [`.agents/skills/core-functional/SKILL.md`](../../.agents/skills/core-functional/SKILL.md).

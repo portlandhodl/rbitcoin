@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-node"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "rbitcoin full node binary and lifecycle"
+
+[lib]
+test = false
 
 [[bin]]
 name = "rbitcoin-node"
@@ -22,6 +26,7 @@ rbitcoin-store = { workspace = true }
 rbitcoin-consensus = { workspace = true }
 rbitcoin-mempool = { workspace = true }
 rbitcoin-net = { workspace = true }
+rbitcoin-ibd = { workspace = true }
 rbitcoin-rpc = { workspace = true }
 rbitcoin-electrum = { workspace = true }
 rbitcoin-esplora = { workspace = true }
@@ -37,6 +42,10 @@ getrandom = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

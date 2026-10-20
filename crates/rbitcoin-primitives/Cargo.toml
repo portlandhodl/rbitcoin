@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-primitives"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "Shared types for the rbitcoin node"
+
+[lib]
+test = false
 
 [features]
 mutants = []
@@ -15,6 +19,10 @@ bitcoin_hashes = { workspace = true }
 # Same crate `bitcoin::hex` re-exports. Not the `bitcoin` crate: store depends
 # on primitives and stays hashes-only.
 hex-conservative = { version = "0.2.2", default-features = false, features = ["alloc"] }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

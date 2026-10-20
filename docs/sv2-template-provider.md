@@ -231,7 +231,7 @@ Ships the listener, bootstrap, tip push, transaction data, and
   path is `index = 0` (the leaf's own value feeds no entry, so the builder
   passes a placeholder). Edge cases: single tx (empty path), odd counts at
   every level.
-- **Red:** `cargo test -p rbitcoin-store --lib merkle_path_` — small known
+- **Red:** `cargo test -p rbitcoin-store --test suite merkle_path_` — small known
   vectors plus a fold at every index for 1..=9 leaves (pure arithmetic, no
   session reaches it before B3).
 - **Green:** helper next to `merkle_root_from_txids`
@@ -241,7 +241,7 @@ Ships the listener, bootstrap, tip push, transaction data, and
   `merkle-proof`) had its own inline branch loop; one owner for both.
 - **Refactor:** root and branch share one level-pairing step;
   `Query::merkle_proof` calls `merkle_branch`.
-- **Verify:** `cargo test -p rbitcoin-store --lib merkle_`, Electrum /
+- **Verify:** `cargo test -p rbitcoin-store --test suite merkle_`, Electrum /
   Esplora merkle journeys
 
 ### B3 — Template builder, NewTemplate on constraints
@@ -295,7 +295,7 @@ Ships the listener, bootstrap, tip push, transaction data, and
   when a tip event clears it. `getblocktemplate` has no sync gate in this
   node, so the TP gate is the relay gate; leaving IBD always comes with a
   new tip.
-- **Red:** `cargo test -p rbitcoin-sv2 --lib` — the B3 template test gains
+- **Red:** `cargo test -p rbitcoin-sv2 --test suite` — the B3 template test gains
   the `SetNewPrevHash` pair and the `future_template: false` rebuilds;
   `sync_gate_` holds on a stale padded chain and serves after a fresh block
   is accepted through `ChainHub`.
@@ -303,7 +303,7 @@ Ships the listener, bootstrap, tip push, transaction data, and
   per-session current prev hash; gate loop on `subscribe_tips()` in the
   session.
 - **Refactor:** none expected.
-- **Verify:** `cargo test -p rbitcoin-sv2 --lib`
+- **Verify:** `cargo test -p rbitcoin-sv2 --test suite`
 
 ### B4b — Node wiring + bootstrap journey
 
@@ -383,7 +383,7 @@ Ships the listener, bootstrap, tip push, transaction data, and
   (Plan C adds the fee trigger to it). The session selects over client
   frames, tip events, and the grace deadline; frames come from a reader
   task because a Noise `recv` is not cancel-safe.
-- **Verify:** journey filter; `cargo test -p rbitcoin-sv2 --lib` (the sync
+- **Verify:** journey filter; `cargo test -p rbitcoin-sv2 --test suite` (the sync
   gate unit now clears on the tip event; the
   `tip_event_rebuilds_a_template_built_on_its_prev_hash` journey writes a
   two-block batch through `confirm_write`, so the rebuild for the first
@@ -423,7 +423,7 @@ Ships the listener, bootstrap, tip push, transaction data, and
   missing file fail without echoing it.
 - **Green:** the key shares the hex + `SecretKey` check with
   `sv2_tp_authority_sec`.
-- **Verify:** `cargo test -p rbitcoin-node --lib sv2_tp`
+- **Verify:** `cargo test -p rbitcoin-node --test suite sv2_tp`
 
 ### B8b — Operator surface
 
@@ -543,8 +543,8 @@ when fees rise enough to matter, throttled. Requires Plan B.
 - **Green:** per-session check deadline and last-seen counter; publish
   split into build and send.
 - **Refactor:** none expected.
-- **Verify:** `cargo test -p rbitcoin-sv2 --lib`,
-  `cargo test -p rbitcoin-test --test cross_surface sv2`
+- **Verify:** `cargo test -p rbitcoin-sv2 --test suite`,
+  `cargo test -p rbitcoin-test --test suite cross_surface::sv2`
 
 ### C2 — Operator surface
 

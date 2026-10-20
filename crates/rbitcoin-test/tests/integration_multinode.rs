@@ -10,9 +10,9 @@
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
 use rbitcoin_consensus::{ChainParams, Milestone};
+use rbitcoin_ibd::{rehydrate_block_queue_residue, IbdConfig};
 use rbitcoin_net::{
-    rehydrate_block_queue_residue, run_feeler_timed, select_inbound_eviction, IbdConfig,
-    InboundEvictCandidate, NetAddr, NetError, P2PNode,
+    run_feeler_timed, select_inbound_eviction, InboundEvictCandidate, NetAddr, NetError, P2PNode,
 };
 use rbitcoin_primitives::Height;
 use rbitcoin_query::Query;
@@ -177,9 +177,13 @@ async fn seed_chain(node: &P2PNode, blocks: u32) {
 
 /// IBD from a single peer (test helper).
 async fn sync_ibd(node: &P2PNode, peer: SocketAddr) -> u32 {
-    node.sync(&[rbitcoin_net::NetAddr::Ip(peer)], IbdConfig::for_test())
-        .await
-        .expect("ibd sync")
+    rbitcoin_ibd::sync(
+        node,
+        &[rbitcoin_net::NetAddr::Ip(peer)],
+        IbdConfig::for_test(),
+    )
+    .await
+    .expect("ibd sync")
 }
 
 fn llvm_cov_wall(default_secs: u64, llvm_secs: u64) -> Duration {
@@ -1846,16 +1850,16 @@ async fn ibd_two_peers() {
         mid.wait_height(8, Duration::from_secs(10)).await.unwrap();
 
         let client = start_node(&peer_dir).await;
-        let n = client
-            .sync(
-                &[
-                    rbitcoin_net::NetAddr::Ip(seed.local_addr),
-                    rbitcoin_net::NetAddr::Ip(mid.local_addr),
-                ],
-                IbdConfig::for_test(),
-            )
-            .await
-            .expect("ibd");
+        let n = rbitcoin_ibd::sync(
+            &client,
+            &[
+                rbitcoin_net::NetAddr::Ip(seed.local_addr),
+                rbitcoin_net::NetAddr::Ip(mid.local_addr),
+            ],
+            IbdConfig::for_test(),
+        )
+        .await
+        .expect("ibd");
         assert!(n >= 8, "accepted {n}");
         client
             .wait_height(8, Duration::from_secs(10))
@@ -1885,16 +1889,16 @@ async fn ibd_skips_dead_peer() {
 
     let peer = start_node(&peer_dir).await;
     let bad: SocketAddr = "127.0.0.1:1".parse().unwrap();
-    let n = peer
-        .sync(
-            &[
-                rbitcoin_net::NetAddr::Ip(bad),
-                rbitcoin_net::NetAddr::Ip(seed.local_addr),
-            ],
-            IbdConfig::for_test(),
-        )
-        .await
-        .expect("ibd with bad+good");
+    let n = rbitcoin_ibd::sync(
+        &peer,
+        &[
+            rbitcoin_net::NetAddr::Ip(bad),
+            rbitcoin_net::NetAddr::Ip(seed.local_addr),
+        ],
+        IbdConfig::for_test(),
+    )
+    .await
+    .expect("ibd with bad+good");
     assert!(n >= 4, "downloaded {n}");
     peer.wait_height(4, Duration::from_secs(5)).await.unwrap();
 

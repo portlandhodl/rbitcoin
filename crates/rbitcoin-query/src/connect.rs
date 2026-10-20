@@ -5,19 +5,21 @@ use std::sync::atomic::Ordering;
 
 /// One height of SH creates waiting for the Class B appender.
 #[derive(Clone)]
-pub(crate) struct ShPendingJob {
-    height: Height,
-    header_fk: Fk,
-    records: Vec<ScriptHashRecord>,
+pub struct ShPendingJob {
+    pub height: Height,
+    pub header_fk: Fk,
+    pub records: Vec<ScriptHashRecord>,
 }
 
-fn index_sh_ram_head(head: &mut HashMap<[u8; 32], Vec<Fk>>, job: &ShPendingJob) {
+#[doc(hidden)]
+pub fn index_sh_ram_head(head: &mut HashMap<[u8; 32], Vec<Fk>>, job: &ShPendingJob) {
     for r in &job.records {
         head.entry(r.scripthash).or_default().push(r.create_tx_fk);
     }
 }
 
-fn unindex_sh_ram_head(head: &mut HashMap<[u8; 32], Vec<Fk>>, job: &ShPendingJob) {
+#[doc(hidden)]
+pub fn unindex_sh_ram_head(head: &mut HashMap<[u8; 32], Vec<Fk>>, job: &ShPendingJob) {
     for r in &job.records {
         let Some(v) = head.get_mut(&r.scripthash) else {
             continue;
@@ -46,7 +48,7 @@ pub struct ConfirmPrepared {
 
 /// IBD tip barrier. At most one runs; the next `tip_commit` taker joins it.
 #[derive(Default)]
-pub(crate) enum TipFlush {
+pub enum TipFlush {
     #[default]
     Idle,
     Running(std::thread::JoinHandle<Result<(), StoreError>>),
@@ -134,7 +136,7 @@ impl Query {
 
     /// Wait for the IBD tip barrier. Its failure sticks: a failed `fsync` is
     /// not retried, so every later commit fails until restart.
-    pub(crate) fn join_tip_flush(&self) -> Result<(), QueryError> {
+    pub fn join_tip_flush(&self) -> Result<(), QueryError> {
         let mut state = self.tip_flush.lock().unwrap_or_else(|e| e.into_inner());
         let joined = match std::mem::take(&mut *state) {
             TipFlush::Idle => return Ok(()),
@@ -165,7 +167,8 @@ impl Query {
     /// RAM body queue: a kill then loses at most one more batch to download
     /// again. Returns the tip that is durable now (`before` while the IBD
     /// flush runs), which seqsigwit prune keeps its window below.
-    fn flush_tip(&self, before: Option<Height>) -> Result<Option<Height>, QueryError> {
+    #[doc(hidden)]
+    pub fn flush_tip(&self, before: Option<Height>) -> Result<Option<Height>, QueryError> {
         if self.index_mode()?.is_tip() {
             self.store.flush_class_c_tip()?;
             return Ok(self.tip_height());
@@ -177,9 +180,10 @@ impl Query {
     /// IBD: the next batch's archive and checks run while this batch's
     /// barrier syncs. That batch's commit joins it first, so the disk order
     /// stays the same.
-    fn spawn_tip_flush(&self) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn spawn_tip_flush(&self) -> Result<(), QueryError> {
         let store = Arc::clone(&self.store);
-        #[cfg(any(test, feature = "test-hooks"))]
+        #[cfg(debug_assertions)]
         let hold = Arc::clone(&self.tip_flush_hold);
         let flush = if self.tip_flush_spawn_fails() {
             Err(std::io::Error::other("test hook: no tip flush thread"))
@@ -187,7 +191,7 @@ impl Query {
             std::thread::Builder::new()
                 .name("rbtc-tip-flush".into())
                 .spawn(move || {
-                    #[cfg(any(test, feature = "test-hooks"))]
+                    #[cfg(debug_assertions)]
                     while hold.load(Ordering::Acquire) {
                         std::thread::sleep(std::time::Duration::from_millis(1));
                     }
@@ -212,18 +216,20 @@ impl Query {
         inline
     }
 
-    #[cfg(any(test, feature = "test-hooks"))]
-    fn tip_flush_spawn_fails(&self) -> bool {
+    #[cfg(debug_assertions)]
+    #[doc(hidden)]
+    pub fn tip_flush_spawn_fails(&self) -> bool {
         self.tip_flush_spawn_fail.swap(false, Ordering::SeqCst)
     }
 
-    #[cfg(not(any(test, feature = "test-hooks")))]
-    fn tip_flush_spawn_fails(&self) -> bool {
+    #[cfg(not(debug_assertions))]
+    #[doc(hidden)]
+    pub fn tip_flush_spawn_fails(&self) -> bool {
         false
     }
 
     /// IBD tip flush threads wait before writing until the returned flag is cleared.
-    #[cfg(any(test, feature = "test-hooks"))]
+    #[cfg(debug_assertions)]
     #[doc(hidden)]
     pub fn hold_tip_flushes(&self) -> Arc<std::sync::atomic::AtomicBool> {
         self.tip_flush_hold.store(true, Ordering::SeqCst);
@@ -231,7 +237,7 @@ impl Query {
     }
 
     /// The next IBD tip flush thread fails to start.
-    #[cfg(any(test, feature = "test-hooks"))]
+    #[cfg(debug_assertions)]
     #[doc(hidden)]
     pub fn fail_next_tip_flush_spawn(&self) {
         self.tip_flush_spawn_fail.store(true, Ordering::SeqCst);
@@ -241,7 +247,7 @@ impl Query {
     /// re-read the tip. Later tips come from [`Self::publish_confirmed_tip`].
     /// A tip height with no header row is corrupt: leaving the snapshot empty
     /// would make every later `tip_hash` miss.
-    pub(crate) fn seed_published_tip(&self) -> Result<(), QueryError> {
+    pub fn seed_published_tip(&self) -> Result<(), QueryError> {
         let Some(tip) = self.tip_height() else {
             self.clear_published_tip();
             return Ok(());
@@ -284,7 +290,11 @@ impl Query {
 
     /// Class C-only abs-meta annotate. Wire confirm uses `post_commit` instead;
     /// do not call from [`Self::confirm_blocks_run_with_create_pins`].
-    fn annotate_spends_for_confirmed(&self, items: &[ConfirmPrepared]) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn annotate_spends_for_confirmed(
+        &self,
+        items: &[ConfirmPrepared],
+    ) -> Result<(), QueryError> {
         if !self.spend_index_enabled() {
             return Ok(());
         }
@@ -365,7 +375,11 @@ impl Query {
     /// The run must be contiguous, start at tip+1 (genesis on an empty
     /// chain), and name real headers. `Some(fk)` is a one-block retry of the
     /// block already confirmed at that height.
-    fn check_run_extends_tip(&self, items: &[ConfirmPrepared]) -> Result<Option<Fk>, QueryError> {
+    #[doc(hidden)]
+    pub fn check_run_extends_tip(
+        &self,
+        items: &[ConfirmPrepared],
+    ) -> Result<Option<Fk>, QueryError> {
         for w in items.windows(2) {
             if w[1].height.0 != w[0].height.0.saturating_add(1) {
                 return Err(StoreError::Corrupt("confirm run not contiguous heights"));
@@ -487,7 +501,8 @@ impl Query {
         Ok(out)
     }
 
-    fn record_confirmed_seqsigwit_window(
+    #[doc(hidden)]
+    pub fn record_confirmed_seqsigwit_window(
         &self,
         items: &[ConfirmPrepared],
         durable: Option<Height>,
@@ -502,7 +517,8 @@ impl Query {
         Ok(())
     }
 
-    fn enqueue_sh_pending(
+    #[doc(hidden)]
+    pub fn enqueue_sh_pending(
         &self,
         items: &[ConfirmPrepared],
         create_pins: Option<&crate::FkMap<CreatePin>>,
@@ -562,13 +578,15 @@ impl Query {
         v.checked_sub(1)
     }
 
-    fn release_queued_sh_writebehind(&self) {
+    #[doc(hidden)]
+    pub fn release_queued_sh_writebehind(&self) {
         if let Some(h) = self.sh_pending_max_height() {
             self.release_index_writebehind(Height(h));
         }
     }
 
-    fn clamp_index_released_before(&self, height: Height) {
+    #[doc(hidden)]
+    pub fn clamp_index_released_before(&self, height: Height) {
         let cap = height.0;
         loop {
             let cur = self.index_released_through.load(Ordering::Acquire);
@@ -585,12 +603,13 @@ impl Query {
         }
     }
 
-    fn sh_job_released(&self, job: &ShPendingJob) -> bool {
+    #[doc(hidden)]
+    pub fn sh_job_released(&self, job: &ShPendingJob) -> bool {
         let rel = self.index_released_through.load(Ordering::Acquire);
         rel > 0 && job.height.0.saturating_add(1) <= rel
     }
 
-    pub(crate) fn pending_sh_create_fks(&self, scripthash: &[u8; 32]) -> Vec<Fk> {
+    pub fn pending_sh_create_fks(&self, scripthash: &[u8; 32]) -> Vec<Fk> {
         self.sh
             .ram_head
             .lock()
@@ -600,7 +619,7 @@ impl Query {
             .unwrap_or_default()
     }
 
-    pub(crate) fn sh_pending_max_height(&self) -> Option<u32> {
+    pub fn sh_pending_max_height(&self) -> Option<u32> {
         let queued = self
             .sh
             .pending
@@ -625,7 +644,7 @@ impl Query {
 
     /// Durable watermark plus pending jobs (RAM records already collected),
     /// never above the live tip (reorg may leave pending jobs until mempool reaccept).
-    pub(crate) fn sh_visible_through_height(&self) -> Option<u32> {
+    pub fn sh_visible_through_height(&self) -> Option<u32> {
         let vis = self
             .sh_indexed_through_height()
             .max(self.sh_pending_max_height())?;
@@ -664,7 +683,7 @@ impl Query {
     }
 
     /// Pop queue → `sh.applying` so readers still join pending at live tip.
-    pub(crate) fn take_sh_job_for_apply(&self) -> Option<ShPendingJob> {
+    pub fn take_sh_job_for_apply(&self) -> Option<ShPendingJob> {
         let mut pending = self.sh.pending.lock().unwrap();
         let mut applying = self.sh.applying.lock().unwrap();
         if applying.is_some() {
@@ -679,12 +698,13 @@ impl Query {
         Some(job)
     }
 
-    fn requeue_sh_job_front(&self, job: ShPendingJob) {
+    #[doc(hidden)]
+    pub fn requeue_sh_job_front(&self, job: ShPendingJob) {
         self.sh.pending.lock().unwrap().push_front(job);
         self.sh.pending_cv.notify_one();
     }
 
-    pub(crate) fn finish_sh_job(&self, height: Height) {
+    pub fn finish_sh_job(&self, height: Height) {
         let mut applying = self.sh.applying.lock().unwrap();
         if applying.as_ref().is_some_and(|j| j.height == height) {
             *applying = None;
@@ -692,7 +712,7 @@ impl Query {
         self.sh.pending_cv.notify_all();
     }
 
-    pub(crate) fn apply_sh_job(&self, job: ShPendingJob) -> Result<(), QueryError> {
+    pub fn apply_sh_job(&self, job: ShPendingJob) -> Result<(), QueryError> {
         let applied = self.apply_sh_job_inner(&job)?;
         if applied {
             unindex_sh_ram_head(&mut self.sh.ram_head.lock().unwrap(), &job);
@@ -700,7 +720,8 @@ impl Query {
         Ok(())
     }
 
-    fn apply_sh_job_inner(&self, job: &ShPendingJob) -> Result<bool, QueryError> {
+    #[doc(hidden)]
+    pub fn apply_sh_job_inner(&self, job: &ShPendingJob) -> Result<bool, QueryError> {
         let _appender = self.sh.appender.lock().unwrap();
         if !self.enqueues_sh_writebehind() {
             return Ok(false);
@@ -761,7 +782,8 @@ impl Query {
     /// waits behind this one (a tip block, or the end of a catch-up burst) or
     /// a second after the last advance; recovery replays the idempotent
     /// appends above a lagging HWM.
-    fn advance_sh_include_hwm(&self) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn advance_sh_include_hwm(&self) -> Result<(), QueryError> {
         const EVERY: std::time::Duration = std::time::Duration::from_secs(1);
         let want = self.sh.applied_max_fk.load(Ordering::Acquire);
         if want == 0 {
@@ -816,7 +838,7 @@ impl Query {
 
     /// Restore SH watermark from durable `include_hwm` and re-queue heights the
     /// RAM write-behind lost on restart.
-    pub(crate) fn recover_sh_writebehind(&self) -> Result<(), QueryError> {
+    pub fn recover_sh_writebehind(&self) -> Result<(), QueryError> {
         let recovered = self.recover_sh_indexed_through()?;
         self.set_sh_indexed_through_height(recovered);
         if !self.store.scripthash.has_durable_index() {
@@ -864,7 +886,8 @@ impl Query {
         Ok(())
     }
 
-    fn recover_sh_indexed_through(&self) -> Result<Option<u32>, QueryError> {
+    #[doc(hidden)]
+    pub fn recover_sh_indexed_through(&self) -> Result<Option<u32>, QueryError> {
         let Some(tip) = self.tip_height() else {
             return Ok(None);
         };
@@ -918,7 +941,7 @@ impl Query {
     ///
     /// Same-batch creates must hit (1) or SH collect re-reads every body.
     /// `write_pin` is the pin Arc for this `tx_fk` when the write path has it.
-    pub(crate) fn collect_scripthash_creates(
+    pub fn collect_scripthash_creates(
         &self,
         tx_fk: Fk,
         out: &mut Vec<ScriptHashRecord>,
@@ -967,10 +990,7 @@ impl Query {
     /// Output run from store (keyed by known create fk — no txid lookup).
     ///
     /// Outs-only Class A (`get_tx_meta_and_outputs`); does not zip `seqsigwit`.
-    pub(crate) fn tx_output_run_class_a(
-        &self,
-        create_fk: Fk,
-    ) -> Result<Vec<OutputRecord>, QueryError> {
+    pub fn tx_output_run_class_a(&self, create_fk: Fk) -> Result<Vec<OutputRecord>, QueryError> {
         let (_meta, outs) = self.store.get_tx_meta_and_outputs(create_fk)?;
         Ok(outs)
     }
@@ -1014,7 +1034,8 @@ impl Query {
         self.disconnect_tip_body(false)
     }
 
-    fn disconnect_tip_body(&self, drop_pending: bool) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn disconnect_tip_body(&self, drop_pending: bool) -> Result<(), QueryError> {
         let _utxo_view = self.store.hold_utxo_view();
         let height = self
             .tip_height()
@@ -1111,11 +1132,12 @@ pub fn format_disconnect_tip_line(height: u32, hash: &[u8; 32], tx_count: usize)
     format!("DisconnectTip: hash={hash} height={height} tx={tx_count}")
 }
 
-fn log_disconnect_tip(height: u32, hash: &[u8; 32], tx_count: usize) {
+#[doc(hidden)]
+pub fn log_disconnect_tip(height: u32, hash: &[u8; 32], tx_count: usize) {
     rbitcoin_log::warn!("{}", format_disconnect_tip_line(height, hash, tx_count));
 }
 
-pub(crate) fn request_sh_writebehind_halt(
+pub fn request_sh_writebehind_halt(
     stop: &std::sync::atomic::AtomicBool,
     h: u32,
     e: &impl std::fmt::Display,

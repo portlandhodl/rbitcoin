@@ -38,29 +38,35 @@ use tokio::sync::{broadcast, mpsc};
 
 /// Protocol version we advertise (BIP339 wtxidrelay needs ≥70016; rust-bitcoin's
 /// `PROTOCOL_VERSION` is still 70001).
-const OUR_PROTOCOL_VERSION: u32 = 70016;
+#[doc(hidden)]
+pub const OUR_PROTOCOL_VERSION: u32 = 70016;
 
 /// How often an established session re-issues `getheaders` so a quiet peer or
 /// a gap opened while we were offline still gets filled (signet ~10m blocks).
-const HEADERS_POLL_SECS: u64 = 120;
+#[doc(hidden)]
+pub const HEADERS_POLL_SECS: u64 = 120;
 
-const SESSION_HEARTBEAT: Duration = Duration::from_millis(50);
+#[doc(hidden)]
+pub const SESSION_HEARTBEAT: Duration = Duration::from_millis(50);
 
 /// Addr-fetch sessions expire after this many seconds.
-const ADDRFETCH_TIMEOUT_SECS: u64 = 300;
+#[doc(hidden)]
+pub const ADDRFETCH_TIMEOUT_SECS: u64 = 300;
 
 /// On a reorg larger than this, announce via inv instead of a header list.
-const MAX_BLOCKS_TO_ANNOUNCE: u32 = 8;
+#[doc(hidden)]
+pub const MAX_BLOCKS_TO_ANNOUNCE: u32 = 8;
 
 /// Quiet period before announcing a reorg tip. A direct child of the header we
 /// already sent goes out immediately. `p2p_sendheaders` part 3 needs the whole
 /// reorg in one inv (nine blocks) or one headers list (eight).
-const TIP_ANNOUNCE_BATCH: Duration = Duration::from_millis(200);
+#[doc(hidden)]
+pub const TIP_ANNOUNCE_BATCH: Duration = Duration::from_millis(200);
 
 /// True when a session error is a missing store row (not peer malice / corrupt IO).
 ///
 /// These must not tear down the TCP session: re-request or skip and keep the peer.
-pub(crate) fn net_error_is_store_not_found(e: &NetError) -> bool {
+pub fn net_error_is_store_not_found(e: &NetError) -> bool {
     match e {
         NetError::Consensus(s) | NetError::Store(s) => {
             let l = s.to_ascii_lowercase();
@@ -75,13 +81,14 @@ pub(crate) fn net_error_is_store_not_found(e: &NetError) -> bool {
 /// Per-session misbehavior score that triggers disconnect.
 pub const BAN_SCORE_THRESHOLD: u32 = 100;
 
-pub(crate) fn misbehavior_disconnect_log(peer: &str, score: u32) -> String {
+pub fn misbehavior_disconnect_log(peer: &str, score: u32) -> String {
     format!("p2p: {peer} misbehavior {score} ≥ {BAN_SCORE_THRESHOLD} — disconnect")
 }
 
 /// `-blocksonly` (relay off, no whitelist `relay`) or a block-relay-only
 /// session must not receive txs / tx invs (`p2p_blocksonly`).
-fn reject_unsolicited_tx(hub: &ChainHub, session: Option<&crate::peers::LivePeer>) -> bool {
+#[doc(hidden)]
+pub fn reject_unsolicited_tx(hub: &ChainHub, session: Option<&crate::peers::LivePeer>) -> bool {
     if hub.in_ibd() {
         return false;
     }
@@ -97,7 +104,8 @@ fn reject_unsolicited_tx(hub: &ChainHub, session: Option<&crate::peers::LivePeer
 
 /// BIP152 HB is only for tx-relay peers. Blocks-only must not send
 /// `sendcmpct(announce=1)`.
-fn maybe_select_hb_if_relay(hub: &ChainHub, session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn maybe_select_hb_if_relay(hub: &ChainHub, session: Option<&crate::peers::LivePeer>) {
     if hub.mempool().is_some_and(|m| !m.relay_enabled()) {
         return;
     }
@@ -106,7 +114,8 @@ fn maybe_select_hb_if_relay(hub: &ChainHub, session: Option<&crate::peers::LiveP
     }
 }
 
-fn note_accepted_hb(
+#[doc(hidden)]
+pub fn note_accepted_hb(
     r: &Result<AcceptOutcome, NetError>,
     hb: &Option<(std::sync::Arc<crate::peers::PeerHub>, u64)>,
 ) {
@@ -117,7 +126,7 @@ fn note_accepted_hb(
     }
 }
 
-async fn accept_received_from_peer(
+pub async fn accept_received_from_peer(
     hub: &ChainHub,
     block: Block,
     session: Option<&crate::peers::LivePeer>,
@@ -149,7 +158,8 @@ async fn accept_received_from_peer(
 /// are not recorded. A loopback or `0.0.0.0` identity is every local
 /// connection, so Core disconnects that peer and does not discourage it.
 /// Onion and I2P use [`crate::peers::LivePeer::net`], not that socket.
-fn refusable_addr(
+#[doc(hidden)]
+pub fn refusable_addr(
     session: Option<&crate::peers::LivePeer>,
 ) -> Option<(Arc<crate::peers::PeerHub>, crate::peers::DiscourageKey)> {
     let s = session.filter(|s| !misbehavior_exempt(s))?;
@@ -158,7 +168,8 @@ fn refusable_addr(
 }
 
 /// One-day in-memory refusal.
-fn note_threshold_refusal(session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn note_threshold_refusal(session: Option<&crate::peers::LivePeer>) {
     if let Some((hub, key)) = refusable_addr(session) {
         hub.note_misbehavior_key(key);
     }
@@ -166,7 +177,8 @@ fn note_threshold_refusal(session: Option<&crate::peers::LivePeer>) {
 
 /// Disconnect error for a score that is already at the misbehavior line.
 /// Records the address, including when the caller is not [`punish_disconnect`].
-fn threshold_disconnect(session: Option<&crate::peers::LivePeer>) -> NetError {
+#[doc(hidden)]
+pub fn threshold_disconnect(session: Option<&crate::peers::LivePeer>) -> NetError {
     note_threshold_refusal(session);
     NetError::Protocol("peer misbehavior threshold")
 }
@@ -174,7 +186,8 @@ fn threshold_disconnect(session: Option<&crate::peers::LivePeer>) -> NetError {
 /// The first rate-limit exit from a recordable address leaves a strike. A
 /// second one within [`crate::peers::PeerHub::RATE_STRIKE_SECS`] is a
 /// threshold exit, as two overflows in one session were.
-fn rate_limit_disconnect(session: Option<&crate::peers::LivePeer>) -> NetError {
+#[doc(hidden)]
+pub fn rate_limit_disconnect(session: Option<&crate::peers::LivePeer>) -> NetError {
     if refusable_addr(session).is_some_and(|(hub, key)| hub.note_rate_strike(key)) {
         return threshold_disconnect(session);
     }
@@ -183,13 +196,15 @@ fn rate_limit_disconnect(session: Option<&crate::peers::LivePeer>) -> NetError {
 
 /// Core `MaybeDiscourageAndDisconnect`: misbehavior never disconnects or
 /// discourages a noban peer or a manual one (`--connect`, `addnode`).
-fn misbehavior_exempt(s: &crate::peers::LivePeer) -> bool {
+#[doc(hidden)]
+pub fn misbehavior_exempt(s: &crate::peers::LivePeer) -> bool {
     s.session_noban() || s.conn_type == crate::peers::PeerConnType::Manual
 }
 
 /// Core `Misbehaving`. Unlike [`punish_disconnect`], it also keeps a manual
 /// peer connected.
-fn misbehaving(ban_score: &mut u32, session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn misbehaving(ban_score: &mut u32, session: Option<&crate::peers::LivePeer>) {
     if let Some(s) =
         session.filter(|s| s.conn_type == crate::peers::PeerConnType::Manual && !s.session_noban())
     {
@@ -202,7 +217,8 @@ fn misbehaving(ban_score: &mut u32, session: Option<&crate::peers::LivePeer>) {
 /// Disconnects and refuses the address; a noban peer is kept. Used where Core
 /// sets `fDisconnect`, which drops a manual peer too. Core `Misbehaving`
 /// sites call [`misbehaving`].
-fn punish_disconnect(ban_score: &mut u32, session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn punish_disconnect(ban_score: &mut u32, session: Option<&crate::peers::LivePeer>) {
     if let Some(s) = session.filter(|s| s.session_noban()) {
         rbitcoin_log::info!("Warning: not punishing noban peer {}!", s.id);
         return;
@@ -216,19 +232,24 @@ fn punish_disconnect(ban_score: &mut u32, session: Option<&crate::peers::LivePee
 
 /// Core `MaybeDiscourageAndDisconnect`: misbehavior never drops a noban or
 /// manual peer.
-fn misbehavior_disconnects(ban_score: u32, session: Option<&crate::peers::LivePeer>) -> bool {
+#[doc(hidden)]
+pub fn misbehavior_disconnects(ban_score: u32, session: Option<&crate::peers::LivePeer>) -> bool {
     ban_score >= BAN_SCORE_THRESHOLD && !session.is_some_and(misbehavior_exempt)
 }
 /// Cap on incomplete compact blocks awaiting `blocktxn` (DoS).
-const MAX_PENDING_CMPCT: usize = 1;
+#[doc(hidden)]
+pub const MAX_PENDING_CMPCT: usize = 1;
 /// Cap on headers held while assembling tip/reorg work (DoS / process RAM).
-const MAX_PENDING_HEADERS: usize = 8_000;
+#[doc(hidden)]
+pub const MAX_PENDING_HEADERS: usize = 8_000;
 /// One more step than a full pending map plus one `headers` batch, so the
 /// walk can still see genesis or our tip after the last header.
-const PENDING_WALK_LIMIT: usize = MAX_PENDING_HEADERS + MAX_HEADERS_RESULTS + 1;
+#[doc(hidden)]
+pub const PENDING_WALK_LIMIT: usize = MAX_PENDING_HEADERS + MAX_HEADERS_RESULTS + 1;
 
 /// A new hash at the cap is refused. The headers already held stay.
-fn admit_pending_header(
+#[doc(hidden)]
+pub fn admit_pending_header(
     pending: &mut HashMap<BlockHash, bitcoin::block::Header>,
     hash: BlockHash,
     header: bitcoin::block::Header,
@@ -242,32 +263,35 @@ fn admit_pending_header(
 /// ≥99 so tip-follow can assemble a 99-block competing branch; apply is
 /// `ChainHub::accept_received_block` (see `docs/architecture.md`).
 /// Inflight `getdata` is [`MAX_SERVE_BLOCKS`] (peer reconstruct cap).
-const MAX_PENDING_BLOCKS: usize = 128;
+#[doc(hidden)]
+pub const MAX_PENDING_BLOCKS: usize = 128;
 /// Honest maximum block serialization. One larger body is not parked.
-const MAX_BLOCK_SERIALIZED: usize = 4_000_000;
+#[doc(hidden)]
+pub const MAX_BLOCK_SERIALIZED: usize = 4_000_000;
 /// Max reconstructed full bodies queued on one session writer, and the
 /// matching catch-up `getdata` window (extra hashes stick in `requested`).
 pub const MAX_SERVE_BLOCKS: usize = 16;
 /// Compact getdata/serve only near the validated tip. Deeper catch-up uses
 /// `MSG_WITNESS_BLOCK`.
-const MAX_CMPCTBLOCK_DEPTH: u32 = 5;
+#[doc(hidden)]
+pub const MAX_CMPCTBLOCK_DEPTH: u32 = 5;
 /// Drop inflight `getdata` hashes that the peer never sent so catch-up can
 /// ask again. `sync_blocks` is 60s; 120s headers poll is too late.
-pub(crate) const BLOCK_GETDATA_TIMEOUT: Duration = Duration::from_secs(10);
+pub const BLOCK_GETDATA_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// INV-origin txids this session sent us. Cap matches `announced_wtx` (FIFO roll).
-pub(crate) const FROM_THIS_PEER_CAP: usize = 50_000;
+pub const FROM_THIS_PEER_CAP: usize = 50_000;
 
 /// Test/assert surface for the tip-follow pending-body cap (equals production).
-#[cfg(test)]
-pub(crate) const MAX_PENDING_BLOCKS_FOR_TEST: usize = MAX_PENDING_BLOCKS;
+#[cfg(debug_assertions)]
+pub const MAX_PENDING_BLOCKS_FOR_TEST: usize = MAX_PENDING_BLOCKS;
 
 /// Tip-follow decoded bodies waiting for a connectable parent. Cap 128;
 /// insert evicts the oldest hash (FIFO), not `HashMap::keys().next()`.
 #[derive(Default)]
 pub struct PendingBlocks {
-    map: HashMap<BlockHash, bitcoin::Block>,
-    fifo: VecDeque<BlockHash>,
+    pub map: HashMap<BlockHash, bitcoin::Block>,
+    pub fifo: VecDeque<BlockHash>,
 }
 
 impl PendingBlocks {
@@ -275,17 +299,15 @@ impl PendingBlocks {
         Self::default()
     }
 
-    pub(crate) fn contains_key(&self, hash: &BlockHash) -> bool {
+    pub fn contains_key(&self, hash: &BlockHash) -> bool {
         self.map.contains_key(hash)
     }
 
-    pub(crate) fn values(
-        &self,
-    ) -> std::collections::hash_map::Values<'_, BlockHash, bitcoin::Block> {
+    pub fn values(&self) -> std::collections::hash_map::Values<'_, BlockHash, bitcoin::Block> {
         self.map.values()
     }
 
-    pub(crate) fn keys(&self) -> std::collections::hash_map::Keys<'_, BlockHash, bitcoin::Block> {
+    pub fn keys(&self) -> std::collections::hash_map::Keys<'_, BlockHash, bitcoin::Block> {
         self.map.keys()
     }
 
@@ -293,7 +315,7 @@ impl PendingBlocks {
         stash_pending_block(self, hash, block);
     }
 
-    pub(crate) fn remove(&mut self, hash: &BlockHash) -> Option<bitcoin::Block> {
+    pub fn remove(&mut self, hash: &BlockHash) -> Option<bitcoin::Block> {
         let b = self.map.remove(hash)?;
         if let Some(i) = self.fifo.iter().position(|h| h == hash) {
             self.fifo.remove(i);
@@ -302,11 +324,13 @@ impl PendingBlocks {
     }
 }
 
-fn block_wire_len(block: &bitcoin::Block) -> usize {
+#[doc(hidden)]
+pub fn block_wire_len(block: &bitcoin::Block) -> usize {
     block.total_size()
 }
 
-fn stash_pending_block(pending: &mut PendingBlocks, hash: BlockHash, block: bitcoin::Block) {
+#[doc(hidden)]
+pub fn stash_pending_block(pending: &mut PendingBlocks, hash: BlockHash, block: bitcoin::Block) {
     let nbytes = block_wire_len(&block);
     if nbytes > MAX_BLOCK_SERIALIZED {
         return;
@@ -333,7 +357,8 @@ pub fn local_service_flags() -> ServiceFlags {
     local_service_flags_pruned(false)
 }
 
-static COMPACT_FILTERS_ADVERTISED: AtomicBool = AtomicBool::new(false);
+#[doc(hidden)]
+pub static COMPACT_FILTERS_ADVERTISED: AtomicBool = AtomicBool::new(false);
 
 /// Version messages include `NODE_COMPACT_FILTERS` while this is set.
 ///
@@ -410,21 +435,21 @@ pub fn version_handshake_timeout_log(peer: u64) -> String {
 /// a named reason to diverge (see COMPAT.md).
 pub const MAX_ADDR_TO_SEND: usize = 1000;
 /// Core `MAX_ADDR_RATE_PER_SECOND`: a peer earns one address token per 10 s.
-pub(crate) const MAX_ADDR_RATE_PER_SECOND: f64 = 0.1;
+pub const MAX_ADDR_RATE_PER_SECOND: f64 = 0.1;
 /// Core `MAX_ADDR_PROCESSING_TOKEN_BUCKET`: refill stops at this many tokens.
-pub(crate) const MAX_ADDR_PROCESSING_TOKEN_BUCKET: f64 = MAX_ADDR_TO_SEND as f64;
+pub const MAX_ADDR_PROCESSING_TOKEN_BUCKET: f64 = MAX_ADDR_TO_SEND as f64;
 
 /// Core `Peer::m_addr_token_bucket`. It starts at one token. Each address a
 /// peer sends costs one, and an address with no token left is dropped before
 /// AddrMan and relay.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AddrTokenBucket {
-    tokens: f64,
-    at_ms: u64,
+pub struct AddrTokenBucket {
+    pub tokens: f64,
+    pub at_ms: u64,
 }
 
 impl AddrTokenBucket {
-    pub(crate) fn new(now_ms: u64) -> Self {
+    pub fn new(now_ms: u64) -> Self {
         Self {
             tokens: 1.0,
             at_ms: now_ms,
@@ -433,7 +458,7 @@ impl AddrTokenBucket {
 
     /// Refill for the time since the last call (only below the cap), then
     /// take up to `want` tokens. Returns how many addresses may be processed.
-    pub(crate) fn take(&mut self, want: usize, now_ms: u64) -> usize {
+    pub fn take(&mut self, want: usize, now_ms: u64) -> usize {
         if self.tokens < MAX_ADDR_PROCESSING_TOKEN_BUCKET {
             let dt = now_ms.saturating_sub(self.at_ms) as f64 / 1000.0;
             self.tokens =
@@ -446,7 +471,8 @@ impl AddrTokenBucket {
     }
 }
 
-fn addr_relay_key(msg: &bitcoin::p2p::address::AddrV2Message) -> u64 {
+#[doc(hidden)]
+pub fn addr_relay_key(msg: &bitcoin::p2p::address::AddrV2Message) -> u64 {
     let raw = bitcoin::consensus::encode::serialize(msg);
     let mut h = 0xcbf29ce484222325u64;
     for b in raw {
@@ -491,7 +517,8 @@ pub fn unsupported_before_verack_log(cmd: &str, peer: u64) -> String {
 }
 
 /// One log line: peer-controlled bytes cannot insert a raw newline.
-fn peer_log_text(s: &str) -> String {
+#[doc(hidden)]
+pub fn peer_log_text(s: &str) -> String {
     s.chars()
         .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
         .collect()
@@ -508,7 +535,8 @@ pub fn advertising_address_log(addr_port: impl std::fmt::Display, peer: u64) -> 
     format!("p2p: Advertising address {addr_port} to peer={peer}")
 }
 
-fn queue_addr_list(
+#[doc(hidden)]
+pub fn queue_addr_list(
     session: Option<&crate::peers::LivePeer>,
     out: &mpsc::UnboundedSender<PeerOut>,
     addrs: Vec<(u32, crate::NetAddr)>,
@@ -540,7 +568,8 @@ fn queue_addr_list(
     }
 }
 
-fn maybe_queue_local_addr(
+#[doc(hidden)]
+pub fn maybe_queue_local_addr(
     _hub: &ChainHub,
     session: &crate::peers::LivePeer,
     out: &mpsc::UnboundedSender<PeerOut>,
@@ -561,22 +590,6 @@ pub fn hidden_addr_from() -> Address {
 pub fn non_version_before_handshake_log(cmd: &str, peer: u64) -> String {
     let cmd = peer_log_text(cmd);
     format!("p2p: non-version message before version handshake. Message \"{cmd}\" from peer={peer}")
-}
-
-#[cfg(test)]
-mod log_text_tests {
-    use super::non_version_before_handshake_log;
-    use super::unsupported_before_verack_log;
-
-    #[test]
-    fn peer_command_logs_have_no_raw_newline() {
-        let line = non_version_before_handshake_log("inv\nX", 7);
-        assert!(!line.contains('\n'), "{line:?}");
-        assert!(!line.contains('\r'), "{line:?}");
-        let line = unsupported_before_verack_log("ping\r\n", 3);
-        assert!(!line.contains('\n'), "{line:?}");
-        assert!(!line.contains('\r'), "{line:?}");
-    }
 }
 
 /// Tip age in blocks: `(now - tip_time) / pow_target_spacing`.
@@ -603,7 +616,8 @@ pub struct FollowSessionMeta {
 /// Decrements the live follow counter when a session task exits.
 /// Increment happens in [`crate::service::P2PNode::follow_from`] so the count
 /// is visible as soon as handshake succeeds (before the task is scheduled).
-struct LiveFollowDec(Option<Arc<AtomicUsize>>);
+#[doc(hidden)]
+pub struct LiveFollowDec(pub Option<Arc<AtomicUsize>>);
 
 impl Drop for LiveFollowDec {
     fn drop(&mut self) {
@@ -637,9 +651,9 @@ impl HandshakePolicy<'static> {
 /// [`Self::outbound_bip324`] stops after transport so the caller can send a
 /// custom first application message.
 pub struct V2PlainSession {
-    reader: V2Reader,
-    writer: V2Writer,
-    tcp_shutdown: std::net::TcpStream,
+    pub reader: V2Reader,
+    pub writer: V2Writer,
+    pub tcp_shutdown: std::net::TcpStream,
 }
 
 impl V2PlainSession {
@@ -743,7 +757,7 @@ pub async fn connect_and_handshake(
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-pub(crate) async fn inbound_connect_and_handshake(
+pub async fn inbound_connect_and_handshake(
     stream: TcpStream,
     magic: Magic,
     our_addr: SocketAddr,
@@ -849,7 +863,7 @@ pub(crate) async fn inbound_connect_and_handshake(
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-pub(crate) async fn connect_and_handshake_timed(
+pub async fn connect_and_handshake_timed(
     limit: Duration,
     stream: TcpStream,
     magic: Magic,
@@ -932,7 +946,7 @@ pub async fn run_feeler_timed(
     .map_err(|_| NetError::Timeout)?
 }
 
-async fn run_feeler_inner(
+pub async fn run_feeler_inner(
     stream: TcpStream,
     magic: Magic,
     our_addr: SocketAddr,
@@ -969,12 +983,13 @@ async fn run_feeler_inner(
     Ok(())
 }
 
-fn command_label(cmd: &[u8; 12]) -> String {
+#[doc(hidden)]
+pub fn command_label(cmd: &[u8; 12]) -> String {
     let n = cmd.iter().position(|&b| b == 0).unwrap_or(12);
     String::from_utf8_lossy(&cmd[..n]).into_owned()
 }
 
-pub(crate) fn fail_if_handshake_timed_out(policy: &HandshakePolicy<'_>) -> Result<(), NetError> {
+pub fn fail_if_handshake_timed_out(policy: &HandshakePolicy<'_>) -> Result<(), NetError> {
     let Some(s) = policy.session else {
         return Ok(());
     };
@@ -994,7 +1009,7 @@ pub(crate) fn fail_if_handshake_timed_out(policy: &HandshakePolicy<'_>) -> Resul
     Err(NetError::Timeout)
 }
 
-async fn read_handshake_frame(
+pub async fn read_handshake_frame(
     reader: &mut V2Reader,
     magic: Magic,
     policy: &HandshakePolicy<'_>,
@@ -1019,7 +1034,7 @@ async fn read_handshake_frame(
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
 /// Perform the version/verack exchange over an established BIP324 session.
-async fn application_handshake(
+pub async fn application_handshake(
     reader: &mut V2Reader,
     writer: &mut V2Writer,
     magic: Magic,
@@ -1031,7 +1046,17 @@ async fn application_handshake(
     policy: HandshakePolicy<'_>,
 ) -> Result<VersionMessage, NetError> {
     let pruned = policy.peers.map(|p| p.is_pruned()).unwrap_or(false);
-    let services = local_service_flags_pruned(pruned);
+    let mut services = local_service_flags_pruned(pruned);
+    if let Some(peers) = policy.peers {
+        let on = peers.compact_filters_advertised();
+        let has = services.has(ServiceFlags::COMPACT_FILTERS);
+        if on && !has {
+            services.add(ServiceFlags::COMPACT_FILTERS);
+        } else if !on && has {
+            // `ServiceFlags::remove` toggles bits; only call it when set.
+            services.remove(ServiceFlags::COMPACT_FILTERS);
+        }
+    }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -1122,7 +1147,7 @@ async fn application_handshake(
     Ok(their_version)
 }
 
-async fn read_peer_version(
+pub async fn read_peer_version(
     reader: &mut V2Reader,
     magic: Magic,
     policy: &HandshakePolicy<'_>,
@@ -1156,7 +1181,7 @@ async fn read_peer_version(
     }
 }
 
-async fn wait_peer_verack(
+pub async fn wait_peer_verack(
     reader: &mut V2Reader,
     magic: Magic,
     policy: &HandshakePolicy<'_>,
@@ -1178,7 +1203,8 @@ async fn wait_peer_verack(
 }
 
 /// Remember BIP339 / BIP155 features sent before VERACK. `true` = VERACK seen.
-fn apply_pre_verack(
+#[doc(hidden)]
+pub fn apply_pre_verack(
     session: Option<&crate::peers::LivePeer>,
     payload: &NetworkMessage,
     cmd: &str,
@@ -1212,12 +1238,14 @@ fn apply_pre_verack(
     }
 }
 
-fn framed_cmd(frame: &FramedMessage) -> String {
+#[doc(hidden)]
+pub fn framed_cmd(frame: &FramedMessage) -> String {
     let end = frame.command.iter().position(|&b| b == 0).unwrap_or(12);
     String::from_utf8_lossy(&frame.command[..end]).into_owned()
 }
 
-fn rand_nonce() -> u64 {
+#[doc(hidden)]
+pub fn rand_nonce() -> u64 {
     let mut buf = [0u8; 8];
     getrandom::fill(&mut buf).expect("CSPRNG for version nonce");
     u64::from_le_bytes(buf)
@@ -1228,13 +1256,15 @@ fn rand_nonce() -> u64 {
 /// After handshake preferences (`sendheaders` / `sendcmpct`), the session
 /// **actively** `getheaders` from our tip locator so blocks mined while we were
 /// offline or mid–SH materialize are pulled — not only unsolicited announces.
-/// Long history catch-up remains [`crate::ibd`] / [`crate::service::P2PNode::sync`].
+/// Long history catch-up remains `rbitcoin-ibd`. Tip-follow is
+/// [`crate::service::P2PNode::follow_from`].
 ///
 /// A dedicated writer drains outbound messages while the reader keeps draining
 /// the encrypted channel. `meta` labels the peer for logs and optionally tracks
 /// live outbound follow count.
 /// Control (ping/pong/`sendcmpct`) first, then full bodies, then headers/inv.
-fn outbound_write_rank(out: &PeerOut) -> u8 {
+#[doc(hidden)]
+pub fn outbound_write_rank(out: &PeerOut) -> u8 {
     match out {
         PeerOut::Msg(
             NetworkMessage::Ping(_) | NetworkMessage::Pong(_) | NetworkMessage::SendCmpct(_),
@@ -1248,7 +1278,8 @@ fn outbound_write_rank(out: &PeerOut) -> u8 {
     }
 }
 
-fn take_outbound_write_batch(
+#[doc(hidden)]
+pub fn take_outbound_write_batch(
     first: PeerOut,
     rx: &mut mpsc::UnboundedReceiver<PeerOut>,
 ) -> Vec<PeerOut> {
@@ -1264,7 +1295,7 @@ fn take_outbound_write_batch(
     batch
 }
 
-async fn run_writer_task(
+pub async fn run_writer_task(
     mut writer: V2Writer,
     mut out_rx: mpsc::UnboundedReceiver<PeerOut>,
     writer_session: Option<Arc<crate::peers::LivePeer>>,
@@ -1289,7 +1320,7 @@ async fn run_writer_task(
     }
 }
 
-async fn on_heartbeat(
+pub async fn on_heartbeat(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -1376,7 +1407,7 @@ async fn on_heartbeat(
 }
 
 /// `true` means the tip broadcast closed; the session should exit.
-async fn on_tip_event(
+pub async fn on_tip_event(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -1430,7 +1461,8 @@ async fn on_tip_event(
     Ok(false)
 }
 
-fn on_headers_poll(
+#[doc(hidden)]
+pub fn on_headers_poll(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -1447,7 +1479,8 @@ fn on_headers_poll(
     }
 }
 
-fn on_tx_announce(
+#[doc(hidden)]
+pub fn on_tx_announce(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &PeerFollowState,
@@ -1464,7 +1497,8 @@ fn on_tx_announce(
     Ok(())
 }
 
-fn on_tx_announce_ok(
+#[doc(hidden)]
+pub fn on_tx_announce_ok(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &PeerFollowState,
@@ -1487,7 +1521,8 @@ fn on_tx_announce_ok(
     queue_out(out_tx, NetworkMessage::Inv(vec![inv]))
 }
 
-fn tx_announce_maybe_count(
+#[doc(hidden)]
+pub fn tx_announce_maybe_count(
     session: Option<&crate::peers::LivePeer>,
     mp: &crate::tx_relay::MempoolHub,
     txid: &bitcoin::Txid,
@@ -1506,7 +1541,8 @@ fn tx_announce_maybe_count(
     }
 }
 
-fn tx_announce_inbound_gated(
+#[doc(hidden)]
+pub fn tx_announce_inbound_gated(
     s: &crate::peers::LivePeer,
     mp: &crate::tx_relay::MempoolHub,
     txid: &bitcoin::Txid,
@@ -1517,7 +1553,8 @@ fn tx_announce_inbound_gated(
         && mp.relay_enabled()
 }
 
-fn tx_announce_should_queue(
+#[doc(hidden)]
+pub fn tx_announce_should_queue(
     session: Option<&crate::peers::LivePeer>,
     mp: &crate::tx_relay::MempoolHub,
     txid: &bitcoin::Txid,
@@ -1529,14 +1566,16 @@ fn tx_announce_should_queue(
         && !tx_announce_below_feefilter(session, mp, txid)
 }
 
-fn tx_announce_inv(mp: &crate::tx_relay::MempoolHub, txid: &bitcoin::Txid) -> Inventory {
+#[doc(hidden)]
+pub fn tx_announce_inv(mp: &crate::tx_relay::MempoolHub, txid: &bitcoin::Txid) -> Inventory {
     match mp.try_get_tx(txid) {
         Some(tx) => Inventory::WTx(tx.compute_wtxid()),
         None => Inventory::WitnessTransaction(*txid),
     }
 }
 
-fn tx_announce_note_wtx(
+#[doc(hidden)]
+pub fn tx_announce_note_wtx(
     session: Option<&crate::peers::LivePeer>,
     mp: &crate::tx_relay::MempoolHub,
     inv: Inventory,
@@ -1553,7 +1592,8 @@ fn tx_announce_note_wtx(
     }
 }
 
-fn tx_announce_peer_ok(
+#[doc(hidden)]
+pub fn tx_announce_peer_ok(
     session: Option<&crate::peers::LivePeer>,
     mp: &crate::tx_relay::MempoolHub,
     txid: &bitcoin::Txid,
@@ -1565,7 +1605,8 @@ fn tx_announce_peer_ok(
     })
 }
 
-fn announce_fee_rate_sat_kvb(
+#[doc(hidden)]
+pub fn announce_fee_rate_sat_kvb(
     mp: &crate::tx_relay::MempoolHub,
     txid: &bitcoin::Txid,
 ) -> Option<u64> {
@@ -1579,7 +1620,8 @@ fn announce_fee_rate_sat_kvb(
     ))
 }
 
-fn tx_announce_below_feefilter(
+#[doc(hidden)]
+pub fn tx_announce_below_feefilter(
     session: Option<&crate::peers::LivePeer>,
     mp: &crate::tx_relay::MempoolHub,
     txid: &bitcoin::Txid,
@@ -1591,7 +1633,8 @@ fn tx_announce_below_feefilter(
     announce_fee_rate_sat_kvb(mp, txid).is_some_and(|rate| rate < peer_min)
 }
 
-fn on_inv_flush(
+#[doc(hidden)]
+pub fn on_inv_flush(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &PeerFollowState,
@@ -1994,7 +2037,7 @@ pub async fn peer_session_with(
 }
 
 /// Tip locator for post-handshake `getheaders` (store chain; genesis fallback).
-pub(crate) fn tip_follow_locator(hub: &ChainHub) -> Vec<BlockHash> {
+pub fn tip_follow_locator(hub: &ChainHub) -> Vec<BlockHash> {
     match hub.query.locator_hashes() {
         Ok(mut v) if !v.is_empty() => {
             if v.len() > MAX_LOCATOR_SZ {
@@ -2015,14 +2058,15 @@ pub(crate) fn tip_follow_locator(hub: &ChainHub) -> Vec<BlockHash> {
 
 /// Locator for `getheaders`. `from` is the last header of a full 2000-header
 /// reply so the next batch starts after it (Core continues from that hash).
-pub(crate) fn headers_sync_locator(hub: &ChainHub, from: Option<BlockHash>) -> Vec<BlockHash> {
+pub fn headers_sync_locator(hub: &ChainHub, from: Option<BlockHash>) -> Vec<BlockHash> {
     match from {
         None => tip_follow_locator(hub),
         Some(start) => locator_from_start(hub, start),
     }
 }
 
-fn locator_from_start(hub: &ChainHub, start: BlockHash) -> Vec<BlockHash> {
+#[doc(hidden)]
+pub fn locator_from_start(hub: &ChainHub, start: BlockHash) -> Vec<BlockHash> {
     if let Some(h) = hub.query.published_height_of_hash(&start.to_byte_array()) {
         return locator_from_height(hub, h.0);
     }
@@ -2031,7 +2075,8 @@ fn locator_from_start(hub: &ChainHub, start: BlockHash) -> Vec<BlockHash> {
     out
 }
 
-fn locator_from_height(hub: &ChainHub, start: u32) -> Vec<BlockHash> {
+#[doc(hidden)]
+pub fn locator_from_height(hub: &ChainHub, start: u32) -> Vec<BlockHash> {
     let mut out = Vec::new();
     let mut h = start as i64;
     let mut step = 1i64;
@@ -2052,7 +2097,8 @@ fn locator_from_height(hub: &ChainHub, start: u32) -> Vec<BlockHash> {
     out
 }
 
-fn push_genesis_locator(hub: &ChainHub, out: &mut Vec<BlockHash>) {
+#[doc(hidden)]
+pub fn push_genesis_locator(hub: &ChainHub, out: &mut Vec<BlockHash>) {
     let g = hub.params.genesis_hash;
     if out.last() != Some(&g) {
         out.push(g);
@@ -2062,7 +2108,7 @@ fn push_genesis_locator(hub: &ChainHub, out: &mut Vec<BlockHash>) {
 /// Periodic getheaders is for discovering more work. Skip peers whose best
 /// known header is already on our chain behind tip, or a connecting fork that
 /// cannot beat us.
-pub(crate) fn should_poll_peer_headers(hub: &ChainHub, best_known: Option<BlockHash>) -> bool {
+pub fn should_poll_peer_headers(hub: &ChainHub, best_known: Option<BlockHash>) -> bool {
     let Some(best) = best_known else {
         return true;
     };
@@ -2083,7 +2129,8 @@ pub(crate) fn should_poll_peer_headers(hub: &ChainHub, best_known: Option<BlockH
 /// tip is older than 24 hours left regtest peers with an empty block queue.
 /// [`crate::peers::PeerHub::try_start_headers_sync`] still allows one peer
 /// until the tip is caught up.
-fn maybe_queue_initial_getheaders(
+#[doc(hidden)]
+pub fn maybe_queue_initial_getheaders(
     out: &mpsc::UnboundedSender<PeerOut>,
     hub: &ChainHub,
     session: &crate::peers::LivePeer,
@@ -2108,7 +2155,8 @@ fn maybe_queue_initial_getheaders(
     started
 }
 
-fn maybe_queue_addrfetch_getaddr(
+#[doc(hidden)]
+pub fn maybe_queue_addrfetch_getaddr(
     out: &mpsc::UnboundedSender<PeerOut>,
     session: &crate::peers::LivePeer,
 ) -> bool {
@@ -2119,12 +2167,14 @@ fn maybe_queue_addrfetch_getaddr(
     true
 }
 
-fn addrfetch_timed_out(session: &crate::peers::LivePeer) -> bool {
+#[doc(hidden)]
+pub fn addrfetch_timed_out(session: &crate::peers::LivePeer) -> bool {
     session.conn_type == crate::peers::PeerConnType::AddrFetch
         && session.clock_now().saturating_sub(session.connected_at()) > ADDRFETCH_TIMEOUT_SECS
 }
 
-fn queue_getheaders(
+#[doc(hidden)]
+pub fn queue_getheaders(
     out: &mpsc::UnboundedSender<PeerOut>,
     hub: &ChainHub,
     session: Option<&crate::peers::LivePeer>,
@@ -2148,14 +2198,15 @@ fn queue_getheaders(
 
 /// BIP152: request `MSG_CMPCT_BLOCK` when the peer speaks compact v2 and we
 /// relay txs. Blocks-only keeps `MSG_WITNESS_BLOCK`.
-fn getdata_use_compact(hub: &ChainHub, peer_cmpct_version: u32) -> bool {
+#[doc(hidden)]
+pub fn getdata_use_compact(hub: &ChainHub, peer_cmpct_version: u32) -> bool {
     peer_cmpct_version == 2 && hub.mempool().is_none_or(|m| m.relay_enabled())
 }
 
 /// Drop inflight body asks the peer never answered so `asked_blocks` cannot
 /// permanently skip the same hashes (`rpc_createmultisig` generate-149
 /// `sync_blocks` 60s).
-pub(crate) fn maybe_expire_block_requests(
+pub fn maybe_expire_block_requests(
     hub: &ChainHub,
     requested: &mut HashSet<BlockHash>,
     since: &mut Option<std::time::Instant>,
@@ -2180,7 +2231,8 @@ pub(crate) fn maybe_expire_block_requests(
     true
 }
 
-fn maybe_expire_pending_cmpct(
+#[doc(hidden)]
+pub fn maybe_expire_pending_cmpct(
     hub: &ChainHub,
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
@@ -2210,7 +2262,8 @@ fn maybe_expire_pending_cmpct(
     Ok(true)
 }
 
-fn queue_block_getdata(
+#[doc(hidden)]
+pub fn queue_block_getdata(
     hub: &ChainHub,
     out: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -2241,25 +2294,29 @@ fn queue_block_getdata(
     Ok(())
 }
 
-fn take_requested_block(hub: &ChainHub, requested: &mut HashSet<BlockHash>, hash: &BlockHash) {
+#[doc(hidden)]
+pub fn take_requested_block(hub: &ChainHub, requested: &mut HashSet<BlockHash>, hash: &BlockHash) {
     requested.remove(hash);
     hub.forget_asked_block(hash);
 }
 
-fn net_error_needs_parent(e: &NetError) -> bool {
+#[doc(hidden)]
+pub fn net_error_needs_parent(e: &NetError) -> bool {
     matches!(e, NetError::UnknownParent)
 }
 
 /// Incomplete compact block waiting for `blocktxn`.
-struct PendingCmpct {
-    hsi: HeaderAndShortIds,
-    partial: crate::compact::CmpctPartial,
-    fill: Option<crate::compact::CmpctFillSets>,
-    since: std::time::Instant,
+#[doc(hidden)]
+pub struct PendingCmpct {
+    pub hsi: HeaderAndShortIds,
+    pub partial: crate::compact::CmpctPartial,
+    pub fill: Option<crate::compact::CmpctFillSets>,
+    pub since: std::time::Instant,
 }
 
 /// Clone only mempool bodies whose short-ids appear in `hsi` (never `list_live`).
-fn mempool_shortid_avail(
+#[doc(hidden)]
+pub fn mempool_shortid_avail(
     hub: &ChainHub,
     hsi: &HeaderAndShortIds,
     version: u32,
@@ -2282,7 +2339,8 @@ fn mempool_shortid_avail(
 }
 
 #[derive(Debug)]
-enum CmpctReconstruct {
+#[doc(hidden)]
+pub enum CmpctReconstruct {
     Block(Block, Option<Box<crate::compact::CmpctFillSets>>),
     NeedTxn(
         crate::compact::CmpctPartial,
@@ -2292,7 +2350,8 @@ enum CmpctReconstruct {
 }
 
 /// One reconstruct: full block, getblocktxn indexes, or no mempool (`None` → getdata).
-fn try_reconstruct_cmpct(
+#[doc(hidden)]
+pub fn try_reconstruct_cmpct(
     hub: &ChainHub,
     hsi: &HeaderAndShortIds,
     version: u32,
@@ -2310,7 +2369,8 @@ fn try_reconstruct_cmpct(
     }
 }
 
-fn log_cmpct_filled(
+#[doc(hidden)]
+pub fn log_cmpct_filled(
     hub: &ChainHub,
     hsi: &HeaderAndShortIds,
     block: &Block,
@@ -2329,7 +2389,8 @@ fn log_cmpct_filled(
     }
 }
 
-fn log_cmpct_getdata(hash: BlockHash, missing_n: usize) {
+#[doc(hidden)]
+pub fn log_cmpct_getdata(hash: BlockHash, missing_n: usize) {
     rbitcoin_log::info!(
         "{}",
         crate::compact::reconstruct_getdata_stats(hash, missing_n)
@@ -2385,7 +2446,8 @@ pub fn force_announce_txid(hub: &ChainHub, peers: &crate::peers::PeerHub, txid: 
     }
 }
 
-fn maybe_force_relay_recent_reject(
+#[doc(hidden)]
+pub fn maybe_force_relay_recent_reject(
     hub: &ChainHub,
     session: Option<&crate::peers::LivePeer>,
     mp: &crate::tx_relay::MempoolHub,
@@ -2408,7 +2470,8 @@ fn maybe_force_relay_recent_reject(
     }
 }
 
-fn maybe_force_relay_duplicate(
+#[doc(hidden)]
+pub fn maybe_force_relay_duplicate(
     hub: &ChainHub,
     session: Option<&crate::peers::LivePeer>,
     tx: &Transaction,
@@ -2427,7 +2490,8 @@ fn maybe_force_relay_duplicate(
     }
 }
 
-fn tx_inv_candidate_ok(
+#[doc(hidden)]
+pub fn tx_inv_candidate_ok(
     mp: &crate::tx_relay::MempoolHub,
     session: &crate::peers::LivePeer,
     from_this_peer: &CappedSet<bitcoin::Txid>,
@@ -2473,7 +2537,8 @@ fn tx_inv_candidate_ok(
     true
 }
 
-fn queue_due_tx_invs(
+#[doc(hidden)]
+pub fn queue_due_tx_invs(
     hub: &ChainHub,
     session: &crate::peers::LivePeer,
     from_this_peer: &CappedSet<bitcoin::Txid>,
@@ -2564,7 +2629,8 @@ fn queue_due_tx_invs(
 }
 
 /// Finish a pending compact block with a `blocktxn` payload.
-fn apply_cmpct_blocktxn(
+#[doc(hidden)]
+pub fn apply_cmpct_blocktxn(
     pc: &PendingCmpct,
     bt: &BlockTransactions,
 ) -> Result<(Block, Option<crate::compact::CmpctFillSets>), ()> {
@@ -2573,35 +2639,37 @@ fn apply_cmpct_blocktxn(
         .map_err(|_| ())
 }
 
-struct PeerFollowState {
-    wants_headers: bool,
-    wtxid_relay: bool,
-    send_cmpct: bool,
-    cmpct_version: u32,
-    pending_headers: HashMap<BlockHash, bitcoin::block::Header>,
-    pending_blocks: PendingBlocks,
-    pending_cmpct: HashMap<BlockHash, PendingCmpct>,
-    from_this_peer: CappedSet<bitcoin::Txid>,
-    requested_blocks: HashSet<BlockHash>,
-    ban_score: u32,
+#[doc(hidden)]
+pub struct PeerFollowState {
+    pub wants_headers: bool,
+    pub wtxid_relay: bool,
+    pub send_cmpct: bool,
+    pub cmpct_version: u32,
+    pub pending_headers: HashMap<BlockHash, bitcoin::block::Header>,
+    pub pending_blocks: PendingBlocks,
+    pub pending_cmpct: HashMap<BlockHash, PendingCmpct>,
+    pub from_this_peer: CappedSet<bitcoin::Txid>,
+    pub requested_blocks: HashSet<BlockHash>,
+    pub ban_score: u32,
     /// Unserved rest of an inbound `getdata` paused on the writer (Core
     /// `m_getdata_requests`). The session reads no frame while it is
     /// non-empty, so it holds at most one message: `MAX_INV_SIZE` items,
     /// about 2 MB per session. That RAM keeps every hash served in order
     /// instead of dropping the rest or holding the reader across items.
-    getdata_tail: VecDeque<Inventory>,
+    pub getdata_tail: VecDeque<Inventory>,
     /// One parked `getblocktxn`. The session reads no frame while this is
     /// non-empty, so a peer that never reads cannot stack reconstructs.
-    getblocktxn_tail: VecDeque<BlockTransactionsRequest>,
+    pub getblocktxn_tail: VecDeque<BlockTransactionsRequest>,
 }
 
 /// A live session's follow state. Dropping it, including when
 /// `PeerHub::disconnect_id` aborts the session task, releases the body asks
 /// the peer never answered: `asked_blocks` is hub-wide, so a held ask would
 /// keep every other peer from fetching that body.
-struct SessionFollow {
-    hub: Arc<ChainHub>,
-    state: PeerFollowState,
+#[doc(hidden)]
+pub struct SessionFollow {
+    pub hub: Arc<ChainHub>,
+    pub state: PeerFollowState,
 }
 
 impl Drop for SessionFollow {
@@ -2613,7 +2681,8 @@ impl Drop for SessionFollow {
 }
 
 impl PeerFollowState {
-    fn new() -> Self {
+    #[doc(hidden)]
+    pub fn new() -> Self {
         Self {
             wants_headers: false,
             wtxid_relay: false,
@@ -2631,7 +2700,8 @@ impl PeerFollowState {
     }
 }
 
-fn serve_mempool_getdata(
+#[doc(hidden)]
+pub fn serve_mempool_getdata(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -2654,7 +2724,7 @@ fn serve_mempool_getdata(
     Ok(false)
 }
 
-async fn handle_peer_frame(
+pub async fn handle_peer_frame(
     frame: FramedMessage,
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
@@ -2672,7 +2742,7 @@ async fn handle_peer_frame(
     handle_decoded_peer_msg(msg, hub, out_tx, follow, session).await
 }
 
-async fn handle_decoded_peer_msg(
+pub async fn handle_decoded_peer_msg(
     msg: RawNetworkMessage,
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
@@ -2695,7 +2765,8 @@ async fn handle_decoded_peer_msg(
     Ok(())
 }
 
-fn handle_peer_sync_msg(
+#[doc(hidden)]
+pub fn handle_peer_sync_msg(
     payload: &NetworkMessage,
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
@@ -2708,7 +2779,8 @@ fn handle_peer_sync_msg(
     handle_peer_inventory_msg(payload, hub, out_tx, follow, session)
 }
 
-fn handle_peer_control_msg(
+#[doc(hidden)]
+pub fn handle_peer_control_msg(
     payload: &NetworkMessage,
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
@@ -2730,11 +2802,13 @@ fn handle_peer_control_msg(
     Ok(true)
 }
 
-fn filter_q<T>(r: Result<T, rbitcoin_store::StoreError>) -> Result<T, NetError> {
+#[doc(hidden)]
+pub fn filter_q<T>(r: Result<T, rbitcoin_store::StoreError>) -> Result<T, NetError> {
     r.map_err(|e| NetError::Consensus(e.to_string()))
 }
 
-fn on_compact_filters(
+#[doc(hidden)]
+pub fn on_compact_filters(
     payload: &NetworkMessage,
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
@@ -2749,12 +2823,15 @@ fn on_compact_filters(
 }
 
 /// Core `MAX_GETCFILTERS_SIZE` / `MAX_GETCFHEADERS_SIZE`.
-const MAX_GETCFILTERS: u32 = 1000;
-const MAX_GETCFHEADERS: u32 = 2000;
+#[doc(hidden)]
+pub const MAX_GETCFILTERS: u32 = 1000;
+#[doc(hidden)]
+pub const MAX_GETCFHEADERS: u32 = 2000;
 
 /// Core `PrepareBlockFilterRequest` range rule: start past stop, or `max`
 /// or more heights, disconnects the peer.
-fn compact_filter_range(start: u32, stop: u32, max: u32) -> Result<(), NetError> {
+#[doc(hidden)]
+pub fn compact_filter_range(start: u32, stop: u32, max: u32) -> Result<(), NetError> {
     if start > stop {
         return Err(NetError::Protocol("compact filter request start past stop"));
     }
@@ -2767,7 +2844,8 @@ fn compact_filter_range(start: u32, stop: u32, max: u32) -> Result<(), NetError>
 /// Stop height of a basic-filter request. `None` (silence: not a short
 /// batch, not an empty filter) when the index is off, the stop hash is not
 /// on the best chain, or the stop is past the filter watermark.
-fn compact_filter_stop(
+#[doc(hidden)]
+pub fn compact_filter_stop(
     hub: &ChainHub,
     filter_type: u8,
     stop_hash: &[u8; 32],
@@ -2778,11 +2856,13 @@ fn compact_filter_stop(
     Ok(filter_q(hub.query.height_of_hash(stop_hash))?.map(|h| h.0))
 }
 
-fn within_filter_watermark(hub: &ChainHub, stop: u32) -> Result<bool, NetError> {
+#[doc(hidden)]
+pub fn within_filter_watermark(hub: &ChainHub, stop: u32) -> Result<bool, NetError> {
     Ok(filter_q(hub.query.basic_filter_hwm())?.is_some_and(|hwm| stop <= hwm))
 }
 
-fn on_getcfilters(
+#[doc(hidden)]
+pub fn on_getcfilters(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -2817,7 +2897,8 @@ fn on_getcfilters(
     Ok(())
 }
 
-fn on_getcfheaders(
+#[doc(hidden)]
+pub fn on_getcfheaders(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -2855,7 +2936,8 @@ fn on_getcfheaders(
     Ok(())
 }
 
-fn on_getcfcheckpt(
+#[doc(hidden)]
+pub fn on_getcfcheckpt(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -2889,7 +2971,8 @@ fn on_getcfcheckpt(
     Ok(())
 }
 
-fn handle_peer_inventory_msg(
+#[doc(hidden)]
+pub fn handle_peer_inventory_msg(
     payload: &NetworkMessage,
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
@@ -2929,7 +3012,8 @@ fn handle_peer_inventory_msg(
     Ok(())
 }
 
-fn on_redundant_version(session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn on_redundant_version(session: Option<&crate::peers::LivePeer>) {
     if let Some(s) = session {
         rbitcoin_log::info!("p2p: redundant version message from peer={}", s.id);
     } else {
@@ -2937,7 +3021,8 @@ fn on_redundant_version(session: Option<&crate::peers::LivePeer>) {
     }
 }
 
-fn on_redundant_verack(session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn on_redundant_verack(session: Option<&crate::peers::LivePeer>) {
     if let Some(s) = session {
         rbitcoin_log::info!("p2p: ignoring redundant verack message from peer={}", s.id);
     } else {
@@ -2945,7 +3030,8 @@ fn on_redundant_verack(session: Option<&crate::peers::LivePeer>) {
     }
 }
 
-fn on_ping(
+#[doc(hidden)]
+pub fn on_ping(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -2965,17 +3051,20 @@ fn on_ping(
     Ok(())
 }
 
-fn on_feefilter(session: Option<&crate::peers::LivePeer>, amt: i64) {
+#[doc(hidden)]
+pub fn on_feefilter(session: Option<&crate::peers::LivePeer>, amt: i64) {
     if let Some(s) = session {
         s.note_minfeefilter_sat_kvb(amt.max(0) as u64);
     }
 }
 
-fn on_sendheaders(follow: &mut PeerFollowState) {
+#[doc(hidden)]
+pub fn on_sendheaders(follow: &mut PeerFollowState) {
     follow.wants_headers = true;
 }
 
-fn on_sendcmpct(
+#[doc(hidden)]
+pub fn on_sendcmpct(
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
     sc: &SendCmpct,
@@ -2991,7 +3080,8 @@ fn on_sendcmpct(
     }
 }
 
-fn on_wtxid_relay(follow: &mut PeerFollowState, session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn on_wtxid_relay(follow: &mut PeerFollowState, session: Option<&crate::peers::LivePeer>) {
     // BIP339 mutual: we already sent wtxidrelay pre-verack; remember theirs.
     follow.wtxid_relay = true;
     if let Some(s) = session {
@@ -2999,13 +3089,15 @@ fn on_wtxid_relay(follow: &mut PeerFollowState, session: Option<&crate::peers::L
     }
 }
 
-fn on_sendaddrv2(follow: &mut PeerFollowState, session: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn on_sendaddrv2(follow: &mut PeerFollowState, session: Option<&crate::peers::LivePeer>) {
     let id = session.map(|s| s.id).unwrap_or(0);
     rbitcoin_log::info!("{}", sendaddrv2_after_verack_log(id));
     punish_disconnect(&mut follow.ban_score, session);
 }
 
-fn on_addr_list(
+#[doc(hidden)]
+pub fn on_addr_list(
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
     n: usize,
@@ -3017,7 +3109,8 @@ fn on_addr_list(
     Ok(())
 }
 
-fn on_addrv2(
+#[doc(hidden)]
+pub fn on_addrv2(
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
     list: &[bitcoin::p2p::address::AddrV2Message],
@@ -3098,7 +3191,8 @@ fn on_addrv2(
     Ok(())
 }
 
-fn on_getheaders(
+#[doc(hidden)]
+pub fn on_getheaders(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3128,7 +3222,8 @@ fn on_getheaders(
     Ok(())
 }
 
-fn on_getblocks(
+#[doc(hidden)]
+pub fn on_getblocks(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3159,7 +3254,7 @@ fn on_getblocks(
     Ok(())
 }
 
-async fn serve_getdata(
+pub async fn serve_getdata(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3178,7 +3273,7 @@ async fn serve_getdata(
 /// writer has no serve room (`fPauseSend`). The rest stays in
 /// `follow.getdata_tail` for the session loop to resume. The `notfound`
 /// collected so far is sent either way.
-async fn serve_getdata_tail(
+pub async fn serve_getdata_tail(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3222,7 +3317,7 @@ async fn serve_getdata_tail(
     Ok(())
 }
 
-async fn serve_getdata_full_block(
+pub async fn serve_getdata_full_block(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -3250,7 +3345,8 @@ async fn serve_getdata_full_block(
     Ok(true)
 }
 
-fn serve_getdata_compact(
+#[doc(hidden)]
+pub fn serve_getdata_compact(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3298,7 +3394,8 @@ fn serve_getdata_compact(
     }
 }
 
-fn serve_getdata_wtx(
+#[doc(hidden)]
+pub fn serve_getdata_wtx(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -3325,9 +3422,11 @@ fn serve_getdata_wtx(
 }
 
 /// Core: past this depth a `getblocktxn` is answered with the full block.
-const MAX_GETBLOCKTXN_DEPTH: u32 = 10;
+#[doc(hidden)]
+pub const MAX_GETBLOCKTXN_DEPTH: u32 = 10;
 
-enum GetBlockTxnServe {
+#[doc(hidden)]
+pub enum GetBlockTxnServe {
     BadIndex,
     Block(Block),
     Txns(BlockTransactions),
@@ -3335,7 +3434,7 @@ enum GetBlockTxnServe {
 
 /// Park one `getblocktxn` and serve it while the writer has room. A full
 /// queue keeps the request on [`PeerFollowState::getblocktxn_tail`].
-async fn serve_getblocktxn(
+pub async fn serve_getblocktxn(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3346,7 +3445,7 @@ async fn serve_getblocktxn(
     serve_getblocktxn_tail(hub, out_tx, follow, session).await
 }
 
-async fn serve_getblocktxn_tail(
+pub async fn serve_getblocktxn_tail(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3361,7 +3460,7 @@ async fn serve_getblocktxn_tail(
     Ok(())
 }
 
-async fn serve_one_getblocktxn(
+pub async fn serve_one_getblocktxn(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3404,7 +3503,8 @@ async fn serve_one_getblocktxn(
 
 /// Serve missing txs for a compact block we hold (BIP152). Archive
 /// reconstruct stays off the connection task.
-fn getblocktxn_reply(
+#[doc(hidden)]
+pub fn getblocktxn_reply(
     cache: &BlockCache,
     query: &Query,
     txs_request: BlockTransactionsRequest,
@@ -3444,7 +3544,8 @@ fn getblocktxn_reply(
     })))
 }
 
-fn on_inv(
+#[doc(hidden)]
+pub fn on_inv(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3532,7 +3633,8 @@ fn on_inv(
     Ok(())
 }
 
-fn on_inv_block_needs_headers(
+#[doc(hidden)]
+pub fn on_inv_block_needs_headers(
     hub: &ChainHub,
     follow: &PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
@@ -3553,7 +3655,8 @@ fn on_inv_block_needs_headers(
     })
 }
 
-fn on_notfound(hub: &ChainHub, session: Option<&crate::peers::LivePeer>, items: &[Inventory]) {
+#[doc(hidden)]
+pub fn on_notfound(hub: &ChainHub, session: Option<&crate::peers::LivePeer>, items: &[Inventory]) {
     let Some(s) = session else {
         return;
     };
@@ -3572,7 +3675,8 @@ fn on_notfound(hub: &ChainHub, session: Option<&crate::peers::LivePeer>, items: 
     }
 }
 
-fn on_inv_txid(
+#[doc(hidden)]
+pub fn on_inv_txid(
     hub: &ChainHub,
     session: Option<&crate::peers::LivePeer>,
     relay: bool,
@@ -3606,7 +3710,8 @@ fn on_inv_txid(
     Some(Inventory::WitnessTransaction(*txid))
 }
 
-fn on_inv_wtxid(
+#[doc(hidden)]
+pub fn on_inv_wtxid(
     hub: &ChainHub,
     session: Option<&crate::peers::LivePeer>,
     relay: bool,
@@ -3647,7 +3752,8 @@ fn on_inv_wtxid(
     None
 }
 
-fn on_headers(
+#[doc(hidden)]
+pub fn on_headers(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3764,7 +3870,7 @@ fn on_headers(
     Ok(())
 }
 
-async fn on_block(
+pub async fn on_block(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3832,7 +3938,8 @@ async fn on_block(
     on_block_accept(hub, out_tx, follow, session, block, hash).await
 }
 
-fn on_block_unrequested_skip(
+#[doc(hidden)]
+pub fn on_block_unrequested_skip(
     hub: &ChainHub,
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
@@ -3870,7 +3977,7 @@ fn on_block_unrequested_skip(
     Ok(false)
 }
 
-async fn on_block_accept(
+pub async fn on_block_accept(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3914,7 +4021,8 @@ async fn on_block_accept(
     }
 }
 
-fn drop_pending_cmpct(
+#[doc(hidden)]
+pub fn drop_pending_cmpct(
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
     hash: BlockHash,
@@ -3928,7 +4036,8 @@ fn drop_pending_cmpct(
 /// Core `MarkBlockAsReceived` clears every peer's in-flight entry for a
 /// received block. Ours are per session, so a partial whose block connected
 /// through another peer is dropped here before it counts against the cap.
-fn drop_connected_pending_cmpct(
+#[doc(hidden)]
+pub fn drop_connected_pending_cmpct(
     hub: &ChainHub,
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
@@ -3947,7 +4056,7 @@ fn drop_connected_pending_cmpct(
     }
 }
 
-async fn on_cmpctblock(
+pub async fn on_cmpctblock(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -3994,7 +4103,8 @@ async fn on_cmpctblock(
     on_cmpctblock_reconstruct(hub, out_tx, follow, session, &hsi, hash).await
 }
 
-fn on_cmpctblock_reject_early(
+#[doc(hidden)]
+pub fn on_cmpctblock_reject_early(
     hub: &ChainHub,
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
@@ -4036,7 +4146,8 @@ fn on_cmpctblock_reject_early(
     Ok(false)
 }
 
-fn on_cmpctblock_queue_ancestors(
+#[doc(hidden)]
+pub fn on_cmpctblock_queue_ancestors(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4064,7 +4175,7 @@ fn on_cmpctblock_queue_ancestors(
     )
 }
 
-async fn on_cmpctblock_reconstruct(
+pub async fn on_cmpctblock_reconstruct(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4091,7 +4202,7 @@ async fn on_cmpctblock_reconstruct(
 }
 
 #[allow(clippy::too_many_arguments)] // one compact-block fill; call site stays unbundled
-async fn on_cmpct_got_block(
+pub async fn on_cmpct_got_block(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4135,7 +4246,8 @@ async fn on_cmpct_got_block(
     .await
 }
 
-fn on_cmpct_need_getdata(
+#[doc(hidden)]
+pub fn on_cmpct_need_getdata(
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
     hash: BlockHash,
@@ -4151,7 +4263,8 @@ fn on_cmpct_need_getdata(
 }
 
 #[allow(clippy::too_many_arguments)] // one getblocktxn ask; call site stays unbundled
-fn on_cmpct_need_txn(
+#[doc(hidden)]
+pub fn on_cmpct_need_txn(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4207,7 +4320,7 @@ fn on_cmpct_need_txn(
     Ok(())
 }
 
-async fn on_blocktxn(
+pub async fn on_blocktxn(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4236,7 +4349,7 @@ async fn on_blocktxn(
 }
 
 #[allow(clippy::too_many_arguments)] // one blocktxn fill; call site stays unbundled
-async fn on_blocktxn_got_block(
+pub async fn on_blocktxn_got_block(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4308,7 +4421,8 @@ async fn on_blocktxn_got_block(
     }
 }
 
-fn on_blocktxn_apply_fail(
+#[doc(hidden)]
+pub fn on_blocktxn_apply_fail(
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
@@ -4328,7 +4442,8 @@ fn on_blocktxn_apply_fail(
     )
 }
 
-fn on_blocktxn_unconnectable(
+#[doc(hidden)]
+pub fn on_blocktxn_unconnectable(
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
@@ -4347,7 +4462,8 @@ fn on_blocktxn_unconnectable(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TxAcceptLog<'a> {
+#[doc(hidden)]
+pub enum TxAcceptLog<'a> {
     Silent,
     Park(&'a BTreeSet<bitcoin::Txid>),
     ParentFetch(&'a BTreeSet<bitcoin::Txid>),
@@ -4355,14 +4471,15 @@ enum TxAcceptLog<'a> {
 }
 
 /// Invalid-script announcements are misbehavior. Policy rejects are not.
-pub(crate) fn tx_reject_ban_score(e: &rbitcoin_mempool::AcceptError) -> u32 {
+pub fn tx_reject_ban_score(e: &rbitcoin_mempool::AcceptError) -> u32 {
     match e {
         rbitcoin_mempool::AcceptError::Script(_) => 10,
         _ => 0,
     }
 }
 
-fn tx_accept_log(e: &rbitcoin_mempool::AcceptError) -> TxAcceptLog<'_> {
+#[doc(hidden)]
+pub fn tx_accept_log(e: &rbitcoin_mempool::AcceptError) -> TxAcceptLog<'_> {
     match e {
         rbitcoin_mempool::AcceptError::Duplicate(_) => TxAcceptLog::Silent,
         rbitcoin_mempool::AcceptError::Orphaned {
@@ -4379,7 +4496,8 @@ fn tx_accept_log(e: &rbitcoin_mempool::AcceptError) -> TxAcceptLog<'_> {
     }
 }
 
-fn schedule_orphan_parent_getdata(
+#[doc(hidden)]
+pub fn schedule_orphan_parent_getdata(
     mp: &crate::tx_relay::MempoolHub,
     tx: &Transaction,
     session: Option<&crate::peers::LivePeer>,
@@ -4404,7 +4522,8 @@ fn schedule_orphan_parent_getdata(
     }
 }
 
-fn queue_due_parent_getdata(
+#[doc(hidden)]
+pub fn queue_due_parent_getdata(
     hub: &ChainHub,
     session: &crate::peers::LivePeer,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
@@ -4430,7 +4549,7 @@ fn queue_due_parent_getdata(
     let _ = queue_accounted(Some(session), out_tx, NetworkMessage::GetData(inv));
 }
 
-async fn on_tx(
+pub async fn on_tx(
     hub: &ChainHub,
     _out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4533,7 +4652,8 @@ async fn on_tx(
     Ok(())
 }
 
-fn on_bloom_forbidden(
+#[doc(hidden)]
+pub fn on_bloom_forbidden(
     follow: &mut PeerFollowState,
     session: Option<&crate::peers::LivePeer>,
 ) -> Result<(), NetError> {
@@ -4541,7 +4661,8 @@ fn on_bloom_forbidden(
     Ok(())
 }
 
-fn on_getaddr(
+#[doc(hidden)]
+pub fn on_getaddr(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: Option<&crate::peers::LivePeer>,
@@ -4564,7 +4685,7 @@ fn on_getaddr(
     Ok(())
 }
 
-async fn drain_after_accept(
+pub async fn drain_after_accept(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     follow: &mut PeerFollowState,
@@ -4591,20 +4712,22 @@ async fn drain_after_accept(
 }
 
 #[derive(Debug)]
-enum TipAnnounce {
+#[doc(hidden)]
+pub enum TipAnnounce {
     Headers(Vec<bitcoin::block::Header>),
     Inv(BlockHash),
     Skip,
 }
 
 #[derive(Debug)]
-pub(crate) enum TipRecvAnnounce {
+pub enum TipRecvAnnounce {
     Announce(crate::chain::TipEvent),
     Skip,
     Closed,
 }
 
-fn current_tip_announce(hub: &ChainHub) -> TipRecvAnnounce {
+#[doc(hidden)]
+pub fn current_tip_announce(hub: &ChainHub) -> TipRecvAnnounce {
     match (hub.tip_height(), hub.tip_hash(), hub.tip_header()) {
         (Some(height), Some(hash), Some(header)) => {
             TipRecvAnnounce::Announce(crate::chain::TipEvent {
@@ -4621,7 +4744,8 @@ fn current_tip_announce(hub: &ChainHub) -> TipRecvAnnounce {
 /// True when `tip` is not the header we last sent this peer, and not a
 /// descendant of it. Those announcements wait [`TIP_ANNOUNCE_BATCH`] so a
 /// reorg is one message.
-fn tip_is_reorg_vs_sent(
+#[doc(hidden)]
+pub fn tip_is_reorg_vs_sent(
     hub: &ChainHub,
     session: Option<&crate::peers::LivePeer>,
     tip: &Result<crate::chain::TipEvent, broadcast::error::RecvError>,
@@ -4647,7 +4771,7 @@ fn tip_is_reorg_vs_sent(
 /// `Lagged` and a queued `TipEvent` whose hash is no longer `hub.tip` both
 /// announce the **current** hub tip so a generate burst does not enqueue one
 /// headers/cmpct per height ahead of GetData bodies.
-pub(crate) fn tip_event_for_announce(
+pub fn tip_event_for_announce(
     recv: Result<crate::chain::TipEvent, broadcast::error::RecvError>,
     hub: &ChainHub,
 ) -> TipRecvAnnounce {
@@ -4659,7 +4783,8 @@ pub(crate) fn tip_event_for_announce(
     }
 }
 
-fn peer_has_header(
+#[doc(hidden)]
+pub fn peer_has_header(
     hub: &ChainHub,
     sent: Option<BlockHash>,
     known: Option<BlockHash>,
@@ -4677,7 +4802,8 @@ fn peer_has_header(
 }
 
 /// BIP152 compact tip announcement from an in-RAM body.
-fn cmpct_announce_from_block(
+#[doc(hidden)]
+pub fn cmpct_announce_from_block(
     hub: &ChainHub,
     block: &Block,
     cmpct_version: u32,
@@ -4701,7 +4827,8 @@ fn cmpct_announce_from_block(
 
 /// BIP152 compact tip announcement (coinbase prefilled). `None` if the body
 /// is not in cache/store yet.
-fn cmpct_announce_msg(
+#[doc(hidden)]
+pub fn cmpct_announce_msg(
     hub: &ChainHub,
     hash: &BlockHash,
     cmpct_version: u32,
@@ -4718,7 +4845,12 @@ fn cmpct_announce_msg(
 /// Core `NewPoWValidBlock`: the peer already has the parent header and not
 /// this one. `hb_to` is the opposite direction (we asked them to announce
 /// to us). Only the current tip-child (not a reorg branch). Sender is skipped.
-fn relay_new_pow_valid_block(hub: &ChainHub, block: &Block, from: Option<&crate::peers::LivePeer>) {
+#[doc(hidden)]
+pub fn relay_new_pow_valid_block(
+    hub: &ChainHub,
+    block: &Block,
+    from: Option<&crate::peers::LivePeer>,
+) {
     if !hub.meets_minimum_chain_work() {
         return;
     }
@@ -4771,7 +4903,8 @@ fn relay_new_pow_valid_block(hub: &ChainHub, block: &Block, from: Option<&crate:
     }
 }
 
-fn tip_announce_decision(
+#[doc(hidden)]
+pub fn tip_announce_decision(
     hub: &ChainHub,
     ev: &crate::chain::TipEvent,
     wants_headers: bool,
@@ -4813,7 +4946,8 @@ fn tip_announce_decision(
     TipAnnounce::Inv(ev.hash)
 }
 
-fn is_genesis_hash(h: &BlockHash) -> bool {
+#[doc(hidden)]
+pub fn is_genesis_hash(h: &BlockHash) -> bool {
     h.to_byte_array() == [0u8; 32]
 }
 
@@ -4825,7 +4959,8 @@ fn is_genesis_hash(h: &BlockHash) -> bool {
 /// indexed block, that block's cached chain work. It does not walk parent
 /// headers in the store. `None` means the walk never reached an indexed
 /// block. While our chain is under the floor, that is still the ignore path.
-fn headers_are_below_floor(
+#[doc(hidden)]
+pub fn headers_are_below_floor(
     hub: &ChainHub,
     pending_before: &HashMap<BlockHash, bitcoin::block::Header>,
     headers: &[bitcoin::block::Header],
@@ -4849,7 +4984,8 @@ fn headers_are_below_floor(
     }
 }
 
-fn pending_path_work(
+#[doc(hidden)]
+pub fn pending_path_work(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -4884,7 +5020,8 @@ fn pending_path_work(
 }
 
 /// Height of a pending path that reaches genesis. No header-store read.
-fn pending_announced_height(
+#[doc(hidden)]
+pub fn pending_announced_height(
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
 ) -> u32 {
@@ -4894,7 +5031,8 @@ fn pending_announced_height(
     pending_walk(pending, tip).1
 }
 
-fn pending_walk(
+#[doc(hidden)]
+pub fn pending_walk(
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     start: BlockHash,
 ) -> (BlockHash, u32) {
@@ -4918,7 +5056,8 @@ fn pending_walk(
 /// Core logs `chain_start.nHeight + headers.size()` on the *batch*. Node-to-node
 /// generate announces one header per tip; ignored headers are not stored, so
 /// height must come from the pending walk (14 one-header announces → 14).
-fn announced_headers_height(
+#[doc(hidden)]
+pub fn announced_headers_height(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -4939,7 +5078,8 @@ fn announced_headers_height(
 /// Persist `tip`'s pending path oldest-first so `ensure_header` has parents.
 /// Store the pending headers from `tip` back to the last stored one. Headers
 /// already stored were checked when they were written.
-fn persist_pending_header_path(
+#[doc(hidden)]
+pub fn persist_pending_header_path(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -4969,7 +5109,8 @@ fn persist_pending_header_path(
     }
 }
 
-fn header_is_stored(hub: &ChainHub, hash: &BlockHash) -> bool {
+#[doc(hidden)]
+pub fn header_is_stored(hub: &ChainHub, hash: &BlockHash) -> bool {
     hub.query
         .get_header_by_hash(&hash.to_byte_array())
         .ok()
@@ -4977,7 +5118,8 @@ fn header_is_stored(hub: &ChainHub, hash: &BlockHash) -> bool {
         .is_some()
 }
 
-fn header_announcement_connects(
+#[doc(hidden)]
+pub fn header_announcement_connects(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     prev: BlockHash,
@@ -4991,11 +5133,11 @@ fn header_announcement_connects(
 
 /// Headers more than this many blocks behind our tip are not useful for
 /// tip-follow (Core `NODE_NETWORK_LIMITED` window, ~2 days).
-pub(crate) const ANCIENT_TIP_BLOCKS: u32 = 288;
+pub const ANCIENT_TIP_BLOCKS: u32 = 288;
 
 /// Connecting header path whose **work** cannot beat our tip and whose announced
 /// height is more than [`ANCIENT_TIP_BLOCKS`] behind — BIP-110-class minority fork.
-pub(crate) fn announced_tip_is_hopeless(
+pub fn announced_tip_is_hopeless(
     our_tip: u32,
     announced_h: u32,
     work_cmp: Option<std::cmp::Ordering>,
@@ -5005,7 +5147,8 @@ pub(crate) fn announced_tip_is_hopeless(
 }
 
 /// Announced path work vs our tip work. `None` if the walk cannot sum work.
-fn announced_work_cmp(
+#[doc(hidden)]
+pub fn announced_work_cmp(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     start: BlockHash,
@@ -5017,7 +5160,8 @@ fn announced_work_cmp(
 
 /// Compare announced header-chain length (equal-bits ≈ work) to our path
 /// from the same ancestor. `None` if the header walk does not reach our chain.
-fn header_branch_vs_tip(
+#[doc(hidden)]
+pub fn header_branch_vs_tip(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     start: BlockHash,
@@ -5052,7 +5196,8 @@ fn header_branch_vs_tip(
 
 /// Core: do not download/connect a peer's chain until its best-known work
 /// meets `-minimumchainwork` (`feature_minchainwork.py`).
-fn header_path_meets_minwork(
+#[doc(hidden)]
+pub fn header_path_meets_minwork(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -5069,7 +5214,8 @@ fn header_path_meets_minwork(
     work.to_be_bytes() >= min
 }
 
-fn any_header_path_meets_minwork(
+#[doc(hidden)]
+pub fn any_header_path_meets_minwork(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     extra_tip: BlockHash,
@@ -5082,7 +5228,8 @@ fn any_header_path_meets_minwork(
         .any(|h| *h != extra_tip && header_path_meets_minwork(hub, pending, *h))
 }
 
-fn work_of_header_path(
+#[doc(hidden)]
+pub fn work_of_header_path(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -5113,7 +5260,8 @@ fn work_of_header_path(
 /// Connecting header path from `tip` back to our chain, oldest first.
 /// Empty below `-minimumchainwork` or when the walk cannot join our chain.
 /// Includes a still-weaker competitor so stale-fork getdata can be dropped.
-fn connecting_header_path(
+#[doc(hidden)]
+pub fn connecting_header_path(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -5149,7 +5297,8 @@ fn connecting_header_path(
 
 /// Connecting header path from `tip` back to our chain, oldest first.
 /// Empty when the path is weaker than tip or below `-minimumchainwork`.
-fn better_connecting_header_path(
+#[doc(hidden)]
+pub fn better_connecting_header_path(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -5165,7 +5314,8 @@ fn better_connecting_header_path(
 
 /// Bodies on `tip`'s connecting header path that we may `getdata`.
 /// Weaker-than-tip and below `-minimumchainwork` stay header-only.
-fn fetchable_header_path_bodies(
+#[doc(hidden)]
+pub fn fetchable_header_path_bodies(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
     tip: BlockHash,
@@ -5184,7 +5334,8 @@ fn fetchable_header_path_bodies(
 
 /// Compact getdata is the next block (prev is our tip). Catch-up and competing
 /// forks use `MSG_WITNESS_BLOCK`.
-fn compact_getdata_near_tip(hub: &ChainHub, hash: &BlockHash) -> bool {
+#[doc(hidden)]
+pub fn compact_getdata_near_tip(hub: &ChainHub, hash: &BlockHash) -> bool {
     if hub.tip_hash() == Some(*hash) {
         return true;
     }
@@ -5195,7 +5346,8 @@ fn compact_getdata_near_tip(hub: &ChainHub, hash: &BlockHash) -> bool {
 /// Core CMPCTBLOCK: reconstruct unsolicited compact only when claimed work
 /// beats the tip and `nHeight <= tipHeight + 2`. The next block (prev is
 /// tip) is always near-tip even if the header is not yet in the work prefix.
-fn compact_unsolicited_reconstruct(hub: &ChainHub, header: &bitcoin::block::Header) -> bool {
+#[doc(hidden)]
+pub fn compact_unsolicited_reconstruct(hub: &ChainHub, header: &bitcoin::block::Header) -> bool {
     if hub.tip_hash() == Some(header.prev_blockhash) || hub.tip_hash() == Some(header.block_hash())
     {
         return true;
@@ -5215,7 +5367,8 @@ fn compact_unsolicited_reconstruct(hub: &ChainHub, header: &bitcoin::block::Head
     h <= tip_h.saturating_add(2)
 }
 
-fn compact_claimed_height(hub: &ChainHub, header: &bitcoin::block::Header) -> Option<u32> {
+#[doc(hidden)]
+pub fn compact_claimed_height(hub: &ChainHub, header: &bitcoin::block::Header) -> Option<u32> {
     let hash = header.block_hash();
     if let Some(h) = hub.header_height(&hash) {
         return Some(h);
@@ -5225,12 +5378,14 @@ fn compact_claimed_height(hub: &ChainHub, header: &bitcoin::block::Header) -> Op
 }
 
 /// Compact whose claimed chain work is below the 144-block anti-DoS buffer.
-fn compact_header_low_work(hub: &ChainHub, header: &bitcoin::block::Header) -> bool {
+#[doc(hidden)]
+pub fn compact_header_low_work(hub: &ChainHub, header: &bitcoin::block::Header) -> bool {
     hub.header_below_anti_dos(header)
 }
 
 /// Resend BIP133 feefilter when the published floor moved since the last send.
-fn maybe_queue_feefilter(
+#[doc(hidden)]
+pub fn maybe_queue_feefilter(
     hub: &ChainHub,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     session: &crate::peers::LivePeer,
@@ -5248,7 +5403,7 @@ fn maybe_queue_feefilter(
 
 /// BIP133 feefilter to send after handshake. None = do not send (blocksonly,
 /// forcerelay, block-relay-only). IBD still sends rounded MAX_MONEY.
-pub(crate) fn outbound_feefilter_sats(
+pub fn outbound_feefilter_sats(
     hub: &ChainHub,
     session: Option<&crate::peers::LivePeer>,
 ) -> Option<i64> {
@@ -5266,7 +5421,11 @@ pub(crate) fn outbound_feefilter_sats(
     Some(hub.feefilter_sat_kvb() as i64)
 }
 
-fn queue_out(out: &mpsc::UnboundedSender<PeerOut>, msg: NetworkMessage) -> Result<(), NetError> {
+#[doc(hidden)]
+pub fn queue_out(
+    out: &mpsc::UnboundedSender<PeerOut>,
+    msg: NetworkMessage,
+) -> Result<(), NetError> {
     queue_accounted(None, out, msg)
 }
 
@@ -5274,7 +5433,8 @@ fn queue_out(out: &mpsc::UnboundedSender<PeerOut>, msg: NetworkMessage) -> Resul
 ///
 /// The caller already owns the filtered inventories. Chunking does not clone
 /// the live wtxid set and does not hold the mempool lock across the send.
-fn queue_tx_inv_batches(
+#[doc(hidden)]
+pub fn queue_tx_inv_batches(
     session: &crate::peers::LivePeer,
     out_tx: &mpsc::UnboundedSender<PeerOut>,
     inv: Vec<Inventory>,
@@ -5284,7 +5444,8 @@ fn queue_tx_inv_batches(
     }
 }
 
-fn queue_accounted(
+#[doc(hidden)]
+pub fn queue_accounted(
     session: Option<&crate::peers::LivePeer>,
     out: &mpsc::UnboundedSender<PeerOut>,
     msg: NetworkMessage,
@@ -5292,7 +5453,8 @@ fn queue_accounted(
     queue_charged(session, out, PeerOut::Msg(msg))
 }
 
-fn queue_charged(
+#[doc(hidden)]
+pub fn queue_charged(
     session: Option<&crate::peers::LivePeer>,
     out: &mpsc::UnboundedSender<PeerOut>,
     item: PeerOut,
@@ -5309,7 +5471,8 @@ fn queue_charged(
 /// Queue a getdata body ([`PeerOut::holds_serve_slot`]) and count it on
 /// `serve_inflight`. [`crate::peers::LivePeer::has_serve_room`] already
 /// held the getdata until the cap had room.
-fn queue_served(
+#[doc(hidden)]
+pub fn queue_served(
     session: Option<&crate::peers::LivePeer>,
     out: &mpsc::UnboundedSender<PeerOut>,
     item: PeerOut,
@@ -5323,14 +5486,18 @@ fn queue_served(
 
 /// BIP152 high-bandwidth tip announce. Takes no `serve_inflight` slot
 /// (that cap is reconstruct getdata), and the writer frees none for it.
-fn queue_cmpct_tip_announce(
+#[doc(hidden)]
+pub fn queue_cmpct_tip_announce(
     out: &mpsc::UnboundedSender<PeerOut>,
     msg: NetworkMessage,
 ) -> Result<(), NetError> {
     queue_out(out, msg)
 }
 
-fn pending_header_leaves(pending: &HashMap<BlockHash, bitcoin::block::Header>) -> Vec<BlockHash> {
+#[doc(hidden)]
+pub fn pending_header_leaves(
+    pending: &HashMap<BlockHash, bitcoin::block::Header>,
+) -> Vec<BlockHash> {
     let prevs: HashSet<BlockHash> = pending.values().map(|h| h.prev_blockhash).collect();
     pending
         .keys()
@@ -5339,7 +5506,8 @@ fn pending_header_leaves(pending: &HashMap<BlockHash, bitcoin::block::Header>) -
         .collect()
 }
 
-fn keep_pending_connecting_paths(
+#[doc(hidden)]
+pub fn keep_pending_connecting_paths(
     hub: &ChainHub,
     pending: &HashMap<BlockHash, bitcoin::block::Header>,
 ) -> Vec<BlockHash> {
@@ -5354,7 +5522,12 @@ fn keep_pending_connecting_paths(
     keep
 }
 
-fn release_asks_off_path(hub: &ChainHub, requested: &mut HashSet<BlockHash>, path: &[BlockHash]) {
+#[doc(hidden)]
+pub fn release_asks_off_path(
+    hub: &ChainHub,
+    requested: &mut HashSet<BlockHash>,
+    path: &[BlockHash],
+) {
     if path.is_empty() {
         return;
     }
@@ -5369,7 +5542,7 @@ fn release_asks_off_path(hub: &ChainHub, requested: &mut HashSet<BlockHash>, pat
 }
 
 /// Try to accept pending blocks that connect to tip or form a better branch.
-async fn drain_pending(
+pub async fn drain_pending(
     hub: &ChainHub,
     out: &mpsc::UnboundedSender<PeerOut>,
     pending_blocks: &mut PendingBlocks,
@@ -5453,7 +5626,7 @@ pub fn drain_pending_now(
 
 /// Feed complete pending bodies into the hub receive path. Pending is a
 /// download window, not a second most-work assembler.
-async fn drain_pending_once(
+pub async fn drain_pending_once(
     hub: &ChainHub,
     pending_blocks: &mut PendingBlocks,
     pending_headers: &mut HashMap<BlockHash, bitcoin::block::Header>,
@@ -5501,7 +5674,7 @@ async fn drain_pending_once(
 }
 
 /// Inbound `getheaders` reply. Empty while tip work is below `-minimumchainwork`.
-pub(crate) fn headers_reply_for_getheaders(
+pub fn headers_reply_for_getheaders(
     hub: &ChainHub,
     gh: &bitcoin::p2p::message_blockdata::GetHeadersMessage,
 ) -> Result<Vec<bitcoin::block::Header>, NetError> {
@@ -5533,7 +5706,8 @@ pub(crate) fn headers_reply_for_getheaders(
     headers_for_peer(hub.cache.as_ref(), hub.query.as_ref(), gh)
 }
 
-fn headers_for_peer(
+#[doc(hidden)]
+pub fn headers_for_peer(
     cache: &BlockCache,
     query: &Query,
     gh: &bitcoin::p2p::message_blockdata::GetHeadersMessage,
@@ -5545,7 +5719,8 @@ fn headers_for_peer(
     }
 }
 
-fn tx_from_tip_block(hub: &ChainHub, wtxid: &bitcoin::Wtxid) -> Option<Transaction> {
+#[doc(hidden)]
+pub fn tx_from_tip_block(hub: &ChainHub, wtxid: &bitcoin::Wtxid) -> Option<Transaction> {
     let hash = hub.tip_hash()?;
     let block = block_for_peer(hub.cache.as_ref(), hub.query.as_ref(), &hash)
         .ok()
@@ -5556,7 +5731,8 @@ fn tx_from_tip_block(hub: &ChainHub, wtxid: &bitcoin::Wtxid) -> Option<Transacti
         .find(|tx| tx.compute_wtxid() == *wtxid)
 }
 
-fn block_for_peer(
+#[doc(hidden)]
+pub fn block_for_peer(
     cache: &BlockCache,
     query: &Query,
     hash: &BlockHash,
@@ -5571,7 +5747,8 @@ fn block_for_peer(
     }
 }
 
-fn payload_tx_count(payload: &[u8]) -> u32 {
+#[doc(hidden)]
+pub fn payload_tx_count(payload: &[u8]) -> u32 {
     use bitcoin::consensus::Decodable;
     if payload.len() < 81 {
         return 0;
@@ -5581,7 +5758,8 @@ fn payload_tx_count(payload: &[u8]) -> u32 {
         .unwrap_or(0)
 }
 
-fn encode_served_witness_block(
+#[doc(hidden)]
+pub fn encode_served_witness_block(
     cache: &BlockCache,
     query: &Query,
     hash: &BlockHash,
@@ -5609,7 +5787,3 @@ fn encode_served_witness_block(
         Err(e) => Err(NetError::Consensus(e.to_string())),
     }
 }
-
-#[cfg(test)]
-#[path = "peer_tests.rs"]
-mod tests;

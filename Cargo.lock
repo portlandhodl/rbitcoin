@@ -910,7 +910,6 @@ dependencies = [
  "bitcoin_hashes 0.14.101",
  "mutants",
  "rbitcoin-primitives",
- "rbitcoin-store",
  "ruzstd",
  "serde_json",
 ]
@@ -953,6 +952,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbitcoin-ibd"
+version = "0.8.99"
+dependencies = [
+ "bitcoin",
+ "libc",
+ "rbitcoin-consensus",
+ "rbitcoin-log",
+ "rbitcoin-net",
+ "rbitcoin-primitives",
+ "rbitcoin-query",
+ "rbitcoin-store",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rbitcoin-log"
 version = "0.8.99"
 
@@ -977,12 +993,12 @@ dependencies = [
  "getrandom 0.4.3",
  "libc",
  "rbitcoin-consensus",
+ "rbitcoin-ibd",
  "rbitcoin-log",
  "rbitcoin-mempool",
  "rbitcoin-primitives",
  "rbitcoin-query",
  "rbitcoin-store",
- "serde",
  "serde_json",
  "sha3",
  "tokio",
@@ -1001,6 +1017,7 @@ dependencies = [
  "rbitcoin-consensus",
  "rbitcoin-electrum",
  "rbitcoin-esplora",
+ "rbitcoin-ibd",
  "rbitcoin-log",
  "rbitcoin-mempool",
  "rbitcoin-net",
@@ -1049,7 +1066,6 @@ dependencies = [
  "rbitcoin-primitives",
  "rbitcoin-query",
  "rbitcoin-store",
- "rbitcoin-test",
  "serde",
  "serde_json",
  "tokio",
@@ -1096,6 +1112,7 @@ dependencies = [
  "rbitcoin-consensus",
  "rbitcoin-electrum",
  "rbitcoin-esplora",
+ "rbitcoin-ibd",
  "rbitcoin-log",
  "rbitcoin-net",
  "rbitcoin-node",

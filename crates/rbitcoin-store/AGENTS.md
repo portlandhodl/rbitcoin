@@ -26,4 +26,4 @@ Open the row that matches the change. Leave the other owners closed.
 
 ## Verify
 
-`cargo test -p rbitcoin-store --lib`
+`cargo test -p rbitcoin-store --test suite`

@@ -7,6 +7,7 @@ rust-version.workspace = true
 repository.workspace = true
 description = "High-level functional and integration tests for rbitcoin"
 publish = false
+autotests = false
 
 [dependencies]
 rbitcoin-primitives = { workspace = true }
@@ -14,6 +15,7 @@ rbitcoin-store = { workspace = true }
 rbitcoin-query = { workspace = true }
 rbitcoin-consensus = { workspace = true }
 rbitcoin-net = { workspace = true }
+rbitcoin-ibd = { workspace = true }
 rbitcoin-rpc = { workspace = true }
 rbitcoin-electrum = { workspace = true }
 rbitcoin-esplora = { workspace = true }
@@ -27,41 +29,9 @@ serde_json = { workspace = true }
 binary_sv2 = { workspace = true }
 template_distribution_sv2 = { workspace = true }
 
-[dev-dependencies]
-# Tip-flush journeys hold or fail the IBD flush thread. Dependents do not.
-rbitcoin-query = { workspace = true, features = ["test-hooks"] }
-
 [[test]]
-name = "scenarios"
-path = "tests/scenarios.rs"
-
-[[test]]
-name = "integration_multinode"
-path = "tests/integration_multinode.rs"
-
-[[test]]
-name = "electrum_protocol"
-path = "tests/electrum_protocol.rs"
-
-[[test]]
-name = "consensus_rules"
-path = "tests/consensus_rules.rs"
-
-[[test]]
-name = "core_analogs"
-path = "tests/core_analogs.rs"
-
-[[test]]
-name = "cross_surface"
-path = "tests/cross_surface.rs"
-
-[[test]]
-name = "end_of_ibd"
-path = "tests/end_of_ibd.rs"
-
-[[test]]
-name = "asmap_journey"
-path = "tests/asmap_journey.rs"
+name = "suite"
+path = "tests/suite.rs"
 
 [features]
 mutants = []

@@ -1,0 +1,62 @@
+use bitcoin::script::Script;
+use bitcoin::Transaction;
+use rbitcoin_consensus::block::ScriptCheckJob;
+use rbitcoin_consensus::error::ConsensusError;
+use rbitcoin_consensus::script::crypto;
+use rbitcoin_consensus::script::interpreter::{self, EvalContext, SigVersion};
+use rbitcoin_consensus::script::p2wsh::*;
+
+use bitcoin::absolute::LockTime;
+use bitcoin::script::ScriptBuf;
+use bitcoin::{Amount, OutPoint, Sequence, TxIn, TxOut, Witness};
+
+#[test]
+fn empty_witness_and_hash_mismatch() {
+    let mut spk = vec![0x00, 0x20];
+    spk.extend([0u8; 32]);
+    let job = ScriptCheckJob {
+        txid: [0u8; 32],
+        prevouts: rbitcoin_consensus::block::JobPrevouts::owned(vec![TxOut {
+            value: Amount::from_sat(10),
+            script_pubkey: ScriptBuf::from_bytes(spk),
+        }]),
+        tx: rbitcoin_consensus::block::JobTx::owned(Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: ScriptBuf::new(),
+                sequence: Sequence::MAX,
+                witness: Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(1),
+                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
+            }],
+        }),
+        flags: rbitcoin_consensus::block::ScriptVerifyFlags {
+            bip65_active: true,
+            bip112_active: true,
+            bip66_active: true,
+            bip16_active: true,
+            taproot_active: true,
+            minimal_if: false,
+            nullfail: false,
+            low_s: false,
+            strictenc: false,
+            null_dummy: false,
+            minimal_data: false,
+            witness_pubkeytype: false,
+            witness_active: true,
+            discourage_upgradable_witness: false,
+            const_scriptcode: false,
+            cleanstack: false,
+        },
+        pre: std::sync::OnceLock::new(),
+    };
+    assert!(verify(&job, 0, &job.tx).is_err());
+
+    let mut job2 = job;
+    job2.tx.input[0].witness = Witness::from_slice(&[vec![0x51]]); // OP_TRUE script
+    assert!(verify_with_scripthash(&job2, 0, &job2.tx, &[0u8; 32]).is_err());
+}

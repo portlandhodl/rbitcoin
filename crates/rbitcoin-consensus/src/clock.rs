@@ -7,10 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Seconds since epoch. `mock == 0` means wall clock.
 #[derive(Debug)]
 pub struct NodeClock {
-    mock: AtomicI64,
+    pub mock: AtomicI64,
     /// First outbound dial, on this clock. `0` means no dial yet.
     /// A later [`Self::set_mock`] does not move it.
-    attempt_at: AtomicU64,
+    pub attempt_at: AtomicU64,
 }
 
 impl NodeClock {
@@ -62,7 +62,8 @@ pub fn wall_now() -> u64 {
     unix_secs(SystemTime::now())
 }
 
-fn unix_secs(now: SystemTime) -> u64 {
+#[doc(hidden)]
+pub fn unix_secs(now: SystemTime) -> u64 {
     now.duration_since(UNIX_EPOCH)
         .expect("system clock before Unix epoch")
         .as_secs()
@@ -84,49 +85,4 @@ pub fn with_now<T>(now: u64, f: impl FnOnce() -> T) -> T {
 
 pub fn current_now() -> u64 {
     NOW_OVERRIDE.with(|c| c.get()).unwrap_or_else(wall_now)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mock_then_wall() {
-        let c = NodeClock::new();
-        c.set_mock(1_700_000_000);
-        assert_eq!(c.now_secs(), 1_700_000_000);
-        c.set_mock(0);
-        assert!(c.now_secs() >= 1_700_000_000 || c.now_secs() > 1_600_000_000);
-    }
-
-    #[test]
-    fn with_now_scopes() {
-        assert!(current_now() > 0);
-        with_now(42, || assert_eq!(current_now(), 42));
-        assert_ne!(current_now(), 42);
-    }
-
-    #[test]
-    fn with_frozen_pins_clock_sample_then_restores_prior() {
-        let c = NodeClock::new();
-        c.set_mock(2_000_000_000);
-        with_now(42, || {
-            c.with_frozen(|| assert_eq!(current_now(), 2_000_000_000));
-            assert_eq!(current_now(), 42);
-        });
-    }
-
-    #[test]
-    fn connection_attempt_stays_put_when_mock_time_jumps() {
-        let c = NodeClock::new();
-        assert_eq!(c.connection_attempt_at(), 0);
-        c.note_connection_attempt();
-        let started = c.connection_attempt_at();
-        assert!(started > 0);
-        c.set_mock((started + 11) as i64);
-        assert_eq!(c.connection_attempt_at(), started);
-        assert!(c.now_secs() >= started + 11);
-        c.note_connection_attempt();
-        assert_eq!(c.connection_attempt_at(), started);
-    }
 }

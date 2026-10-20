@@ -10,7 +10,8 @@ use bitcoin::{
 };
 use rbitcoin_consensus::{next_work_bits, ChainParams, Milestone};
 use rbitcoin_electrum::electrum_scripthash_hex;
-use rbitcoin_net::{IbdConfig, NetAddr, P2PNode};
+use rbitcoin_ibd::IbdConfig;
+use rbitcoin_net::{NetAddr, P2PNode};
 use rbitcoin_node::{run_p2p, NodeConfig};
 use rbitcoin_primitives::{Fk, Height, Network};
 use rbitcoin_query::Query;
@@ -333,7 +334,7 @@ async fn stop_ibd_below_tip(dir: &Path, miner: SocketAddr, miner_tip: u32) -> u3
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&cancel);
         let peers = [NetAddr::Ip(miner)];
-        let sync = node.sync_cancellable(&peers, IbdConfig::for_test(), Some(flag));
+        let sync = rbitcoin_ibd::sync_cancellable(&node, &peers, IbdConfig::for_test(), Some(flag));
         tokio::pin!(sync);
         let mut saw_mid = false;
         let joined = loop {
@@ -551,7 +552,7 @@ async fn crash_with_class_a_above_tip(miner: &P2PNode, synced: &mut Synced) {
         .await
         .expect("crash syncer");
     let peers = [NetAddr::Ip(miner.local_addr)];
-    node.sync(&peers, IbdConfig::for_test())
+    rbitcoin_ibd::sync(&node, &peers, IbdConfig::for_test())
         .await
         .expect("crash syncer ibd");
     node.shutdown().await;
@@ -978,7 +979,8 @@ async fn sync_heavy(
     hash: BlockHash,
 ) {
     let node = start_node(dir, params).await;
-    node.sync(
+    rbitcoin_ibd::sync(
+        &node,
         &[NetAddr::Ip(peers[0]), NetAddr::Ip(peers[1])],
         IbdConfig::for_test(),
     )

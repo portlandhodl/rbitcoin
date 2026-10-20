@@ -16,34 +16,39 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 
-static GLOBAL_POOL: OnceLock<Arc<SharedPool>> = OnceLock::new();
+#[doc(hidden)]
+pub static GLOBAL_POOL: OnceLock<Arc<SharedPool>> = OnceLock::new();
 
-struct Job {
-    handle: IoHandle,
-    offset: u64,
-    ptr: *mut u8,
-    len: usize,
-    user_data: u64,
-    write: bool,
-    cq: Arc<SessionCq>,
+#[doc(hidden)]
+pub struct Job {
+    pub handle: IoHandle,
+    pub offset: u64,
+    pub ptr: *mut u8,
+    pub len: usize,
+    pub user_data: u64,
+    pub write: bool,
+    pub cq: Arc<SessionCq>,
 }
 
 // SAFETY: the machine thread keeps `ptr` live until the matching CQE is harvested.
 unsafe impl Send for Job {}
 
-struct SessionCq {
-    cqes: Mutex<VecDeque<(u64, i32)>>,
-    cqe_cv: Condvar,
-    inflight: AtomicUsize,
+#[doc(hidden)]
+pub struct SessionCq {
+    pub cqes: Mutex<VecDeque<(u64, i32)>>,
+    pub cqe_cv: Condvar,
+    pub inflight: AtomicUsize,
 }
 
-struct SharedPool {
-    jobs: Mutex<VecDeque<Job>>,
-    job_cv: Condvar,
-    shutdown: AtomicBool,
+#[doc(hidden)]
+pub struct SharedPool {
+    pub jobs: Mutex<VecDeque<Job>>,
+    pub job_cv: Condvar,
+    pub shutdown: AtomicBool,
 }
 
-fn global_pool(n_workers: usize) -> Arc<SharedPool> {
+#[doc(hidden)]
+pub fn global_pool(n_workers: usize) -> Arc<SharedPool> {
     GLOBAL_POOL
         .get_or_init(|| {
             let n = n_workers.clamp(1, 16);
@@ -64,13 +69,13 @@ fn global_pool(n_workers: usize) -> Arc<SharedPool> {
         .clone()
 }
 
-pub(crate) struct PoolEngine {
-    pool: Arc<SharedPool>,
-    cq: Arc<SessionCq>,
+pub struct PoolEngine {
+    pub pool: Arc<SharedPool>,
+    pub cq: Arc<SessionCq>,
 }
 
 impl PoolEngine {
-    pub(crate) fn open(n_workers: usize) -> Self {
+    pub fn open(n_workers: usize) -> Self {
         Self {
             pool: global_pool(n_workers),
             cq: Arc::new(SessionCq {
@@ -81,11 +86,11 @@ impl PoolEngine {
         }
     }
 
-    pub(crate) fn inflight(&self) -> usize {
+    pub fn inflight(&self) -> usize {
         self.cq.inflight.load(Ordering::Acquire)
     }
 
-    pub(crate) fn push_pread(
+    pub fn push_pread(
         &self,
         handle: IoHandle,
         offset: u64,
@@ -102,7 +107,7 @@ impl PoolEngine {
         )
     }
 
-    pub(crate) fn push_pwrite(
+    pub fn push_pwrite(
         &self,
         handle: IoHandle,
         offset: u64,
@@ -119,7 +124,8 @@ impl PoolEngine {
         )
     }
 
-    fn push(
+    #[doc(hidden)]
+    pub fn push(
         &self,
         handle: IoHandle,
         offset: u64,
@@ -148,14 +154,14 @@ impl PoolEngine {
         Ok(())
     }
 
-    pub(crate) fn harvest_ready(&self) -> Vec<(u64, i32)> {
+    pub fn harvest_ready(&self) -> Vec<(u64, i32)> {
         let mut q = self.cq.cqes.lock().unwrap_or_else(|e| e.into_inner());
         q.drain(..).collect()
     }
 
     /// Wait until a CQE is ready or `timeout`. Returns false on timeout with
     /// nothing in the CQ (lost SQE / phantom pending).
-    pub(crate) fn wait_one_cqe_timeout(&self, timeout: std::time::Duration) -> bool {
+    pub fn wait_one_cqe_timeout(&self, timeout: std::time::Duration) -> bool {
         let mut q = self.cq.cqes.lock().unwrap_or_else(|e| e.into_inner());
         if !q.is_empty() {
             return true;
@@ -183,7 +189,8 @@ impl PoolEngine {
     }
 }
 
-fn worker_loop(shared: Arc<SharedPool>) {
+#[doc(hidden)]
+pub fn worker_loop(shared: Arc<SharedPool>) {
     loop {
         if shared.shutdown.load(Ordering::Acquire) {
             return;

@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock};
 
 /// Packed dirty generation: `0` is clean. `set` bumps; flush CASes back to `0`.
-pub(crate) fn dirty_epoch_bump(epoch: &AtomicU64) {
+pub fn dirty_epoch_bump(epoch: &AtomicU64) {
     let _ = epoch.fetch_update(Ordering::Release, Ordering::Relaxed, |e| {
         Some(e.wrapping_add(1).max(1))
     });
@@ -36,7 +36,7 @@ pub(crate) fn dirty_epoch_bump(epoch: &AtomicU64) {
 /// Mark clean after a persist that sampled generation `e0`. `lo` resets
 /// first: a `set` that lands here bumps the generation, the clean fails, and
 /// its index survives for the next flush.
-pub(crate) fn dirty_try_clean(epoch: &AtomicU64, lo: &AtomicU64, e0: u64, between: impl FnOnce()) {
+pub fn dirty_try_clean(epoch: &AtomicU64, lo: &AtomicU64, e0: u64, between: impl FnOnce()) {
     let prev = lo.swap(u64::MAX, Ordering::AcqRel);
     between();
     if epoch
@@ -47,12 +47,14 @@ pub(crate) fn dirty_try_clean(epoch: &AtomicU64, lo: &AtomicU64, e0: u64, betwee
     }
 }
 
-const ELEM: u64 = 8;
+#[doc(hidden)]
+pub const ELEM: u64 = 8;
 
 /// Where a flush calls its test hook: after the snapshot, before the write;
 /// or inside the clean step.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FlushStep {
+#[doc(hidden)]
+pub enum FlushStep {
     Write,
     Clean,
 }
@@ -74,18 +76,18 @@ pub fn class_c_inram_max_bytes() -> u64 {
 }
 
 pub struct ArrayTable {
-    file: TableFile,
-    len: AtomicU64,
+    pub file: TableFile,
+    pub len: AtomicU64,
     /// `Some` = L2 authoritative image; `None` = L0 fd-only path.
-    data: RwLock<Option<Vec<u64>>>,
+    pub data: RwLock<Option<Vec<u64>>>,
     /// `0` = clean. Nonzero generation: a `set` raced persist if CAS fails.
-    dirty_epoch: AtomicU64,
+    pub dirty_epoch: AtomicU64,
     /// Min index mutated since last flush (`u64::MAX` = none).
-    dirty_lo: AtomicU64,
+    pub dirty_lo: AtomicU64,
     /// Element count last successfully flushed to disk (L2).
-    disk_len: AtomicU64,
+    pub disk_len: AtomicU64,
     /// One flusher at a time: a second snapshot never lands under an older one.
-    flush_lock: Mutex<()>,
+    pub flush_lock: Mutex<()>,
 }
 
 impl ArrayTable {
@@ -137,11 +139,13 @@ impl ArrayTable {
         self.len.load(Ordering::Acquire)
     }
 
-    fn offset(index: u64) -> u64 {
+    #[doc(hidden)]
+    pub fn offset(index: u64) -> u64 {
         FILE_HEADER_LEN as u64 + index * ELEM
     }
 
-    fn mark_dirty_index(&self, index: u64) {
+    #[doc(hidden)]
+    pub fn mark_dirty_index(&self, index: u64) {
         dirty_epoch_bump(&self.dirty_epoch);
         let mut cur = self.dirty_lo.load(Ordering::Relaxed);
         while index < cur {
@@ -275,7 +279,8 @@ impl ArrayTable {
             .unwrap_or(0)
     }
 
-    fn note_flush_clean(&self, e0: u64, between: &mut impl FnMut(&Self, FlushStep)) {
+    #[doc(hidden)]
+    pub fn note_flush_clean(&self, e0: u64, between: &mut impl FnMut(&Self, FlushStep)) {
         dirty_try_clean(&self.dirty_epoch, &self.dirty_lo, e0, || {
             between(self, FlushStep::Clean)
         });
@@ -285,7 +290,8 @@ impl ArrayTable {
         self.flush_dirty_between(|_, _| {})
     }
 
-    fn flush_dirty_between(
+    #[doc(hidden)]
+    pub fn flush_dirty_between(
         &self,
         mut between: impl FnMut(&Self, FlushStep),
     ) -> Result<(), StoreError> {
@@ -363,327 +369,5 @@ impl ArrayTable {
     pub fn flush_async(&self) -> Result<(), StoreError> {
         self.flush_dirty()?;
         self.file.flush_async()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rbitcoin_primitives::TableKind;
-
-    fn tmp_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "rbitcoin-array-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
-    }
-
-    /// `get` checks `len` before taking the read lock, so a `truncate` can
-    /// land in between. The reader must see the shorter table, not panic.
-    #[test]
-    fn get_racing_truncate_does_not_panic() {
-        use std::sync::atomic::AtomicBool;
-        use std::sync::Arc;
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        let t = Arc::new(ArrayTable::create(&path, TableKind::Confirmed).unwrap());
-        t.set(1023, 7).unwrap();
-        assert!(t.l2_resident_bytes() > 0, "test needs the in-RAM image");
-        let stop = Arc::new(AtomicBool::new(false));
-        let readers: Vec<_> = (0..4)
-            .map(|_| {
-                let (t, stop) = (Arc::clone(&t), Arc::clone(&stop));
-                std::thread::spawn(move || {
-                    while !stop.load(Ordering::Relaxed) {
-                        let v = t.get(1023).unwrap();
-                        assert!(v == 0 || v == 7, "torn read {v}");
-                    }
-                })
-            })
-            .collect();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
-        while std::time::Instant::now() < deadline {
-            t.truncate(0).unwrap();
-            t.set(1023, 7).unwrap();
-        }
-        stop.store(true, Ordering::Relaxed);
-        for r in readers {
-            assert!(r.join().is_ok(), "get panicked racing truncate");
-        }
-        let _ = std::fs::remove_file(&path);
-    }
-
-    /// A `set` that lands while flush marks the table clean is written by
-    /// the next flush. The IBD tip flush runs beside the next batch's archive.
-    #[test]
-    fn set_during_flush_clean_is_flushed_next() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        let t = ArrayTable::create(&path, TableKind::ArrayLink).unwrap();
-        t.set_many(&[(0, 10), (1, 11), (2, 12), (3, 13)]).unwrap();
-        t.flush().unwrap();
-        t.set(3, 23).unwrap();
-        t.flush_dirty_between(|t, step| {
-            if step == FlushStep::Clean {
-                t.set(1, 21).unwrap();
-            }
-        })
-        .unwrap();
-        t.flush().unwrap();
-        drop(t);
-        let t = ArrayTable::open(&path, TableKind::ArrayLink).unwrap();
-        assert_eq!((t.get(1).unwrap(), t.get(3).unwrap()), (21, 23));
-        let _ = std::fs::remove_file(&path);
-    }
-
-    /// Two flushes of one table never leave the older image on disk. A body
-    /// repair flushes `header_txs` beside the IBD tip flush.
-    #[test]
-    fn concurrent_flushes_keep_the_newer_image() {
-        use std::sync::Arc;
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        let t = Arc::new(ArrayTable::create(&path, TableKind::ArrayLink).unwrap());
-        t.set_many(&[(0, 10), (1, 11)]).unwrap();
-        t.flush().unwrap();
-        t.set(0, 20).unwrap();
-        let (done, finished) = std::sync::mpsc::channel();
-        let mut other = Some(Arc::clone(&t));
-        let mut second = None;
-        t.flush_dirty_between(|_, step| {
-            let Some(t2) = other.take().filter(|_| step == FlushStep::Write) else {
-                return;
-            };
-            let done = done.clone();
-            second = Some(std::thread::spawn(move || {
-                t2.set(1, 21).unwrap();
-                t2.flush().unwrap();
-                done.send(()).unwrap();
-            }));
-            let _ = finished.recv_timeout(std::time::Duration::from_millis(200));
-        })
-        .unwrap();
-        second.unwrap().join().unwrap();
-        drop(t);
-        let t = ArrayTable::open(&path, TableKind::ArrayLink).unwrap();
-        assert_eq!((t.get(0).unwrap(), t.get(1).unwrap()), (20, 21));
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn dirty_epoch_bump_from_max_stays_dirty() {
-        let e = AtomicU64::new(u64::MAX);
-        dirty_epoch_bump(&e);
-        assert_ne!(e.load(Ordering::Acquire), 0);
-        assert_eq!(e.load(Ordering::Acquire), 1);
-    }
-
-    #[test]
-    fn array_set_get_grow_set_many_truncate_flush() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        let t = ArrayTable::create(&path, TableKind::Confirmed).unwrap();
-        assert_eq!(t.len(), 0);
-        assert_eq!(t.get(0).unwrap(), 0);
-        t.set(3, 30).unwrap();
-        assert_eq!(t.len(), 4);
-        assert_eq!(t.get(0).unwrap(), 0);
-        assert_eq!(t.get(3).unwrap(), 30);
-        t.set(1, 11).unwrap();
-        assert_eq!(t.get(1).unwrap(), 11);
-        t.set_many(&[]).unwrap();
-        t.set_many(&[(10, 100), (5, 50)]).unwrap();
-        assert_eq!(t.len(), 11);
-        assert_eq!(t.get(5).unwrap(), 50);
-        assert_eq!(t.get(10).unwrap(), 100);
-        t.flush().unwrap();
-        t.flush_async().unwrap();
-        drop(t);
-        let t = ArrayTable::open(&path, TableKind::Confirmed).unwrap();
-        assert_eq!(t.len(), 11);
-        assert_eq!(t.get(3).unwrap(), 30);
-        t.truncate(4).unwrap();
-        assert_eq!(t.len(), 4);
-        assert!(matches!(t.truncate(99), Err(StoreError::Corrupt(_))));
-        t.flush().unwrap();
-        {
-            let mut raw = std::fs::read(&path).unwrap();
-            let bad = (FILE_HEADER_LEN as u64 + 3).to_le_bytes();
-            raw[8..16].copy_from_slice(&bad);
-            std::fs::write(&path, &raw).unwrap();
-        }
-        assert!(matches!(
-            ArrayTable::open(&path, TableKind::Confirmed),
-            Err(StoreError::Corrupt(_))
-        ));
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn write_behind_no_flush_reopen_keeps_old_image() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        {
-            let t = ArrayTable::create(&path, TableKind::Confirmed).unwrap();
-            t.set_many(&[(0, 10), (1, 20)]).unwrap();
-            t.flush().unwrap();
-            t.set(0, 999).unwrap();
-            t.set(2, 30).unwrap();
-            assert_eq!(t.get(0).unwrap(), 999);
-            assert_eq!(t.len(), 3);
-        }
-        let t = ArrayTable::open(&path, TableKind::Confirmed).unwrap();
-        assert_eq!(t.len(), 2, "len must stay at last flushed image");
-        assert_eq!(t.get(0).unwrap(), 10);
-        assert_eq!(t.get(1).unwrap(), 20);
-        assert_eq!(t.get(2).unwrap(), 0);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn write_behind_flush_reopen_sees_new_image() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        {
-            let t = ArrayTable::create(&path, TableKind::Confirmed).unwrap();
-            t.set_many(&[(0, 1), (1, 2)]).unwrap();
-            t.flush().unwrap();
-            t.set_many(&[(0, 7), (1, 8), (2, 9)]).unwrap();
-            t.flush().unwrap();
-        }
-        let t = ArrayTable::open(&path, TableKind::Confirmed).unwrap();
-        assert_eq!(t.len(), 3);
-        assert_eq!(t.get(0).unwrap(), 7);
-        assert_eq!(t.get(1).unwrap(), 8);
-        assert_eq!(t.get(2).unwrap(), 9);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn write_behind_truncate_flush_reopen() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        {
-            let t = ArrayTable::create(&path, TableKind::Confirmed).unwrap();
-            t.set_many(&[(0, 1), (1, 2), (2, 3), (3, 4)]).unwrap();
-            t.flush().unwrap();
-            t.truncate(2).unwrap();
-            assert_eq!(t.len(), 2);
-            drop(t);
-            let t = ArrayTable::open(&path, TableKind::Confirmed).unwrap();
-            assert_eq!(t.len(), 4);
-            t.truncate(2).unwrap();
-            t.flush().unwrap();
-        }
-        let t = ArrayTable::open(&path, TableKind::Confirmed).unwrap();
-        assert_eq!(t.len(), 2);
-        assert_eq!(t.get(0).unwrap(), 1);
-        assert_eq!(t.get(1).unwrap(), 2);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    /// Tip extension is append-only: after first flush, only suffix is written.
-    #[test]
-    fn append_only_flush_extends_without_losing_prefix() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        {
-            let t = ArrayTable::create(&path, TableKind::Confirmed).unwrap();
-            t.set_many(&[(0, 100), (1, 101)]).unwrap();
-            t.flush().unwrap();
-            // Pure tip extension (dirty_lo = 2 >= disk_len = 2).
-            t.set(2, 102).unwrap();
-            t.flush().unwrap();
-        }
-        let t = ArrayTable::open(&path, TableKind::Confirmed).unwrap();
-        assert_eq!(t.len(), 3);
-        assert_eq!(t.get(0).unwrap(), 100);
-        assert_eq!(t.get(1).unwrap(), 101);
-        assert_eq!(t.get(2).unwrap(), 102);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn set_gap_zeros_prefix_and_env_cap_and_flush_async() {
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        let t = ArrayTable::create(&path, TableKind::Confirmed).unwrap();
-        // Gap set: index past len fills intermediate zeros.
-        t.set(3, 42).unwrap();
-        assert_eq!(t.len(), 4);
-        assert_eq!(t.get(0).unwrap(), 0);
-        assert_eq!(t.get(1).unwrap(), 0);
-        assert_eq!(t.get(2).unwrap(), 0);
-        assert_eq!(t.get(3).unwrap(), 42);
-        // set_many with gaps / rewrites.
-        t.set_many(&[(1, 11), (5, 55), (3, 33)]).unwrap();
-        assert_eq!(t.len(), 6);
-        assert_eq!(t.get(1).unwrap(), 11);
-        assert_eq!(t.get(3).unwrap(), 33);
-        assert_eq!(t.get(5).unwrap(), 55);
-        t.flush_async().unwrap();
-        t.flush_dirty().unwrap();
-        t.flush().unwrap();
-        // truncate to zero + reopen.
-        t.truncate(0).unwrap();
-        t.flush().unwrap();
-        assert_eq!(t.len(), 0);
-        drop(t);
-
-        // class_c_inram_max_bytes env parse paths.
-        let prev = std::env::var_os("RBITCOIN_CLASS_C_INRAM_MAX_MB");
-        std::env::remove_var("RBITCOIN_CLASS_C_INRAM_MAX_MB");
-        assert_eq!(class_c_inram_max_bytes(), DEFAULT_CLASS_C_INRAM_MAX_BYTES);
-        std::env::set_var("RBITCOIN_CLASS_C_INRAM_MAX_MB", "128");
-        assert_eq!(class_c_inram_max_bytes(), 128 * 1024 * 1024);
-        std::env::set_var("RBITCOIN_CLASS_C_INRAM_MAX_MB", "not-a-number");
-        assert_eq!(class_c_inram_max_bytes(), 256 * 1024 * 1024); // parse fallback
-        match prev {
-            Some(v) => std::env::set_var("RBITCOIN_CLASS_C_INRAM_MAX_MB", v),
-            None => std::env::remove_var("RBITCOIN_CLASS_C_INRAM_MAX_MB"),
-        }
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn concurrent_set_during_flush_persists_new() {
-        use std::sync::atomic::{AtomicBool, Ordering as AtomOrd};
-        use std::sync::Arc;
-        let path = tmp_path();
-        let _ = std::fs::remove_file(&path);
-        let t = Arc::new(ArrayTable::create(&path, TableKind::Confirmed).unwrap());
-        let n = 32_768u64;
-        let pairs: Vec<(u64, u64)> = (0..n).map(|i| (i, i)).collect();
-        t.set_many(&pairs).unwrap();
-        t.flush().unwrap();
-        let stop = Arc::new(AtomicBool::new(false));
-        let flush_t = {
-            let t = Arc::clone(&t);
-            let stop = Arc::clone(&stop);
-            std::thread::spawn(move || {
-                while !stop.load(AtomOrd::Relaxed) {
-                    t.flush_dirty().unwrap();
-                }
-            })
-        };
-        for i in 1..2_000u64 {
-            t.set(0, i).unwrap();
-        }
-        stop.store(true, AtomOrd::Relaxed);
-        flush_t.join().unwrap();
-        let want = t.get(0).unwrap();
-        t.flush().unwrap();
-        drop(t);
-        let t = ArrayTable::open(&path, TableKind::Confirmed).unwrap();
-        assert_eq!(
-            t.get(0).unwrap(),
-            want,
-            "set that races flush must still persist"
-        );
-        let _ = std::fs::remove_file(&path);
     }
 }

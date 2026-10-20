@@ -16,16 +16,17 @@ pub const DEFAULT_BODY_DEPTH: usize = 16;
 
 #[derive(Debug)]
 pub struct BlockCache {
-    inner: RwLock<Inner>,
+    pub inner: RwLock<Inner>,
     /// Max full bodies in `by_hash` (hashes in `chain` are always kept).
-    body_depth: usize,
+    pub body_depth: usize,
 }
 
 #[derive(Debug, Default)]
-struct Inner {
-    by_hash: HashMap<BlockHash, Block>,
+#[doc(hidden)]
+pub struct Inner {
+    pub by_hash: HashMap<BlockHash, Block>,
     /// Best-chain hashes by height (contiguous from 0).
-    chain: Vec<BlockHash>,
+    pub chain: Vec<BlockHash>,
 }
 
 impl Default for BlockCache {
@@ -63,7 +64,7 @@ impl BlockCache {
         self.inner.read().unwrap().chain.is_empty()
     }
 
-    pub(crate) fn stored_bodies(&self) -> usize {
+    pub fn stored_bodies(&self) -> usize {
         self.inner.read().unwrap().by_hash.len()
     }
 
@@ -176,15 +177,5 @@ impl BlockCache {
             }
         }
         out
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_body_depth_is_compact_serve_window() {
-        assert_eq!(DEFAULT_BODY_DEPTH, 16);
     }
 }

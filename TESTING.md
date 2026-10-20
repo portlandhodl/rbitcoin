@@ -178,10 +178,10 @@ absolute path. Keep default-tier fixtures small: on tmpfs, test bytes are RAM.
 
 | Package / binary (warm, order-of-magnitude) | Budget | Notes |
 |---------------------------------------------|-------:|-------|
-| `rbitcoin-store --lib` | **&lt;45 s** | Catalog-run fixtures stay tens of tiny files, not thousands |
-| `rbitcoin-consensus --lib` | **&lt;30 s** | Pure-result rule: [True journeys](#true-journeys). Mainnet 866342 (~1.6 s) is the historical prevout pin — one zstd decode, overweight on a clone. |
-| `rbitcoin-query --lib` | **&lt;20 s** | |
-| `rbitcoin-test --test scenarios` | **&lt;15 s** | Prefer `pad_empty_from` / shared mature helpers |
+| `rbitcoin-store --test suite` | **&lt;45 s** | Catalog-run fixtures stay tens of tiny files, not thousands. The suite links the normal rlib. |
+| `rbitcoin-consensus --test suite` | **&lt;30 s** | Pure-result rule: [True journeys](#true-journeys). Mainnet 866342 (~1.6 s) is the historical prevout pin — one zstd decode, overweight on a clone. |
+| `rbitcoin-query --test suite` | **&lt;20 s** | |
+| `rbitcoin-test --test suite scenarios::` | **&lt;15 s** | Prefer `pad_empty_from` / shared mature helpers |
 | **Full** `cargo test --workspace` | **≤3 min** warm | Stretch **&lt;2 min** |
 
 **New default-suite test rule:** if a new or expanded default test routinely takes **&gt;2 s wall** on a warm tree, the PR must **justify** it (what contract needs that cost, why a smaller N / unit cannot hit the branch). Prefer `#[ignore]` + reason string for true microbenches / host-only forensics.
@@ -209,8 +209,10 @@ absolute path. Keep default-tier fixtures small: on tmpfs, test bytes are RAM.
 Test modules (`*_tests.rs`, `/tests/`, `testutil.rs`, crate `rbitcoin-test`)
 are omitted from `LH`/`LF`. Those tests still run. A journey that executes
 a production line already counts that line, so a second in-crate `#[test]`
-is not required to make LCOV see it. `#[cfg(test)]` arms inside production
-files still count. llvm-cov hit counts jitter tens of lines on the same
+is not required to make LCOV see it. Library tests live in each crate's
+`tests/suite` and link the normal rlib, so a `#[cfg(test)]` arm in `src/`
+is no longer how those tests compile. `#[cfg(debug_assertions)]` hooks in
+production files still count. llvm-cov hit counts jitter tens of lines on the same
 tree; the floor is the gate, not a never-falls ratchet vs master.
 
 The README badge and rbitcoin.org figure are the last **green `master`**

@@ -1,51 +1,55 @@
 //! Header navigation, locators, height lookup, confirmed-read pin.
 
 use super::*;
-#[cfg(test)]
+#[cfg(debug_assertions)]
 use std::cell::Cell;
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 thread_local! {
     static HEIGHT_INDEX_LOCK_HELD: Cell<bool> = const { Cell::new(false) };
     static INDEX_IO_UNDER_LOCK: Cell<u64> = const { Cell::new(0) };
 }
 
-#[cfg(test)]
-pub(crate) fn reset_index_io_under_lock() {
+#[cfg(debug_assertions)]
+pub fn reset_index_io_under_lock() {
     INDEX_IO_UNDER_LOCK.with(|slot| slot.set(0));
 }
 
-#[cfg(test)]
-pub(crate) fn index_io_under_lock() -> u64 {
+#[cfg(debug_assertions)]
+pub fn index_io_under_lock() -> u64 {
     INDEX_IO_UNDER_LOCK.with(|slot| slot.get())
 }
 
-#[cfg(test)]
-struct IndexLockFlag;
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub struct IndexLockFlag;
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 impl IndexLockFlag {
-    fn enter() -> Self {
+    #[doc(hidden)]
+    pub fn enter() -> Self {
         HEIGHT_INDEX_LOCK_HELD.with(|held| held.set(true));
         Self
     }
 }
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 impl Drop for IndexLockFlag {
     fn drop(&mut self) {
         HEIGHT_INDEX_LOCK_HELD.with(|held| held.set(false));
     }
 }
 
-enum HeightIndexPlan {
+#[doc(hidden)]
+pub enum HeightIndexPlan {
     Current,
     Shrink { prev: u32 },
     Extend { prev: Option<u32> },
 }
 
-#[cfg(test)]
-fn note_header_io_under_index_lock() {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn note_header_io_under_index_lock() {
     if HEIGHT_INDEX_LOCK_HELD.with(|held| held.get()) {
         INDEX_IO_UNDER_LOCK.with(|slot| slot.set(slot.get().saturating_add(1)));
     }
@@ -61,7 +65,7 @@ pub fn header_lookup_count() -> u64 {
     HEADER_LOOKUP_N.with(|c| c.get())
 }
 
-pub(crate) fn note_header_lookup() {
+pub fn note_header_lookup() {
     HEADER_LOOKUP_N.with(|c| c.set(c.get().saturating_add(1)));
 }
 
@@ -213,16 +217,16 @@ impl Query {
 
 /// Confirmed header hash at the BIP34 height, remembered for this process.
 #[derive(Clone, Copy)]
-pub(crate) struct Bip34AncestorNote {
-    height: u32,
-    hash: Option<bitcoin::BlockHash>,
+pub struct Bip34AncestorNote {
+    pub height: u32,
+    pub hash: Option<bitcoin::BlockHash>,
 }
 
 impl Query {
     /// Header at `height` on the confirmed chain. The first call reads the
     /// store. Later calls reuse that hash until the block at `height` is
     /// disconnected. A read error is not remembered.
-    pub(crate) fn confirmed_bip34_ancestor(&self, height: u32) -> Option<bitcoin::BlockHash> {
+    pub fn confirmed_bip34_ancestor(&self, height: u32) -> Option<bitcoin::BlockHash> {
         if let Some(note) = *self.bip34_ancestor.lock().expect("bip34 ancestor") {
             return note.hash;
         }
@@ -234,22 +238,22 @@ impl Query {
         found
     }
 
-    pub(crate) fn remember_bip34_ancestor(&self, height: u32, hash: Option<bitcoin::BlockHash>) {
+    pub fn remember_bip34_ancestor(&self, height: u32, hash: Option<bitcoin::BlockHash>) {
         *self.bip34_ancestor.lock().expect("bip34 ancestor") =
             Some(Bip34AncestorNote { height, hash });
     }
 
     /// Drop the remembered header when `disconnected` is that block or below it.
     /// A reorg above it leaves the ancestor in place.
-    pub(crate) fn forget_bip34_ancestor_if_reorged(&self, disconnected: u32) {
+    pub fn forget_bip34_ancestor_if_reorged(&self, disconnected: u32) {
         let mut slot = self.bip34_ancestor.lock().expect("bip34 ancestor");
         if slot.is_some_and(|note| disconnected <= note.height) {
             *slot = None;
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn clear_bip34_ancestor(&self) {
+    #[cfg(debug_assertions)]
+    pub fn clear_bip34_ancestor(&self) {
         *self.bip34_ancestor.lock().expect("bip34 ancestor") = None;
     }
 }
@@ -260,7 +264,7 @@ impl Query {
         height: Height,
     ) -> Result<Option<(Fk, HeaderRecord)>, QueryError> {
         // One-shot armed by tests. The IBD stop flag must not fail later reads.
-        #[cfg(feature = "test-hooks")]
+        #[cfg(debug_assertions)]
         if self
             .header_read_cancel
             .swap(false, std::sync::atomic::Ordering::SeqCst)
@@ -268,7 +272,7 @@ impl Query {
             return Err(StoreError::Cancelled("header read"));
         }
         note_header_lookup();
-        #[cfg(test)]
+        #[cfg(debug_assertions)]
         note_header_io_under_index_lock();
         match self.store.confirmed.get(height)? {
             None => Ok(None),
@@ -360,14 +364,18 @@ impl Query {
     /// is empty (`g.tip == None`). A walk that misses a height **above** the
     /// live published tip (stale snapshot / concurrent disconnect) retries
     /// the live tip. A miss **at or below** the live tip is Corrupt.
-    pub(crate) fn ensure_height_by_hash_index(&self, tip: Height) -> Result<(), QueryError> {
+    pub fn ensure_height_by_hash_index(&self, tip: Height) -> Result<(), QueryError> {
         match self.ensure_height_by_hash_index_once(tip)? {
             None => Ok(()),
             Some(live) => self.ensure_height_by_hash_index_once(live).map(|_| ()),
         }
     }
 
-    fn ensure_height_by_hash_index_once(&self, tip: Height) -> Result<Option<Height>, QueryError> {
+    #[doc(hidden)]
+    pub fn ensure_height_by_hash_index_once(
+        &self,
+        tip: Height,
+    ) -> Result<Option<Height>, QueryError> {
         let plan = self.with_height_index(|index| {
             if index.tip == Some(tip.0) {
                 HeightIndexPlan::Current
@@ -395,9 +403,11 @@ impl Query {
     }
 
     /// Same cadence as spend-annotation replay and tip revalidate.
-    const HEIGHT_INDEX_STATUS_MS: u128 = 10_000;
+    #[doc(hidden)]
+    pub const HEIGHT_INDEX_STATUS_MS: u128 = 10_000;
 
-    fn extend_index_from_headers(
+    #[doc(hidden)]
+    pub fn extend_index_from_headers(
         &self,
         tip: Height,
         prev: Option<u32>,
@@ -447,7 +457,8 @@ impl Query {
         }
     }
 
-    fn indexed_height(&self, hash: &[u8; 32], tip: u32) -> Option<Option<Height>> {
+    #[doc(hidden)]
+    pub fn indexed_height(&self, hash: &[u8; 32], tip: u32) -> Option<Option<Height>> {
         self.with_height_index(|index| {
             if index.tip == Some(tip) {
                 Some(index.map.get(hash).copied().map(Height))
@@ -457,8 +468,8 @@ impl Query {
         })
     }
 
-    pub(crate) fn with_height_index<R>(&self, f: impl FnOnce(&mut HeightByHashIndex) -> R) -> R {
-        #[cfg(test)]
+    pub fn with_height_index<R>(&self, f: impl FnOnce(&mut HeightByHashIndex) -> R) -> R {
+        #[cfg(debug_assertions)]
         let _held = IndexLockFlag::enter();
         let mut index = self
             .height_by_hash
@@ -467,7 +478,7 @@ impl Query {
         f(&mut index)
     }
 
-    pub(crate) fn extend_height_index(
+    pub fn extend_height_index(
         &self,
         rows: &[([u8; 32], u32)],
         new_tip: u32,
@@ -500,7 +511,8 @@ impl Query {
         })
     }
 
-    fn shrink_height_index(&self, new_tip: u32, expected: u32) -> bool {
+    #[doc(hidden)]
+    pub fn shrink_height_index(&self, new_tip: u32, expected: u32) -> bool {
         self.with_height_index(|index| {
             if index.tip == Some(new_tip) {
                 return true;
@@ -519,7 +531,8 @@ impl Query {
         })
     }
 
-    fn stale_or_missing(&self, missing: u32) -> Result<Option<Height>, QueryError> {
+    #[doc(hidden)]
+    pub fn stale_or_missing(&self, missing: u32) -> Result<Option<Height>, QueryError> {
         match self.tip_height() {
             Some(live) if live.0 < missing => Ok(Some(live)),
             None if missing > 0 => {
@@ -533,8 +546,8 @@ impl Query {
     }
 
     /// Leave `0..=through` indexed and a gap above it (tests).
-    #[cfg(test)]
-    pub(crate) fn leave_height_index_gap_for_test(&self, through: u32) {
+    #[cfg(debug_assertions)]
+    pub fn leave_height_index_gap_for_test(&self, through: u32) {
         self.with_height_index(|index| {
             index.map.retain(|_, height| *height <= through);
             index.tip = Some(through);
@@ -555,15 +568,12 @@ impl Query {
         self.wire_header_from_record(&rec)
     }
 
-    pub(crate) fn wire_header_from_record(
-        &self,
-        rec: &HeaderRecord,
-    ) -> Result<BlockHeader, QueryError> {
+    pub fn wire_header_from_record(&self, rec: &HeaderRecord) -> Result<BlockHeader, QueryError> {
         self.wire_header_from_record_prev(rec, None)
     }
 
     /// Wire header with optional prev hash (cache package — avoids store get).
-    pub(crate) fn wire_header_from_record_prev(
+    pub fn wire_header_from_record_prev(
         &self,
         rec: &HeaderRecord,
         prev_hash: Option<[u8; 32]>,

@@ -2,6 +2,47 @@
 //!
 //! Captured blocks are not Core JSON rows. One table pins hash / opcode
 //! presence; detached verify stays for the two script-engine edges.
+use rbitcoin_consensus::block::validate_block_structure_hashed;
+use rbitcoin_consensus::block::ScriptCheckJob;
+use rbitcoin_consensus::block::{
+    bip34_height_script, bip68_active_for_tx, block_has_witness, block_mutated_without_coinbase,
+    block_subsidy, check_block_wire, is_final_tx, sequence_locks_satisfied, tx_sigop_cost,
+    validate_block_structure, witness_commitment_script, witness_commitment_vout_index,
+    ScriptVerifyFlags, ValidationContext, BIP16_EXCEPTION_MAINNET, MAX_BLOCK_TX_COUNT,
+    MAX_BLOCK_WEIGHT, MIN_TX_WEIGHT, TAPROOT_EXCEPTION_MAINNET,
+};
+use rbitcoin_consensus::clock::{with_now, NodeClock};
+use rbitcoin_consensus::error::{
+    block_reject_log_line, block_reject_reason, script_flag_paren, ConsensusError,
+};
+use rbitcoin_consensus::header::{
+    check_header, next_work_bits, validate_header_on_parent, ParentHeader,
+};
+use rbitcoin_consensus::id_map::{
+    IdMap, OutPointHasher, OutPointSet, TxidHasher, TxidMap, TxidSet,
+};
+use rbitcoin_consensus::milestone::{Milestone, MilestoneAnchor};
+use rbitcoin_consensus::params::{
+    default_milestone_anchor, default_milestone_height, default_min_chain_work_be, genesis_block,
+    ChainParams, MAINNET_MILESTONE_HASH, TESTNET_MILESTONE_HASH,
+};
+use rbitcoin_consensus::policy::PolicyResult;
+use rbitcoin_consensus::regtest_pad::{
+    grind_regtest_pow, mine_empty_regtest, mine_op_true_signet_paying, mine_regtest_paying,
+    prepare_regtest_candidate, regtest_coinbase, REGTEST_BLOCK_SPACING, REGTEST_POW_BITS,
+};
+use rbitcoin_consensus::script::core_script;
+use rbitcoin_consensus::script_pool::unpark_script_publisher;
+use rbitcoin_consensus::signet::{
+    default_signet_challenge, signet_challenge_transactions, signet_magic,
+    validate_signet_block_solution,
+};
+use rbitcoin_consensus::silent_payments::{
+    taproot_matches_scan, tweak_from_tx, TaprootOut, TxTweak,
+};
+use rbitcoin_consensus::tx_precompute::{
+    block_wire_len_from_pres, decode_block_precomputes, pres_for_tip, TxPrecompute,
+};
 
 use bitcoin::consensus::deserialize;
 use bitcoin::script::ScriptBuf;

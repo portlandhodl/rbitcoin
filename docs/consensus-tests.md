@@ -8,21 +8,21 @@ Every consensus rule **we implement** (not delegated wholesale to rust-bitcoin) 
 
 ```bash
 nix-shell
-cargo test -p rbitcoin-consensus --lib
-cargo test -p rbitcoin-test --test consensus_rules
+cargo test -p rbitcoin-consensus --test suite
+cargo test -p rbitcoin-test --test suite consensus_rules::
 # Hornet spec.h / spec.html mapped subset (same tests, named selector):
 ./scripts/test-hornet-rules.sh
 # Core JSON corpora (script_tests / tx_valid / tx_invalid / sighash / BIP341):
-cargo test -p rbitcoin-consensus --lib core_script_tests_all_rows -- --nocapture
-cargo test -p rbitcoin-consensus --lib core_tx_ -- --nocapture
-cargo test -p rbitcoin-consensus --lib core_sighash -- --nocapture
-cargo test -p rbitcoin-consensus --lib core_bip341 -- --nocapture
-cargo test -p rbitcoin-consensus --lib script_corpus_rows_match_our_interpreter -- --quiet
+cargo test -p rbitcoin-consensus --test suite core_script_tests_all_rows -- --nocapture
+cargo test -p rbitcoin-consensus --test suite core_tx_ -- --nocapture
+cargo test -p rbitcoin-consensus --test suite core_sighash -- --nocapture
+cargo test -p rbitcoin-consensus --test suite core_bip341 -- --nocapture
+cargo test -p rbitcoin-consensus --test suite script_corpus_rows_match_our_interpreter -- --quiet
 cargo test --manifest-path script-oracle/Cargo.toml --quiet
-cargo test -p rbitcoin-consensus --lib block_866342 -- --nocapture
+cargo test -p rbitcoin-consensus --test suite block_866342 -- --nocapture
 cargo test -p rbitcoin-consensus --test script_edge_fixtures
 # broader integration still covers connect success paths:
-cargo test -p rbitcoin-test --test scenarios consensus_
+cargo test -p rbitcoin-test --test suite scenarios::consensus_
 ```
 
 ## Core consensus corpora (1:1 surface)

@@ -9,8 +9,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
-const SAFECOOKIE_SERVER_KEY: &[u8] = b"Tor safe cookie authentication server-to-controller hash";
-const SAFECOOKIE_CLIENT_KEY: &[u8] = b"Tor safe cookie authentication controller-to-server hash";
+#[doc(hidden)]
+pub const SAFECOOKIE_SERVER_KEY: &[u8] =
+    b"Tor safe cookie authentication server-to-controller hash";
+#[doc(hidden)]
+pub const SAFECOOKIE_CLIENT_KEY: &[u8] =
+    b"Tor safe cookie authentication controller-to-server hash";
 
 pub const DEFAULT_CONTROL_PORT: u16 = 9051;
 pub const DEFAULT_COOKIE_PATH: &str = "/run/tor/control.authcookie";
@@ -26,8 +30,8 @@ pub enum TorAuth {
 }
 
 pub struct TorControl {
-    reader: BufReader<OwnedReadHalf>,
-    writer: OwnedWriteHalf,
+    pub reader: BufReader<OwnedReadHalf>,
+    pub writer: OwnedWriteHalf,
 }
 
 impl TorControl {
@@ -64,7 +68,7 @@ impl TorControl {
         Ok(Some(Self::connect_and_auth(addr, auth).await?))
     }
 
-    async fn authenticate(&mut self, auth: &TorAuth) -> Result<String, NodeError> {
+    pub async fn authenticate(&mut self, auth: &TorAuth) -> Result<String, NodeError> {
         match auth {
             TorAuth::Password(p) => {
                 let line = format!("AUTHENTICATE \"{}\"", escape_quoted(p));
@@ -84,7 +88,7 @@ impl TorControl {
         }
     }
 
-    async fn authenticate_safecookie(&mut self, path: &Path) -> Result<String, NodeError> {
+    pub async fn authenticate_safecookie(&mut self, path: &Path) -> Result<String, NodeError> {
         let cookie = std::fs::read(path)
             .map_err(|e| NodeError::Init(format!("tor control cookie {}: {e}", path.display())))?;
         if cookie.len() != 32 {
@@ -123,7 +127,7 @@ impl TorControl {
         .await
     }
 
-    async fn protocol_auth_info(&mut self) -> Result<ProtocolAuthInfo, NodeError> {
+    pub async fn protocol_auth_info(&mut self) -> Result<ProtocolAuthInfo, NodeError> {
         let body = self.command("PROTOCOLINFO 1").await?;
         parse_protocol_auth_info(&body)
     }
@@ -244,17 +248,20 @@ impl std::fmt::Debug for HiddenService {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct ProtocolAuthInfo {
-    methods: Vec<String>,
+#[doc(hidden)]
+pub struct ProtocolAuthInfo {
+    pub methods: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct SafeCookieChallenge {
-    server_hash: [u8; 32],
-    server_nonce: [u8; 32],
+#[doc(hidden)]
+pub struct SafeCookieChallenge {
+    pub server_hash: [u8; 32],
+    pub server_nonce: [u8; 32],
 }
 
-fn escape_quoted(s: &str) -> String {
+#[doc(hidden)]
+pub fn escape_quoted(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -268,7 +275,7 @@ fn escape_quoted(s: &str) -> String {
     out
 }
 
-async fn read_reply(reader: &mut BufReader<OwnedReadHalf>) -> Result<String, NodeError> {
+pub async fn read_reply(reader: &mut BufReader<OwnedReadHalf>) -> Result<String, NodeError> {
     let mut body = String::new();
     loop {
         let mut line = String::new();
@@ -314,7 +321,8 @@ async fn read_reply(reader: &mut BufReader<OwnedReadHalf>) -> Result<String, Nod
     }
 }
 
-fn parse_add_onion_reply(body: &str) -> Result<HiddenService, NodeError> {
+#[doc(hidden)]
+pub fn parse_add_onion_reply(body: &str) -> Result<HiddenService, NodeError> {
     let mut service_id = None;
     let mut private_key = None;
     for line in body.lines() {
@@ -335,7 +343,8 @@ fn parse_add_onion_reply(body: &str) -> Result<HiddenService, NodeError> {
     })
 }
 
-fn parse_protocol_auth_info(body: &str) -> Result<ProtocolAuthInfo, NodeError> {
+#[doc(hidden)]
+pub fn parse_protocol_auth_info(body: &str) -> Result<ProtocolAuthInfo, NodeError> {
     for line in body.lines() {
         if !line.starts_with("AUTH ") {
             continue;
@@ -353,7 +362,8 @@ fn parse_protocol_auth_info(body: &str) -> Result<ProtocolAuthInfo, NodeError> {
     ))
 }
 
-fn parse_authchallenge_reply(body: &str) -> Result<SafeCookieChallenge, NodeError> {
+#[doc(hidden)]
+pub fn parse_authchallenge_reply(body: &str) -> Result<SafeCookieChallenge, NodeError> {
     let mut server_hash = None;
     let mut server_nonce = None;
     for line in body.lines() {
@@ -380,12 +390,14 @@ fn parse_authchallenge_reply(body: &str) -> Result<SafeCookieChallenge, NodeErro
     })
 }
 
-fn kv_token<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+#[doc(hidden)]
+pub fn kv_token<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     line.split_whitespace()
         .find_map(|tok| tok.strip_prefix(&format!("{key}=")))
 }
 
-fn hex32(s: &str, field: &str) -> Result<[u8; 32], NodeError> {
+#[doc(hidden)]
+pub fn hex32(s: &str, field: &str) -> Result<[u8; 32], NodeError> {
     if s.len() != 64 {
         return Err(NodeError::Init(format!(
             "tor control {field} must be 64 hex chars"
@@ -402,7 +414,8 @@ fn hex32(s: &str, field: &str) -> Result<[u8; 32], NodeError> {
     Ok(out)
 }
 
-fn hex_nybble(b: u8) -> Option<u8> {
+#[doc(hidden)]
+pub fn hex_nybble(b: u8) -> Option<u8> {
     match b {
         b'0'..=b'9' => Some(b - b'0'),
         b'a'..=b'f' => Some(b - b'a' + 10),
@@ -411,13 +424,15 @@ fn hex_nybble(b: u8) -> Option<u8> {
     }
 }
 
-fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
+#[doc(hidden)]
+pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     let mut engine = hmac::HmacEngine::<sha256::Hash>::new(key);
     engine.input(data);
     hmac::Hmac::<sha256::Hash>::from_engine(engine).to_byte_array()
 }
 
-fn write_key_file(path: &Path, key: &str) -> Result<(), NodeError> {
+#[doc(hidden)]
+pub fn write_key_file(path: &Path, key: &str) -> Result<(), NodeError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             NodeError::Init(format!("tor control key dir {}: {e}", parent.display()))

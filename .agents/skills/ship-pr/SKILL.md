@@ -42,7 +42,7 @@ worktree. Same **commands** as the required jobs, not the GitHub Actions
 
 | When | Run |
 |------|-----|
-| Inner loop (Red / Green) | Targeted `cargo test -p <crate> … -- --quiet`. `cargo check -p <crate> --lib`. Not `--tests` after every edit |
+| Inner loop (Red / Green) | Targeted `cargo test -p <crate> --test suite … -- --quiet`. `cargo check -p <crate>`. Not a workspace `--tests` after every edit |
 | After Green | `cargo test --workspace --quiet` |
 | After Refactor, before commit | Local CI except coverage (below) |
 | Docs, comments, formatting only | Skip the suite. `cargo fmt` if rustfmt would touch the tree |

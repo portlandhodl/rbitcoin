@@ -9,22 +9,27 @@ use rbitcoin_store::{output_flags, script_hash, spent_abs, IdxBodyMode, SpendSlo
 use std::sync::Arc;
 
 /// Class A expand / spend-join wave. Bounds decoded `txout` pages in RAM.
-const SH_JOIN_WAVE: usize = 4096;
+#[doc(hidden)]
+pub const SH_JOIN_WAVE: usize = 4096;
 /// Electrum Cash catch-up. About eight weeks at 144 blocks a day.
-const MAX_HISTORY_WINDOW: u32 = 8_064;
+#[doc(hidden)]
+pub const MAX_HISTORY_WINDOW: u32 = 8_064;
 /// Strong creates read from the posting tail while the page bound is open.
-const NEWEST_TAIL_CHUNK: usize = 256;
+#[doc(hidden)]
+pub const NEWEST_TAIL_CHUNK: usize = 256;
 
-struct NewestPageScan {
-    high: u32,
-    strict: bool,
+#[doc(hidden)]
+pub struct NewestPageScan {
+    pub high: u32,
+    pub strict: bool,
 }
 
-struct SpendHit {
-    spender: Fk,
-    height: u32,
-    parent: Fk,
-    vout: u32,
+#[doc(hidden)]
+pub struct SpendHit {
+    pub spender: Fk,
+    pub height: u32,
+    pub parent: Fk,
+    pub vout: u32,
 }
 
 /// Strong creates that can still land on a newest-first page.
@@ -32,9 +37,10 @@ struct SpendHit {
 /// `bound` is the height of the limit-th counted create. `None` means the
 /// posting list is shorter than the limit, so `creates` is the whole set
 /// and the caller reads those spend slots instead of scanning blocks.
-struct NewestWindow {
-    bound: Option<u32>,
-    creates: Vec<(u32, Fk)>,
+#[doc(hidden)]
+pub struct NewestWindow {
+    pub bound: Option<u32>,
+    pub creates: Vec<(u32, Fk)>,
 }
 
 /// Expanded Electrum create outpoint (Class A + height joins).
@@ -234,7 +240,8 @@ pub fn apply_history_filter(
     }
 }
 
-fn history_items_from_joined(
+#[doc(hidden)]
+pub fn history_items_from_joined(
     joined: &[ShJoinedOut],
     filter: &HistoryFilter,
 ) -> FilteredHistory<ScriptHashHistoryItem> {
@@ -286,7 +293,8 @@ fn history_items_from_joined(
     apply_history_filter(&items, filter)
 }
 
-fn summaries_from_joined(
+#[doc(hidden)]
+pub fn summaries_from_joined(
     joined: &[ShJoinedOut],
     filter: &HistoryFilter,
 ) -> FilteredHistory<ScriptHashTxSummary> {
@@ -338,7 +346,7 @@ pub struct ScriptHashUtxo {
 /// Tx fks and input `create_fk`s of one block ([`Query::block_touch`]).
 #[derive(Clone, Debug, Default)]
 pub struct BlockTouch {
-    ids: std::collections::HashSet<u64>,
+    pub ids: std::collections::HashSet<u64>,
 }
 
 /// Esplora-style confirmed chain stats for a scripthash.
@@ -352,18 +360,18 @@ pub struct ScriptHashChainStats {
 }
 
 #[derive(Clone)]
-pub(crate) struct ShSpender {
-    fk: Fk,
-    txid: [u8; 32],
-    height: u32,
+pub struct ShSpender {
+    pub fk: Fk,
+    pub txid: [u8; 32],
+    pub height: u32,
 }
 
 #[derive(Clone)]
-pub(crate) struct ShJoinedOut {
-    pub(crate) out: ScriptHashOutpoint,
-    pub(crate) spent: bool,
-    pub(crate) spender_fks: Vec<Fk>,
-    pub(crate) spenders: Vec<ShSpender>,
+pub struct ShJoinedOut {
+    pub out: ScriptHashOutpoint,
+    pub spent: bool,
+    pub spender_fks: Vec<Fk>,
+    pub spenders: Vec<ShSpender>,
 }
 
 /// Last scripthash expand+spend join for one Electrum connection.
@@ -373,9 +381,9 @@ pub(crate) struct ShJoinedOut {
 /// (including a same-height replace).
 #[derive(Clone)]
 pub struct ShJoinSlot {
-    scripthash: [u8; 32],
-    tip_hash: [u8; 32],
-    joined: Vec<ShJoinedOut>,
+    pub scripthash: [u8; 32],
+    pub tip_hash: [u8; 32],
+    pub joined: Vec<ShJoinedOut>,
 }
 
 impl ShJoinSlot {
@@ -391,7 +399,7 @@ impl ShJoinSlot {
     }
 
     /// Fixture: one out whose packed size is `64 + 80 + n×8`.
-    pub(crate) fn with_spender_fk_count(n: usize) -> Arc<Self> {
+    pub fn with_spender_fk_count(n: usize) -> Arc<Self> {
         Arc::new(Self {
             scripthash: [0xab; 32],
             tip_hash: [0xcd; 32],
@@ -414,22 +422,22 @@ impl ShJoinSlot {
 
 /// Which identity sidefiles this SH join must fill.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ShJoinNeed {
-    create_identity: bool,
-    spender_identity: bool,
+pub struct ShJoinNeed {
+    pub create_identity: bool,
+    pub spender_identity: bool,
 }
 
 impl ShJoinNeed {
-    pub(crate) const HISTORY: Self = Self {
+    pub const HISTORY: Self = Self {
         create_identity: true,
         spender_identity: true,
     };
-    pub(crate) const BALANCE: Self = Self {
+    pub const BALANCE: Self = Self {
         create_identity: false,
         spender_identity: false,
     };
-    pub(crate) const LISTUNSPENT: Self = Self::BALANCE;
-    pub(crate) const CHAIN_STATS: Self = Self::BALANCE;
+    pub const LISTUNSPENT: Self = Self::BALANCE;
+    pub const CHAIN_STATS: Self = Self::BALANCE;
 }
 
 impl std::fmt::Display for ShJoinNeed {
@@ -445,7 +453,8 @@ impl std::fmt::Display for ShJoinNeed {
 
 impl Query {
     /// Expand confirmed-strong create fks in one idx→body wave (`load_creates_once`).
-    fn expand_create_fks_wave(
+    #[doc(hidden)]
+    pub fn expand_create_fks_wave(
         &self,
         scripthash: &[u8; 32],
         fks: &[Fk],
@@ -516,7 +525,8 @@ impl Query {
         Ok(out)
     }
 
-    fn join_out_spent(&self, rec: &ShJoinedOut) -> Result<bool, QueryError> {
+    #[doc(hidden)]
+    pub fn join_out_spent(&self, rec: &ShJoinedOut) -> Result<bool, QueryError> {
         if self.spend_index_enabled() {
             Ok(rec.spent)
         } else {
@@ -524,11 +534,13 @@ impl Query {
         }
     }
 
-    fn confirmed_strong_in(&self, fk: Fk, view: &ChainView) -> Result<bool, QueryError> {
+    #[doc(hidden)]
+    pub fn confirmed_strong_in(&self, fk: Fk, view: &ChainView) -> Result<bool, QueryError> {
         self.store.is_confirmed_strong_at(fk, Some(view.height.0))
     }
 
-    fn order_fks_for_page(
+    #[doc(hidden)]
+    pub fn order_fks_for_page(
         &self,
         fks: &mut Vec<Fk>,
         filter: &HistoryFilter,
@@ -556,7 +568,8 @@ impl Query {
 
     /// The limited page already has its rows, and `after_txid` is in the join
     /// when the caller asked for one.
-    fn history_page_full(joined: &[ShJoinedOut], filter: &HistoryFilter) -> bool {
+    #[doc(hidden)]
+    pub fn history_page_full(joined: &[ShJoinedOut], filter: &HistoryFilter) -> bool {
         let Some(limit) = filter.limit else {
             return false;
         };
@@ -578,7 +591,8 @@ impl Query {
     ///
     /// The join loop calls this once, so a full page does not re-read the tail
     /// per wave.
-    fn history_tail_keep(
+    #[doc(hidden)]
+    pub fn history_tail_keep(
         &self,
         joined: &[ShJoinedOut],
         filter: &HistoryFilter,
@@ -606,7 +620,7 @@ impl Query {
     /// When `to_height` is set, creates with Class C height `>= to_height` are not
     /// expanded (their spends cannot fall in the window). Visibility is
     /// [`Store::is_confirmed_strong_at`] against `view.height`.
-    pub(crate) fn sh_join(
+    pub fn sh_join(
         &self,
         scripthash: &[u8; 32],
         need: ShJoinNeed,
@@ -616,7 +630,7 @@ impl Query {
         self.sh_join_limited(scripthash, need, to_height, view, None)
     }
 
-    pub(crate) fn sh_join_limited(
+    pub fn sh_join_limited(
         &self,
         scripthash: &[u8; 32],
         need: ShJoinNeed,
@@ -707,7 +721,8 @@ impl Query {
     /// Any `to_height` also skips the stored join. A limited newest-first
     /// page never fills it, at every cap. A height-ascending page skips it
     /// only when the unpaged join would hit `--max-sh-creates`.
-    fn page_without_full_slot(
+    #[doc(hidden)]
+    pub fn page_without_full_slot(
         &self,
         scripthash: &[u8; 32],
         filter: &HistoryFilter,
@@ -738,11 +753,13 @@ impl Query {
         Ok(cap > 0 && self.scripthash_create_count(scripthash)? > cap)
     }
 
-    fn sh_join_slot_hit(slot: &ShJoinSlot, scripthash: &[u8; 32], view: &ChainView) -> bool {
+    #[doc(hidden)]
+    pub fn sh_join_slot_hit(slot: &ShJoinSlot, scripthash: &[u8; 32], view: &ChainView) -> bool {
         slot.scripthash == *scripthash && slot.tip_hash == view.hash
     }
 
-    fn ensure_sh_join_slot(
+    #[doc(hidden)]
+    pub fn ensure_sh_join_slot(
         &self,
         scripthash: &[u8; 32],
         slot: &mut Option<Arc<ShJoinSlot>>,
@@ -754,7 +771,8 @@ impl Query {
         self.ensure_sh_join_slot_in(scripthash, slot, &view)
     }
 
-    fn ensure_sh_join_slot_in(
+    #[doc(hidden)]
+    pub fn ensure_sh_join_slot_in(
         &self,
         scripthash: &[u8; 32],
         slot: &mut Option<Arc<ShJoinSlot>>,
@@ -775,7 +793,12 @@ impl Query {
         Ok(())
     }
 
-    fn enrich_joined(&self, recs: &mut [ShJoinedOut], need: ShJoinNeed) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn enrich_joined(
+        &self,
+        recs: &mut [ShJoinedOut],
+        need: ShJoinNeed,
+    ) -> Result<(), QueryError> {
         if need.create_identity {
             self.fill_create_txids(recs, false)?;
         }
@@ -785,7 +808,8 @@ impl Query {
         Ok(())
     }
 
-    fn fill_spender_identity(&self, recs: &mut [ShJoinedOut]) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn fill_spender_identity(&self, recs: &mut [ShJoinedOut]) -> Result<(), QueryError> {
         let mut fks = Vec::new();
         let mut seen = HashSet::new();
         for rec in recs.iter() {
@@ -837,7 +861,11 @@ impl Query {
         Ok(())
     }
 
-    fn balance_from_joined(&self, recs: &[ShJoinedOut]) -> Result<ScriptHashBalance, QueryError> {
+    #[doc(hidden)]
+    pub fn balance_from_joined(
+        &self,
+        recs: &[ShJoinedOut],
+    ) -> Result<ScriptHashBalance, QueryError> {
         let mut confirmed = 0i64;
         for rec in recs {
             if !self.join_out_spent(rec)? {
@@ -850,7 +878,8 @@ impl Query {
         })
     }
 
-    fn listunspent_from_joined(
+    #[doc(hidden)]
+    pub fn listunspent_from_joined(
         &self,
         recs: &[ShJoinedOut],
     ) -> Result<Vec<ScriptHashUtxo>, QueryError> {
@@ -871,7 +900,8 @@ impl Query {
         Ok(out)
     }
 
-    fn chain_stats_from_joined(
+    #[doc(hidden)]
+    pub fn chain_stats_from_joined(
         &self,
         recs: &[ShJoinedOut],
     ) -> Result<ScriptHashChainStats, QueryError> {
@@ -904,7 +934,8 @@ impl Query {
     /// Height-ascending page. Expand one create at a time. Spend slots flush
     /// when the next create has no spend slots, or those slots leave the open
     /// peek group, then the page-full stop runs. The remainder flushes once.
-    fn join_page_waves(
+    #[doc(hidden)]
+    pub fn join_page_waves(
         &self,
         scripthash: &[u8; 32],
         fks: &[Fk],
@@ -961,7 +992,8 @@ impl Query {
         Ok((out, class_a_us, spends_us))
     }
 
-    fn spend_abs_offs(
+    #[doc(hidden)]
+    pub fn spend_abs_offs(
         &self,
         creates: &[ScriptHashOutpoint],
     ) -> Result<Vec<Option<u64>>, QueryError> {
@@ -996,7 +1028,8 @@ impl Query {
     /// batch. The unpaged join passes the whole create list. A
     /// height-ascending page does not: it flushes one closed peek group
     /// through [`Self::join_known_offs`].
-    fn join_spends_wave(
+    #[doc(hidden)]
+    pub fn join_spends_wave(
         &self,
         creates: &[ScriptHashOutpoint],
         need: ShJoinNeed,
@@ -1006,7 +1039,8 @@ impl Query {
         self.join_known_offs(creates, &offs, need, view)
     }
 
-    fn join_known_offs(
+    #[doc(hidden)]
+    pub fn join_known_offs(
         &self,
         creates: &[ScriptHashOutpoint],
         offs: &[Option<u64>],
@@ -1093,7 +1127,8 @@ impl Query {
         Ok(out)
     }
 
-    fn join_spends_wave_fks(
+    #[doc(hidden)]
+    pub fn join_spends_wave_fks(
         &self,
         creates: &[ScriptHashOutpoint],
         abs_at: &[Option<usize>],
@@ -1147,11 +1182,13 @@ impl Query {
             .rows)
     }
 
-    fn newest_limited_page(&self, filter: &HistoryFilter) -> bool {
+    #[doc(hidden)]
+    pub fn newest_limited_page(&self, filter: &HistoryFilter) -> bool {
         filter.limit.is_some() && filter.order == HistoryOrder::NewestFirst
     }
 
-    fn newest_page_scan(
+    #[doc(hidden)]
+    pub fn newest_page_scan(
         &self,
         filter: &HistoryFilter,
         view: &ChainView,
@@ -1187,7 +1224,8 @@ impl Query {
         }))
     }
 
-    fn strong_sh_creates(
+    #[doc(hidden)]
+    pub fn strong_sh_creates(
         &self,
         scripthash: &[u8; 32],
         view: &ChainView,
@@ -1210,7 +1248,8 @@ impl Query {
     }
 
     /// See [`NewestWindow`].
-    fn newest_create_window(
+    #[doc(hidden)]
+    pub fn newest_create_window(
         &self,
         fks: &[Fk],
         k: usize,
@@ -1272,7 +1311,8 @@ impl Query {
     /// belongs on an earlier page. This is not [`Self::sh_join`]: a short
     /// list can still sit above `--max-sh-creates`, and the page must not
     /// fill the join slot.
-    fn spends_of_retained_creates(
+    #[doc(hidden)]
+    pub fn spends_of_retained_creates(
         &self,
         scripthash: &[u8; 32],
         creates: &[(u32, Fk)],
@@ -1308,7 +1348,8 @@ impl Query {
         Ok(hits)
     }
 
-    fn spends_of_members(
+    #[doc(hidden)]
+    pub fn spends_of_members(
         &self,
         members: &[Fk],
         low: u32,
@@ -1355,7 +1396,8 @@ impl Query {
         Ok(hits)
     }
 
-    fn sh_matched_outs(
+    #[doc(hidden)]
+    pub fn sh_matched_outs(
         &self,
         scripthash: &[u8; 32],
         fks: &[Fk],
@@ -1390,7 +1432,8 @@ impl Query {
         Ok(matched)
     }
 
-    fn newest_limited_summaries(
+    #[doc(hidden)]
+    pub fn newest_limited_summaries(
         &self,
         scripthash: &[u8; 32],
         filter: &HistoryFilter,
@@ -1529,7 +1572,8 @@ impl Query {
     /// coins come from [`Self::spends_of_members`] on the window's blocks
     /// (`input.body`), not from their spend slots, and not from [`Self::sh_join`].
     /// A hit counts only when that input's output pays this script.
-    fn height_window_history(
+    #[doc(hidden)]
+    pub fn height_window_history(
         &self,
         scripthash: &[u8; 32],
         filter: &HistoryFilter,
@@ -1607,7 +1651,8 @@ impl Query {
 
     /// Exclusive `to_height` clipped to the pinned view. `None` when the
     /// window is empty.
-    fn window_high(filter: &HistoryFilter, view: &ChainView) -> Option<u32> {
+    #[doc(hidden)]
+    pub fn window_high(filter: &HistoryFilter, view: &ChainView) -> Option<u32> {
         let mut high = view.height.0;
         if let Some(to) = filter.to_height {
             if to <= 0 {
@@ -1701,7 +1746,8 @@ impl Query {
         )
     }
 
-    fn scripthash_filtered_slot_in<T>(
+    #[doc(hidden)]
+    pub fn scripthash_filtered_slot_in<T>(
         &self,
         scripthash: &[u8; 32],
         filter: &HistoryFilter,
@@ -1915,7 +1961,8 @@ impl Query {
         self.scripthash_balance_from_slot(slot)
     }
 
-    fn scripthash_balance_from_slot(
+    #[doc(hidden)]
+    pub fn scripthash_balance_from_slot(
         &self,
         slot: &Option<Arc<ShJoinSlot>>,
     ) -> Result<ScriptHashBalance, QueryError> {
@@ -1925,7 +1972,8 @@ impl Query {
         self.balance_from_joined(&recs.joined)
     }
 
-    fn fill_create_txids(
+    #[doc(hidden)]
+    pub fn fill_create_txids(
         &self,
         recs: &mut [ShJoinedOut],
         unspent_only: bool,
@@ -2019,7 +2067,8 @@ impl Query {
         self.scripthash_listunspent_from_slot(slot)
     }
 
-    fn scripthash_listunspent_from_slot(
+    #[doc(hidden)]
+    pub fn scripthash_listunspent_from_slot(
         &self,
         slot: &mut Option<Arc<ShJoinSlot>>,
     ) -> Result<Vec<ScriptHashUtxo>, QueryError> {
@@ -2085,132 +2134,5 @@ impl Query {
             return Ok(ScriptHashChainStats::default());
         };
         self.chain_stats_from_joined(&recs.joined)
-    }
-}
-
-#[cfg(test)]
-mod history_filter_tests {
-    use super::*;
-
-    fn item(height: i64, txid0: u8) -> ScriptHashHistoryItem {
-        let mut txid = [0u8; 32];
-        txid[0] = txid0;
-        ScriptHashHistoryItem {
-            height,
-            txid,
-            tx_fk: Fk::NULL,
-            fee: None,
-        }
-    }
-
-    #[test]
-    fn open_filter_keeps_all_height_asc() {
-        let items = vec![item(10, 1), item(5, 2), item(20, 3)];
-        let got = apply_history_filter(&items, &HistoryFilter::open());
-        assert!(!got.cursor_missing);
-        assert_eq!(got.rows.len(), 3);
-        assert_eq!(got.rows[0].height, 5);
-        assert_eq!(got.rows[1].height, 10);
-        assert_eq!(got.rows[2].height, 20);
-    }
-
-    #[test]
-    fn height_window_inclusive_from_exclusive_to() {
-        let items = vec![item(1, 1), item(5, 2), item(10, 3), item(15, 4)];
-        let f = HistoryFilter::height_window(5, Some(15));
-        let got = apply_history_filter(&items, &f);
-        assert_eq!(
-            got.rows.iter().map(|i| i.height).collect::<Vec<_>>(),
-            vec![5, 10]
-        );
-    }
-
-    #[test]
-    fn height_window_open_upper() {
-        let items = vec![item(1, 1), item(100, 2)];
-        let f = HistoryFilter::height_window(50, None);
-        let got = apply_history_filter(&items, &f);
-        assert_eq!(got.rows.len(), 1);
-        assert_eq!(got.rows[0].height, 100);
-    }
-
-    #[test]
-    fn newest_first_order() {
-        let items = vec![item(1, 1), item(3, 2), item(2, 3)];
-        let mut f = HistoryFilter::open();
-        f.order = HistoryOrder::NewestFirst;
-        let got = apply_history_filter(&items, &f);
-        assert_eq!(
-            got.rows.iter().map(|i| i.height).collect::<Vec<_>>(),
-            vec![3, 2, 1]
-        );
-    }
-
-    #[test]
-    fn after_txid_skips_through_cursor_then_limit() {
-        // Newest first: h=30,20,10 with distinct txids
-        let items = vec![item(10, 1), item(20, 2), item(30, 3)];
-        let mut after = [0u8; 32];
-        after[0] = 3; // tip (height 30)
-        let f = HistoryFilter {
-            from_height: 0,
-            to_height: None,
-            limit: Some(1),
-            after_txid: Some(after),
-            order: HistoryOrder::NewestFirst,
-            after_absent_keeps_older: false,
-            after_height: None,
-        };
-        let got = apply_history_filter(&items, &f);
-        assert!(!got.cursor_missing);
-        assert_eq!(got.rows.len(), 1);
-        assert_eq!(got.rows[0].height, 20);
-        assert_eq!(got.rows[0].txid[0], 2);
-    }
-
-    /// A cursor that is not in this history is not the first page. Serving
-    /// those rows made `?after_txid=` of some other confirmed tx restart
-    /// the wallet at the newest row.
-    #[test]
-    fn after_txid_missing_is_not_the_first_page() {
-        let items = vec![item(10, 1), item(20, 2)];
-        let f = HistoryFilter {
-            from_height: 0,
-            to_height: None,
-            limit: Some(1),
-            after_txid: Some([0xff; 32]),
-            order: HistoryOrder::NewestFirst,
-            after_absent_keeps_older: false,
-            after_height: None,
-        };
-        let got = apply_history_filter(&items, &f);
-        assert!(got.cursor_missing);
-        assert!(got.rows.is_empty());
-    }
-
-    #[test]
-    fn esplora_chain_page_defaults() {
-        let f = HistoryFilter::esplora_chain_page(None);
-        assert_eq!(f.limit, Some(25));
-        assert_eq!(f.order, HistoryOrder::NewestFirst);
-        assert!(f.after_txid.is_none());
-    }
-
-    #[test]
-    fn limit_truncates_after_window() {
-        let items: Vec<_> = (1..=10).map(|h| item(h, h as u8)).collect();
-        let f = HistoryFilter {
-            from_height: 0,
-            to_height: None,
-            limit: Some(3),
-            after_txid: None,
-            order: HistoryOrder::HeightAsc,
-            after_absent_keeps_older: false,
-            after_height: None,
-        };
-        let got = apply_history_filter(&items, &f);
-        assert_eq!(got.rows.len(), 3);
-        assert_eq!(got.rows[0].height, 1);
-        assert_eq!(got.rows[2].height, 3);
     }
 }

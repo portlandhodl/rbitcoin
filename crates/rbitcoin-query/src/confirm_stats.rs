@@ -491,7 +491,8 @@ impl ConfirmStats {
         add(&self.arch_write_txstat_ns, ns);
     }
 
-    fn miss_on_code(on: Option<&str>) -> u64 {
+    #[doc(hidden)]
+    pub fn miss_on_code(on: Option<&str>) -> u64 {
         match on {
             Some("head") => 1,
             Some("body") => 2,
@@ -501,7 +502,8 @@ impl ConfirmStats {
         }
     }
 
-    fn miss_on_from_code(code: u64) -> Option<&'static str> {
+    #[doc(hidden)]
+    pub fn miss_on_from_code(code: u64) -> Option<&'static str> {
         match code {
             1 => Some("head"),
             2 => Some("body"),
@@ -659,32 +661,4 @@ pub struct TipShSnap {
     pub creates: u64,
     pub unique: u64,
     pub written: u64,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn last_union_miss_roundtrips_miss_on_codes() {
-        let stats = ConfirmStats::default();
-        assert_eq!(stats.last_union_miss().n, 0);
-        let tid = [7u8; 32];
-        for (on, want) in [
-            (Some("head"), Some("head")),
-            (Some("body"), Some("body")),
-            (Some("idx"), Some("idx")),
-            (Some("fence"), Some("fence")),
-            (Some("nope"), None),
-            (None, None),
-        ] {
-            stats.note_union_miss(tid, 3, true, on, 9);
-            let got = stats.last_union_miss();
-            assert_eq!(got.n, 3);
-            assert!(got.pending);
-            assert_eq!(got.txid, Some(tid));
-            assert_eq!(got.miss_on, want, "on={on:?}");
-            assert_eq!(got.miss_cands, 9);
-        }
-    }
 }

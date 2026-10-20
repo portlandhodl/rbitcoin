@@ -33,7 +33,8 @@ use rbitcoin_primitives::{Fk, Height};
 use std::path::Path;
 
 /// Ring depth for the builder's session.
-const ENTRIES: u32 = 256;
+#[doc(hidden)]
+pub const ENTRIES: u32 = 256;
 
 /// One height to read: its confirmed header and contiguous creates.
 #[derive(Clone, Copy, Debug)]
@@ -64,7 +65,7 @@ pub struct IndexWindow {
     pub blocks: Vec<IndexBlock>,
     pub parents: Parents,
     /// Create fk → `(block, tx)` for creates in `blocks`.
-    in_window: InWindow,
+    pub in_window: InWindow,
 }
 
 impl IndexWindow {
@@ -90,19 +91,22 @@ impl IndexWindow {
     }
 }
 
-fn is_p2tr(spk: &[u8]) -> bool {
+#[doc(hidden)]
+pub fn is_p2tr(spk: &[u8]) -> bool {
     spk.len() == 34 && spk[0] == 0x51 && spk[1] == 0x20
 }
 
-struct ReadJob<'p> {
-    fd: IoHandle,
-    path: &'p Path,
-    off: u64,
-    buf: Vec<u8>,
+#[doc(hidden)]
+pub struct ReadJob<'p> {
+    pub fd: IoHandle,
+    pub path: &'p Path,
+    pub off: u64,
+    pub buf: Vec<u8>,
 }
 
 impl<'p> ReadJob<'p> {
-    fn new((fd, path): (IoHandle, &'p Path), off: u64, len: u64) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn new((fd, path): (IoHandle, &'p Path), off: u64, len: u64) -> Result<Self, StoreError> {
         if len > crate::var_table::VarTable::BODY_READ_MAX {
             return Err(StoreError::Rejected("body read too large"));
         }
@@ -117,7 +121,8 @@ impl<'p> ReadJob<'p> {
 }
 
 /// Complete `buf[done..]` with libc preads.
-fn libc_complete(job: &mut ReadJob<'_>, mut done: usize) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn libc_complete(job: &mut ReadJob<'_>, mut done: usize) -> Result<(), StoreError> {
     while done < job.buf.len() {
         let rc = job.fd.pread(job.off + done as u64, &mut job.buf[done..]);
         if rc <= 0 {
@@ -133,13 +138,15 @@ fn libc_complete(job: &mut ReadJob<'_>, mut done: usize) -> Result<(), StoreErro
     Ok(())
 }
 
-enum Reader<'s> {
+#[doc(hidden)]
+pub enum Reader<'s> {
     Session(&'s mut UringSession),
     Serial,
 }
 
 impl Reader<'_> {
-    fn run(&mut self, jobs: &mut [ReadJob<'_>]) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn run(&mut self, jobs: &mut [ReadJob<'_>]) -> Result<(), StoreError> {
         match self {
             Reader::Serial => jobs.iter_mut().try_for_each(|j| libc_complete(j, 0)),
             Reader::Session(session) => run_on_session(session, jobs),
@@ -148,7 +155,11 @@ impl Reader<'_> {
 }
 
 /// Keep the ring full with `jobs` and harvest until all complete.
-fn run_on_session(session: &mut UringSession, jobs: &mut [ReadJob<'_>]) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn run_on_session(
+    session: &mut UringSession,
+    jobs: &mut [ReadJob<'_>],
+) -> Result<(), StoreError> {
     session.begin_batch()?;
     let epoch = session.epoch();
     let mut next = 0usize;
@@ -196,7 +207,8 @@ fn run_on_session(session: &mut UringSession, jobs: &mut [ReadJob<'_>]) -> Resul
 }
 
 /// Move a plan's buffers into `jobs` (in the plan's read order).
-fn take_reads<'p, 'b>(
+#[doc(hidden)]
+pub fn take_reads<'p, 'b>(
     jobs: &mut Vec<ReadJob<'p>>,
     file: (IoHandle, &'p Path),
     reads: impl Iterator<Item = (u64, &'b mut Vec<u8>)>,
@@ -214,7 +226,8 @@ fn take_reads<'p, 'b>(
 }
 
 /// Move filled buffers back into the plan (same read order as `take_reads`).
-fn give_back<'b>(
+#[doc(hidden)]
+pub fn give_back<'b>(
     jobs: &mut [ReadJob<'_>],
     range: std::ops::Range<usize>,
     reads: impl Iterator<Item = (u64, &'b mut Vec<u8>)>,
@@ -239,12 +252,14 @@ pub fn read_index_window(
     }
 }
 
-fn missing(what: &'static str) -> StoreError {
+#[doc(hidden)]
+pub fn missing(what: &'static str) -> StoreError {
     StoreError::Corrupt(what)
 }
 
 /// `hi` is the exclusive end of a span in a published body.
-fn require_body_hwm(hwm: u64, hi: u64) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn require_body_hwm(hwm: u64, hi: u64) -> Result<(), StoreError> {
     if hi > hwm {
         return Err(StoreError::Corrupt(
             "invariant: body read past published end",
@@ -254,28 +269,34 @@ fn require_body_hwm(hwm: u64, hi: u64) -> Result<(), StoreError> {
 }
 
 /// Parent fk → (txid, outputs).
-type Parents = U64Map<([u8; 32], Vec<OutputRecord>)>;
+#[doc(hidden)]
+pub type Parents = U64Map<([u8; 32], Vec<OutputRecord>)>;
 /// Create fk → `(block, tx)` within a window.
-type InWindow = U64Map<(usize, usize)>;
+#[doc(hidden)]
+pub type InWindow = U64Map<(usize, usize)>;
 /// Stage 3 results: parent locators and parent txids.
-type ParentLocs = (Vec<Option<CreateLocPair>>, Vec<[u8; 32]>);
+#[doc(hidden)]
+pub type ParentLocs = (Vec<Option<CreateLocPair>>, Vec<[u8; 32]>);
 
 /// Handles and paths every stage reads through.
-struct Files<'t> {
-    body: (IoHandle, &'t Path),
-    seqsigwit: (IoHandle, &'t Path),
-    txid: (IoHandle, &'t Path),
-    input_body: (IoHandle, &'t Path),
+#[doc(hidden)]
+pub struct Files<'t> {
+    pub body: (IoHandle, &'t Path),
+    pub seqsigwit: (IoHandle, &'t Path),
+    pub txid: (IoHandle, &'t Path),
+    pub input_body: (IoHandle, &'t Path),
 }
 
 /// Stage 1 results.
-struct Locators {
-    locs: Vec<Option<CreateLocPair>>,
-    sws_ranges: Vec<Option<(u64, u64)>>,
-    edge_plans: Vec<EdgesPlan>,
+#[doc(hidden)]
+pub struct Locators {
+    pub locs: Vec<Option<CreateLocPair>>,
+    pub sws_ranges: Vec<Option<(u64, u64)>>,
+    pub edge_plans: Vec<EdgesPlan>,
 }
 
-fn read_window(
+#[doc(hidden)]
+pub fn read_window(
     table: &TxTable,
     heights: &[IndexHeight],
     reader: &mut Reader<'_>,
@@ -312,14 +333,16 @@ fn read_window(
     })
 }
 
-fn creates_of<'h>(heights: impl Iterator<Item = &'h IndexHeight>) -> Vec<Fk> {
+#[doc(hidden)]
+pub fn creates_of<'h>(heights: impl Iterator<Item = &'h IndexHeight>) -> Vec<Fk> {
     heights
         .flat_map(|h| (0..u64::from(h.n)).map(move |i| Fk(h.first.0 + i)))
         .collect()
 }
 
 /// Stage 1: `create.loc` and `seqsigwit.loc` windows and `input.loc` spans.
-fn read_locators(
+#[doc(hidden)]
+pub fn read_locators(
     table: &TxTable,
     heights: &[IndexHeight],
     reader: &mut Reader<'_>,
@@ -362,7 +385,8 @@ fn read_locators(
 }
 
 /// Stage 2: each block's `txout`, `input.body`, and (tweaks) `txid.body` spans.
-fn read_blocks(
+#[doc(hidden)]
+pub fn read_blocks(
     table: &TxTable,
     files: &Files<'_>,
     heights: &[IndexHeight],
@@ -438,7 +462,8 @@ fn read_blocks(
 }
 
 #[allow(clippy::too_many_arguments)] // one block's already-read spans
-fn decode_block(
+#[doc(hidden)]
+pub fn decode_block(
     table: &TxTable,
     h: &IndexHeight,
     plan: &EdgesPlan,
@@ -481,7 +506,8 @@ fn decode_block(
 }
 
 /// Parent fks the window's inputs spend that are not themselves in it.
-fn outside_parents(blocks: &[IndexBlock], in_window: &InWindow) -> Vec<u64> {
+#[doc(hidden)]
+pub fn outside_parents(blocks: &[IndexBlock], in_window: &InWindow) -> Vec<u64> {
     let mut fks: Vec<u64> = blocks
         .iter()
         .flat_map(|b| b.edges.iter().flatten())
@@ -496,7 +522,8 @@ fn outside_parents(blocks: &[IndexBlock], in_window: &InWindow) -> Vec<u64> {
 /// Stage 3: parent `create.loc`, P2TR-output txs' `seqsigwit.body`, and
 /// (tweaks) parent txids. Fills each such tx's `inputs`.
 #[allow(clippy::too_many_arguments)] // stage inputs; one call site
-fn read_witnesses_and_parent_locs(
+#[doc(hidden)]
+pub fn read_witnesses_and_parent_locs(
     table: &TxTable,
     files: &Files<'_>,
     heights: &[IndexHeight],
@@ -556,7 +583,8 @@ fn read_witnesses_and_parent_locs(
 }
 
 /// Stage 4: parent `txout` records.
-fn read_parents(
+#[doc(hidden)]
+pub fn read_parents(
     table: &TxTable,
     files: &Files<'_>,
     parent_fks: &[u64],
@@ -585,146 +613,4 @@ fn read_parents(
         parents.insert(*fk, (txid, outs));
     }
     Ok(parents)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{read_index_window, require_body_hwm, IndexHeight, IndexWindow, ReadJob};
-    use crate::error::StoreError;
-    use crate::tx_table::{InputRecord, OutputRecord, TxRecord, TxTable};
-    use rbitcoin_primitives::{Fk, Height};
-
-    fn tmp(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-index-hwm-{name}-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn index_read_above_the_cap_is_refused() {
-        let dir = tmp("read-cap");
-        let file = std::fs::File::create(dir.join("body")).unwrap();
-        let handle = crate::io_handle::IoHandle::from_file(&file);
-        let len = crate::var_table::VarTable::BODY_READ_MAX + 1;
-        match ReadJob::new((handle, dir.as_path()), 0, len) {
-            Err(StoreError::Rejected(msg)) => assert!(msg.contains("too large"), "{msg}"),
-            Err(other) => panic!("{other}"),
-            Ok(_) => panic!("above the body read cap allocated"),
-        }
-    }
-
-    fn tx(mark: u8) -> TxRecord {
-        let mut txid = [0u8; 32];
-        txid[0] = mark;
-        TxRecord {
-            txid,
-            version: 1,
-            locktime: 0,
-            input_start_fk: Fk::NULL,
-            input_count: 1,
-            output_start_fk: Fk::NULL,
-            output_count: 1,
-        }
-    }
-
-    fn spend(parent: Fk) -> InputRecord {
-        InputRecord {
-            prev_txid: [0u8; 32],
-            parent: crate::InputParent::Prevout {
-                create_fk: parent,
-                vout: 0,
-            },
-            sequence: u32::MAX,
-            script_sig: vec![1],
-            witness: vec![],
-        }
-    }
-
-    /// Child fk 1 spends parent fk 2, and the parent body is written second.
-    fn child_then_parent(script: Vec<u8>) -> (std::path::PathBuf, TxTable) {
-        let dir = tmp("window");
-        let t = TxTable::create_tiny(&dir).unwrap();
-        let fks = t
-            .put_full_batch_indexed(
-                &[
-                    (
-                        tx(1),
-                        vec![spend(Fk(2))],
-                        vec![OutputRecord::unspent(1, script)],
-                    ),
-                    (
-                        tx(2),
-                        vec![InputRecord::coinbase(u32::MAX, vec![2], vec![])],
-                        vec![OutputRecord::unspent(50, vec![0x51])],
-                    ),
-                ],
-                true,
-            )
-            .unwrap();
-        assert_eq!(fks, vec![Fk(1), Fk(2)]);
-        (dir, t)
-    }
-
-    fn one_child(tweaks: bool) -> [IndexHeight; 1] {
-        [IndexHeight {
-            height: Height(1),
-            header_fk: Fk(1),
-            first: Fk(1),
-            n: 1,
-            tweaks,
-        }]
-    }
-
-    fn expect_published(err: Result<IndexWindow, StoreError>) {
-        match err {
-            Err(StoreError::Corrupt(msg)) => assert!(msg.contains("published"), "{msg}"),
-            Ok(_) => panic!("a span past the published end was read"),
-            Err(other) => panic!("{other}"),
-        }
-    }
-
-    #[test]
-    fn txout_span_past_the_body_hwm_is_corrupt() {
-        require_body_hwm(80, 80).unwrap();
-        match require_body_hwm(80, 81) {
-            Err(StoreError::Corrupt(msg)) => assert!(msg.contains("published"), "{msg}"),
-            Ok(()) => panic!("a span past the body HWM was accepted"),
-            Err(other) => panic!("{other}"),
-        }
-    }
-
-    #[test]
-    fn parent_txout_past_the_published_end_is_corrupt() {
-        let (dir, t) = child_then_parent(vec![0x51]);
-        let locs = t.create_loc.range_batch(&[Fk(1), Fk(2)]).unwrap();
-        let child = locs[0].unwrap();
-        let parent = locs[1].unwrap();
-        let child_end = child.txout.0 + child.txout.1;
-        assert!(
-            parent.txout.0 + parent.txout.1 > child_end,
-            "the parent txout must sit past the child"
-        );
-        t.body.truncate_body_to(2, child_end).unwrap();
-        expect_published(read_index_window(&t, &one_child(false)));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn seqsigwit_past_the_published_end_is_corrupt() {
-        let mut script = vec![0x51, 0x20];
-        script.extend_from_slice(&[0xab; 32]);
-        let (dir, t) = child_then_parent(script);
-        let range = t.seqsigwit_loc.range_batch(&[Fk(1)]).unwrap()[0].unwrap();
-        assert!(range.1 > 0, "the child seqsigwit span is non-empty");
-        t.seqsigwit.truncate_body_to(2, range.0).unwrap();
-        expect_published(read_index_window(&t, &one_child(true)));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }

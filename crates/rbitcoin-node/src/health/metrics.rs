@@ -7,14 +7,14 @@ use rbitcoin_net::ChainHub;
 use std::fmt::{Display, Write};
 use std::time::UNIX_EPOCH;
 
-pub(super) const CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
+pub const CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
 /// One scrape. Chain reads may touch the store and the mempool totals take
 /// its lock, so call from the blocking pool. Cost: those chain reads
 /// (`best_header_height`, tip header, `in_ibd`, scripthash lag), one peer
 /// snapshot plus `byte_totals`, and one mempool fold (the same fold as
 /// `getmempoolinfo`) plus the min-fee, cap, orphan, and unbroadcast reads.
-pub(super) fn render(status: &NodeStatus) -> String {
+pub fn render(status: &NodeStatus) -> String {
     let mut out = Exposition::default();
     out.family(
         "rbitcoin_build_info",
@@ -57,7 +57,7 @@ pub(super) fn render(status: &NodeStatus) -> String {
             .map_or(0, |d| d.as_secs()),
     );
     progress_gauges(&mut out, &rbitcoin_log::progress::snapshots());
-    let rss_kb = rbitcoin_net::read_platform_rss().rss_kb;
+    let rss_kb = rbitcoin_ibd::read_platform_rss().rss_kb;
     if rss_kb > 0 {
         out.gauge(
             "process_resident_memory_bytes",
@@ -207,11 +207,13 @@ pub(super) fn render(status: &NodeStatus) -> String {
     out.0
 }
 
-fn seconds(us: u64) -> f64 {
+#[doc(hidden)]
+pub fn seconds(us: u64) -> f64 {
     us as f64 / 1e6
 }
 
-fn chain_gauges(out: &mut Exposition, chain: &ChainHub, sh_index: bool) {
+#[doc(hidden)]
+pub fn chain_gauges(out: &mut Exposition, chain: &ChainHub, sh_index: bool) {
     let tip = chain.query.tip_height();
     let blocks = tip.map_or(0, |h| h.0);
     out.gauge(
@@ -274,23 +276,28 @@ fn chain_gauges(out: &mut Exposition, chain: &ChainHub, sh_index: bool) {
 }
 
 #[derive(Default)]
-struct Exposition(String);
+#[doc(hidden)]
+pub struct Exposition(pub String);
 
 impl Exposition {
-    fn family(&mut self, name: &str, kind: &str, help: &str) {
+    #[doc(hidden)]
+    pub fn family(&mut self, name: &str, kind: &str, help: &str) {
         let _ = writeln!(self.0, "# HELP {name} {help}\n# TYPE {name} {kind}");
     }
 
-    fn sample(&mut self, name: &str, labels: &str, value: impl Display) {
+    #[doc(hidden)]
+    pub fn sample(&mut self, name: &str, labels: &str, value: impl Display) {
         let _ = writeln!(self.0, "{name}{labels} {value}");
     }
 
-    fn gauge(&mut self, name: &str, help: &str, value: impl Display) {
+    #[doc(hidden)]
+    pub fn gauge(&mut self, name: &str, help: &str, value: impl Display) {
         self.family(name, "gauge", help);
         self.sample(name, "", value);
     }
 
-    fn counter(&mut self, name: &str, help: &str, value: impl Display) {
+    #[doc(hidden)]
+    pub fn counter(&mut self, name: &str, help: &str, value: impl Display) {
         self.family(name, "counter", help);
         self.sample(name, "", value);
     }
@@ -299,7 +306,8 @@ impl Exposition {
 /// Every long stage running now, one series per `stage`. `GET /progress`
 /// shows the newest of them. Absent while none runs, so an idle node exports
 /// no progress series.
-fn progress_gauges(out: &mut Exposition, stages: &[rbitcoin_log::progress::Snapshot]) {
+#[doc(hidden)]
+pub fn progress_gauges(out: &mut Exposition, stages: &[rbitcoin_log::progress::Snapshot]) {
     if stages.is_empty() {
         return;
     }
@@ -335,60 +343,6 @@ fn progress_gauges(out: &mut Exposition, stages: &[rbitcoin_log::progress::Snaps
         out.family(name, "gauge", help);
         for p in &newest {
             out.sample(name, &format!("{{stage=\"{}\"}}", p.stage), value(p));
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rbitcoin_log::progress::Snapshot;
-    use std::time::{Duration, SystemTime};
-
-    fn stage(stage: &'static str, done: u64) -> Snapshot {
-        Snapshot {
-            stage,
-            done,
-            total: 10,
-            base: 0,
-            elapsed: Duration::ZERO,
-            started_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_000),
-        }
-    }
-
-    /// Two running stages of one name (two nodes in one process) export one
-    /// series, the newest; each family's HELP/TYPE appears once; idle exports
-    /// nothing.
-    #[test]
-    fn progress_gauges_one_series_per_stage_name() {
-        let mut out = Exposition::default();
-        progress_gauges(&mut out, &[]);
-        assert_eq!(out.0, "");
-
-        let mut out = Exposition::default();
-        progress_gauges(&mut out, &[stage("x", 1), stage("y", 5), stage("x", 2)]);
-        let lines: Vec<&str> = out.0.lines().collect();
-        let count = |prefix: &str| lines.iter().filter(|l| l.starts_with(prefix)).count();
-        assert_eq!(count("rbitcoin_progress_done{stage=\"x\"}"), 1, "{}", out.0);
-        assert!(
-            lines.contains(&"rbitcoin_progress_done{stage=\"x\"} 2"),
-            "{}",
-            out.0
-        );
-        assert!(
-            lines.contains(&"rbitcoin_progress_done{stage=\"y\"} 5"),
-            "{}",
-            out.0
-        );
-        assert!(lines.contains(&"rbitcoin_progress_target{stage=\"x\"} 10"));
-        assert!(lines.contains(&"rbitcoin_progress_start_time_seconds{stage=\"x\"} 1000"));
-        for family in [
-            "rbitcoin_progress_done",
-            "rbitcoin_progress_target",
-            "rbitcoin_progress_start_time_seconds",
-        ] {
-            assert_eq!(count(&format!("# TYPE {family} gauge")), 1, "{}", out.0);
-            assert_eq!(count(&format!("# HELP {family} ")), 1, "{}", out.0);
         }
     }
 }

@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-electrum"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "Electrum protocol server (scripthash JSON-RPC over TCP)"
+
+[lib]
+test = false
 
 [features]
 mutants = []
@@ -21,6 +25,10 @@ bitcoin = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

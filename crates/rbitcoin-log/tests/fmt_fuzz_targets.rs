@@ -1,5 +1,11 @@
 //! `#[path]` modules so `cargo fmt --all` formats `fuzz/fuzz_targets`.
 #![cfg(any())]
+use rbitcoin_log::api_log::PARAMS_MAX;
+use rbitcoin_log::api_log::{api_call, close_api_log, init_api_log};
+use std::fmt;
+use std::io::{self, Write};
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[path = "../../../fuzz/fuzz_targets/addrv2_wire.rs"]
 mod addrv2_wire;

@@ -6,11 +6,16 @@
 //! `GET …/txs/summary` is a mempool.space-shaped compact dialect (not
 //! Blockstream Esplora `API.md`). Opt-in `GET /block-template` is GBT.
 
-mod handlers;
-mod internal;
-mod script_fields;
-mod server;
-mod tx_json;
+#[doc(hidden)]
+pub mod handlers;
+#[doc(hidden)]
+pub mod internal;
+#[doc(hidden)]
+pub mod script_fields;
+#[doc(hidden)]
+pub mod server;
+#[doc(hidden)]
+pub mod tx_json;
 
 pub use server::{
     perf_totals, run_esplora, sample_reset_perf, BlockTemplateFn, EsploraConfig, EsploraHandle,

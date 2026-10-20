@@ -29,7 +29,8 @@ pub enum WriteIoBackend {
     Pwrite,
 }
 
-fn parse_read_token(s: &str) -> Option<ReadIoBackend> {
+#[doc(hidden)]
+pub fn parse_read_token(s: &str) -> Option<ReadIoBackend> {
     Some(match crate::bulk_io::parse_io_token_str(s)? {
         crate::bulk_io::IoToken::Uring
         | crate::bulk_io::IoToken::Pool
@@ -38,7 +39,8 @@ fn parse_read_token(s: &str) -> Option<ReadIoBackend> {
     })
 }
 
-fn parse_write_token(s: &str) -> Option<WriteIoBackend> {
+#[doc(hidden)]
+pub fn parse_write_token(s: &str) -> Option<WriteIoBackend> {
     Some(match crate::bulk_io::parse_io_token_str(s)? {
         crate::bulk_io::IoToken::Uring
         | crate::bulk_io::IoToken::Pool
@@ -47,7 +49,8 @@ fn parse_write_token(s: &str) -> Option<WriteIoBackend> {
     })
 }
 
-fn global_read_from_env() -> Option<ReadIoBackend> {
+#[doc(hidden)]
+pub fn global_read_from_env() -> Option<ReadIoBackend> {
     if let Ok(s) = std::env::var("RBITCOIN_IO") {
         if let Some(b) = parse_read_token(&s) {
             return Some(b);
@@ -56,7 +59,8 @@ fn global_read_from_env() -> Option<ReadIoBackend> {
     None
 }
 
-fn global_write_from_env() -> Option<WriteIoBackend> {
+#[doc(hidden)]
+pub fn global_write_from_env() -> Option<WriteIoBackend> {
     if let Ok(s) = std::env::var("RBITCOIN_IO") {
         if let Some(b) = parse_write_token(&s) {
             return Some(b);
@@ -81,7 +85,8 @@ pub fn effective_write(selected: WriteIoBackend) -> WriteIoBackend {
     }
 }
 
-fn default_read() -> ReadIoBackend {
+#[doc(hidden)]
+pub fn default_read() -> ReadIoBackend {
     if bulk_io::io_uring_enabled() {
         ReadIoBackend::Uring
     } else {
@@ -89,7 +94,8 @@ fn default_read() -> ReadIoBackend {
     }
 }
 
-fn default_write() -> WriteIoBackend {
+#[doc(hidden)]
+pub fn default_write() -> WriteIoBackend {
     if bulk_io::io_uring_enabled() {
         WriteIoBackend::Uring
     } else {
@@ -98,23 +104,25 @@ fn default_write() -> WriteIoBackend {
 }
 
 /// Global bulk read backend (`RBITCOIN_IO` only — no path overrides).
-pub(crate) fn resolve_read() -> ReadIoBackend {
+pub fn resolve_read() -> ReadIoBackend {
     let selected = global_read_from_env().unwrap_or_else(default_read);
     effective_read(selected)
 }
 
 /// Global bulk write backend (`RBITCOIN_IO` only — no path overrides).
-pub(crate) fn resolve_write() -> WriteIoBackend {
+pub fn resolve_write() -> WriteIoBackend {
     let selected = global_write_from_env().unwrap_or_else(default_write);
     effective_write(selected)
 }
 
-fn global_read_cached() -> ReadIoBackend {
+#[doc(hidden)]
+pub fn global_read_cached() -> ReadIoBackend {
     static B: OnceLock<ReadIoBackend> = OnceLock::new();
     *B.get_or_init(resolve_read)
 }
 
-fn global_write_cached() -> WriteIoBackend {
+#[doc(hidden)]
+pub fn global_write_cached() -> WriteIoBackend {
     static B: OnceLock<WriteIoBackend> = OnceLock::new();
     *B.get_or_init(resolve_write)
 }
@@ -129,91 +137,4 @@ pub fn read_io_backend() -> ReadIoBackend {
 #[inline]
 pub fn write_io_backend() -> WriteIoBackend {
     global_write_cached()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    fn clear_io_envs() {
-        std::env::remove_var("RBITCOIN_IO");
-    }
-
-    #[test]
-    fn parse_tokens() {
-        assert_eq!(parse_read_token("uring"), Some(ReadIoBackend::Uring));
-        assert_eq!(parse_read_token("io_uring"), Some(ReadIoBackend::Uring));
-        assert_eq!(parse_read_token("pool"), Some(ReadIoBackend::Uring));
-        assert_eq!(parse_read_token("iocp"), Some(ReadIoBackend::Uring));
-        assert!(
-            parse_read_token("ioring").is_none(),
-            "Windows IoRing is not supported; ioring is not a token"
-        );
-        assert!(parse_write_token("ioring").is_none());
-        assert_eq!(parse_read_token("pread"), Some(ReadIoBackend::Pread));
-        assert_eq!(parse_read_token("fd"), Some(ReadIoBackend::Pread));
-        assert_eq!(parse_read_token("libc"), Some(ReadIoBackend::Pread));
-        assert_eq!(parse_read_token("pwrite"), Some(ReadIoBackend::Pread));
-        assert!(parse_read_token("mmap").is_none());
-        assert_eq!(parse_write_token("uring"), Some(WriteIoBackend::Uring));
-        assert_eq!(parse_write_token("io_uring"), Some(WriteIoBackend::Uring));
-        assert_eq!(parse_write_token("pwrite"), Some(WriteIoBackend::Pwrite));
-        assert_eq!(parse_write_token("pread"), Some(WriteIoBackend::Pwrite));
-        assert_eq!(parse_write_token("fd"), Some(WriteIoBackend::Pwrite));
-        assert_eq!(parse_write_token("libc"), Some(WriteIoBackend::Pwrite));
-        assert!(parse_write_token("mmap").is_none());
-        assert!(parse_read_token("alternate").is_none());
-        assert!(parse_write_token("nope").is_none());
-    }
-
-    #[test]
-    fn path_env_ignored_global_only() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        clear_io_envs();
-        std::env::set_var("RBITCOIN_IO", "uring");
-        assert_eq!(resolve_read(), effective_read(ReadIoBackend::Uring));
-        clear_io_envs();
-        std::env::set_var("RBITCOIN_IO", "pread");
-        assert_eq!(resolve_read(), ReadIoBackend::Pread);
-        clear_io_envs();
-    }
-
-    #[test]
-    fn global_env_io_uring_off_and_aliases() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        clear_io_envs();
-        std::env::set_var("RBITCOIN_IO", "mmap");
-        assert_eq!(
-            global_read_from_env(),
-            None,
-            "mmap is not a token; unknown RBITCOIN_IO falls through"
-        );
-        assert_eq!(global_write_from_env(), None);
-        clear_io_envs();
-        std::env::set_var("RBITCOIN_IO_URING", "0");
-        assert_eq!(
-            global_read_from_env(),
-            None,
-            "RBITCOIN_IO_URING is not an alias; use RBITCOIN_IO=pread"
-        );
-        assert_eq!(global_write_from_env(), None);
-        clear_io_envs();
-        // Unknown RBITCOIN_IO token → None (fall through).
-        std::env::set_var("RBITCOIN_IO", "not-a-backend");
-        assert_eq!(global_read_from_env(), None);
-        assert_eq!(global_write_from_env(), None);
-        clear_io_envs();
-    }
-
-    #[test]
-    fn effective_backends_demote_when_uring_disabled() {
-        // effective_* only demotes when bulk_io reports uring off; still exercises match arms.
-        let _ = effective_read(ReadIoBackend::Pread);
-        let _ = effective_read(ReadIoBackend::Uring);
-        let _ = effective_write(WriteIoBackend::Pwrite);
-        let _ = effective_write(WriteIoBackend::Uring);
-    }
 }

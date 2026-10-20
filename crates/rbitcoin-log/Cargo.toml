@@ -6,6 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "Minimal leveled stderr logger and long-stage progress registry (no external deps)"
+autotests = false
+
+[lib]
+test = false
 
 [dependencies]
 
@@ -18,6 +22,10 @@ workspace = true
 [features]
 mutants = []
 fmt-fuzz-anchor = []
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [[test]]
 name = "fmt_fuzz_lib"

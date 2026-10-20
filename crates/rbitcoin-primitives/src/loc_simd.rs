@@ -1,7 +1,11 @@
 //! create.loc window SIMD: deinterleave `(stride, n_out)` pairs and inclusive `u8 << 3`.
 
-#[cfg(any(test, not(any(target_arch = "x86_64", target_arch = "aarch64"))))]
-fn deinterleave_pairs_u8x8_scalar(buf: &[u8; 16]) -> ([u8; 8], [u8; 8], bool) {
+#[cfg(any(
+    debug_assertions,
+    not(any(target_arch = "x86_64", target_arch = "aarch64"))
+))]
+#[doc(hidden)]
+pub fn deinterleave_pairs_u8x8_scalar(buf: &[u8; 16]) -> ([u8; 8], [u8; 8], bool) {
     let mut st = [0u8; 8];
     let mut no = [0u8; 8];
     let mut has_zero = false;
@@ -15,8 +19,12 @@ fn deinterleave_pairs_u8x8_scalar(buf: &[u8; 16]) -> ([u8; 8], [u8; 8], bool) {
     (st, no, has_zero)
 }
 
-#[cfg(any(test, not(any(target_arch = "x86_64", target_arch = "aarch64"))))]
-fn inclusive_u8x8_times_8_scalar(st: &[u8; 8], no: &[u8; 8]) -> ([u32; 8], [u32; 8]) {
+#[cfg(any(
+    debug_assertions,
+    not(any(target_arch = "x86_64", target_arch = "aarch64"))
+))]
+#[doc(hidden)]
+pub fn inclusive_u8x8_times_8_scalar(st: &[u8; 8], no: &[u8; 8]) -> ([u32; 8], [u32; 8]) {
     let mut tx = [0u32; 8];
     let mut sp = [0u32; 8];
     let mut t = 0u32;
@@ -65,7 +73,7 @@ pub fn inclusive_u8x8_times_8(st: &[u8; 8], no: &[u8; 8]) -> ([u32; 8], [u32; 8]
 /// # Safety
 /// `p` must be readable for 16 bytes.
 #[cfg(target_arch = "x86_64")]
-unsafe fn sse2_deinterleave_pairs_u8x8(p: *const u8) -> ([u8; 8], [u8; 8], bool) {
+pub unsafe fn sse2_deinterleave_pairs_u8x8(p: *const u8) -> ([u8; 8], [u8; 8], bool) {
     use std::arch::x86_64::{
         __m128i, _mm_and_si128, _mm_cmpeq_epi8, _mm_loadu_si128, _mm_movemask_epi8,
         _mm_packus_epi16, _mm_set1_epi16, _mm_setzero_si128, _mm_srli_epi16, _mm_storel_epi64,
@@ -89,7 +97,7 @@ unsafe fn sse2_deinterleave_pairs_u8x8(p: *const u8) -> ([u8; 8], [u8; 8], bool)
 /// `p` must be readable for 16 bytes.
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn neon_deinterleave_pairs_u8x8(p: *const u8) -> ([u8; 8], [u8; 8], bool) {
+pub unsafe fn neon_deinterleave_pairs_u8x8(p: *const u8) -> ([u8; 8], [u8; 8], bool) {
     use std::arch::aarch64::{vceq_u8, vdup_n_u8, vld2_u8, vmaxv_u8, vst1_u8};
     let v = vld2_u8(p);
     let z = vdup_n_u8(0);
@@ -105,7 +113,7 @@ unsafe fn neon_deinterleave_pairs_u8x8(p: *const u8) -> ([u8; 8], [u8; 8], bool)
 /// `p` must be readable for 8 bytes.
 #[cfg(target_arch = "x86_64")]
 #[inline]
-unsafe fn sse2_u8x8_times_8_inclusive(p: *const u8) -> [u32; 8] {
+pub unsafe fn sse2_u8x8_times_8_inclusive(p: *const u8) -> [u32; 8] {
     use std::arch::x86_64::{
         __m128i, _mm_add_epi32, _mm_cvtsi128_si32, _mm_loadl_epi64, _mm_set1_epi32,
         _mm_setzero_si128, _mm_slli_epi32, _mm_slli_si128, _mm_srli_si128, _mm_storeu_si128,
@@ -133,7 +141,7 @@ unsafe fn sse2_u8x8_times_8_inclusive(p: *const u8) -> [u32; 8] {
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
 #[inline]
-unsafe fn neon_u8x8_times_8_inclusive(p: *const u8) -> [u32; 8] {
+pub unsafe fn neon_u8x8_times_8_inclusive(p: *const u8) -> [u32; 8] {
     use std::arch::aarch64::{
         uint32x4_t, vaddq_u32, vdupq_n_u32, vextq_u32, vget_high_u16, vget_low_u16, vgetq_lane_u32,
         vld1_u8, vmovl_u16, vmovl_u8, vshlq_n_u32, vst1q_u32,
@@ -152,99 +160,4 @@ unsafe fn neon_u8x8_times_8_inclusive(p: *const u8) -> [u32; 8] {
     vst1q_u32(out.as_mut_ptr(), lo);
     vst1q_u32(out.as_mut_ptr().add(4), hi);
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn interleave(st: [u8; 8], no: [u8; 8]) -> [u8; 16] {
-        let mut buf = [0u8; 16];
-        for i in 0..8 {
-            buf[i * 2] = st[i];
-            buf[i * 2 + 1] = no[i];
-        }
-        buf
-    }
-
-    #[test]
-    fn deinterleave_pairs_lanes_and_zero_in_same_load() {
-        let mut buf = [0u8; 16];
-        for i in 0..8 {
-            buf[i * 2] = (i as u8) + 1;
-            buf[i * 2 + 1] = (i as u8) + 2;
-        }
-        let (st, no, z) = deinterleave_pairs_u8x8(buf);
-        assert_eq!(st, [1, 2, 3, 4, 5, 6, 7, 8]);
-        assert_eq!(no, [2, 3, 4, 5, 6, 7, 8, 9]);
-        assert!(!z);
-        buf[0] = 0;
-        assert!(deinterleave_pairs_u8x8(buf).2);
-        buf[0] = 1;
-        buf[15] = 0;
-        assert!(deinterleave_pairs_u8x8(buf).2);
-    }
-
-    #[test]
-    fn inclusive_u8x8_times_8_matches_shift_sum() {
-        let p = [255u8, 1, 0, 8, 255, 9, 2, 3];
-        let mut expect = [0u32; 8];
-        let mut acc = 0u32;
-        for (i, b) in p.iter().enumerate() {
-            acc += u32::from(*b) << 3;
-            expect[i] = acc;
-        }
-        let (tx, sp) = inclusive_u8x8_times_8(&p, &p);
-        assert_eq!(tx, expect);
-        assert_eq!(sp, expect);
-        assert_eq!(inclusive_u8x8_times_8_scalar(&p, &p), (expect, expect));
-    }
-
-    #[test]
-    fn simd_matches_scalar() {
-        let cases: [[u8; 16]; 4] = [
-            [0; 16],
-            [255; 16],
-            interleave([1, 2, 3, 4, 5, 6, 7, 8], [8, 7, 6, 5, 4, 3, 2, 1]),
-            {
-                let mut buf = [0u8; 16];
-                buf[0] = 0;
-                buf[15] = 255;
-                buf
-            },
-        ];
-        for buf in cases {
-            assert_eq!(
-                deinterleave_pairs_u8x8(buf),
-                deinterleave_pairs_u8x8_scalar(&buf)
-            );
-            let (st, no, _) = deinterleave_pairs_u8x8_scalar(&buf);
-            assert_eq!(
-                inclusive_u8x8_times_8(&st, &no),
-                inclusive_u8x8_times_8_scalar(&st, &no)
-            );
-        }
-    }
-
-    #[cfg(miri)]
-    #[test]
-    fn miri_loc_simd_vectors() {
-        let mut seed = 0x9e37_79b9u32;
-        for _ in 0..32 {
-            let mut buf = [0u8; 16];
-            for b in &mut buf {
-                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-                *b = (seed >> 24) as u8;
-            }
-            assert_eq!(
-                deinterleave_pairs_u8x8(buf),
-                deinterleave_pairs_u8x8_scalar(&buf)
-            );
-            let (st, no, _) = deinterleave_pairs_u8x8_scalar(&buf);
-            assert_eq!(
-                inclusive_u8x8_times_8(&st, &no),
-                inclusive_u8x8_times_8_scalar(&st, &no)
-            );
-        }
-    }
 }

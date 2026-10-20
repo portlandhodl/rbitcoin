@@ -80,7 +80,7 @@ One test: broadcast on Esplora, then the tx is visible on JSON-RPC **and**
 Electrum (`test_e2e_cross_surface_esplora_broadcast_visible_in_rpc_and_electrum`).
 Their E2E doc: one process, one store → a write on any surface must show on
 every read surface. In-tree pin:
-`rbitcoin-test` `--test cross_surface`
+`rbitcoin-test` `--test suite cross_surface::`
 `esplora_broadcast_visible_in_rpc_and_electrum` (Esplora `POST /tx` → RPC
 `getrawmempool` + Electrum `get_mempool` / `get_history` on one `run_p2p`
 datadir). Casa/Sparrow numbers stay host-only
@@ -206,7 +206,7 @@ scheduling a slice.
 | Rank | Item | Source | Lands in |
 |-----:|------|--------|----------|
 | 1 | Height-1 + spend-pad + 2-block fork vs v31.1 `bitcoind`; BIP324 `v2_contents` ASan + live Core `v2_session` + compact reconstruct vs `getblocktxn` + script-mutating vs Core + compact reorg via `drain_pending` (**landed**; **Q-30** Completed) | satd `block_differential` | **Q-30** / [`TESTING.md`](../TESTING.md) |
-| 2 | One cross-surface scenario: Esplora `POST /tx` → Electrum history + RPC mempool (**landed**; `esplora_broadcast_visible_in_rpc_and_electrum`) | satd E2E | `rbitcoin-test` `--test cross_surface` |
+| 2 | One cross-surface scenario: Esplora `POST /tx` → Electrum history + RPC mempool (**landed**; `esplora_broadcast_visible_in_rpc_and_electrum`) | satd E2E | `rbitcoin-test` `--test suite cross_surface::` |
 | — | ~~Hornet spec.html vs consensus-tests.md gap hunt~~ **done 2026-09-04** (table in this file; pins in `structure_rule_tests` / `header.rs` / `consensus_rules`) | Hornet | this file + [`consensus-tests.md`](./consensus-tests.md) |
 | 4 | `/healthz` + `/readyz` on the node listen; Prometheus as a flag (**landed**; `--health-listen`, `--metrics`) | satd | node / [`operations.md`](./operator/operations.md#health-probes-and-metrics) |
 | 5 | BIP352 serve: hash-bind tweak batches so a client can audit the stream | satd row idea on our tweaks path | Electrum tweaks / [`OPERATOR.md`](../OPERATOR.md) |

@@ -4,7 +4,8 @@ use super::*;
 use crate::FkMap;
 use bitcoin::hashes::Hash;
 
-fn assemble_parent_mtp_and_bits(
+#[doc(hidden)]
+pub fn assemble_parent_mtp_and_bits(
     query: &Query,
     params: &ChainParams,
     height: Height,
@@ -59,7 +60,8 @@ fn assemble_parent_mtp_and_bits(
     Ok((mtp, times))
 }
 
-fn assemble_chained_header(
+#[doc(hidden)]
+pub fn assemble_chained_header(
     query: &Query,
     params: &ChainParams,
     height: Height,
@@ -85,7 +87,8 @@ fn assemble_chained_header(
     )?)
 }
 
-fn header_bits_plan_or_store(query: &Query, h: u32) -> Option<bitcoin::CompactTarget> {
+#[doc(hidden)]
+pub fn header_bits_plan_or_store(query: &Query, h: u32) -> Option<bitcoin::CompactTarget> {
     if let Some((_fk, rec)) = query.header_at_height(Height(h)).ok().flatten() {
         return Some(bitcoin::CompactTarget::from_consensus(rec.bits));
     }
@@ -95,7 +98,8 @@ fn header_bits_plan_or_store(query: &Query, h: u32) -> Option<bitcoin::CompactTa
         .map(|plan| bitcoin::CompactTarget::from_consensus(plan.header_rec.bits))
 }
 
-fn retarget_first_time(
+#[doc(hidden)]
+pub fn retarget_first_time(
     query: &Query,
     params: &ChainParams,
     height: u32,
@@ -121,19 +125,20 @@ fn retarget_first_time(
 }
 
 /// Median-time-past uses the last 11 timestamps. Older ones drop.
-fn trim_mtp_window(time_window: &mut Vec<u32>) {
+#[doc(hidden)]
+pub fn trim_mtp_window(time_window: &mut Vec<u32>) {
     let overflow = time_window.len().saturating_sub(11);
     time_window.drain(..overflow);
 }
 
-pub(super) struct Assembled {
-    pub(super) prepared: Vec<Prepared>,
-    pub(super) tx_fees: Vec<u64>,
+pub struct Assembled {
+    pub prepared: Vec<Prepared>,
+    pub tx_fees: Vec<u64>,
     /// `(base_size, total_size)` parallel to `tx_fees`, from the lookup precompute.
-    pub(super) tx_sizes: Vec<(u32, u32)>,
+    pub tx_sizes: Vec<(u32, u32)>,
 }
 
-pub(super) fn assemble_run(
+pub fn assemble_run(
     query: &Query,
     params: &ChainParams,
     milestone: Milestone,
@@ -272,13 +277,14 @@ pub(super) fn assemble_run(
 
 /// Scratch reused by the confirm write thread. Cleared at each batch.
 #[derive(Default)]
-pub(super) struct StructuralReuse {
+pub struct StructuralReuse {
     pub scratch: crate::block_pipeline::StructuralScratch,
     pub pending: crate::block_pipeline::BatchSpent,
 }
 
 /// Prepared header at BIP34 height when this write contains that block.
-fn bip34_header_in_write(
+#[doc(hidden)]
+pub fn bip34_header_in_write(
     params: &ChainParams,
     prepared: &[Prepared],
 ) -> Option<bitcoin::BlockHash> {
@@ -301,7 +307,8 @@ fn bip34_header_in_write(
 /// time the chain is already past BIP34; after that the remembered hash is
 /// reused. The in-write header is not remembered here: Class C does that
 /// after the write commits.
-fn bip34_ancestor_for_write(
+#[doc(hidden)]
+pub fn bip34_ancestor_for_write(
     query: &Query,
     params: &ChainParams,
     prepared: &[Prepared],
@@ -316,7 +323,7 @@ fn bip34_ancestor_for_write(
     query.confirmed_bip34_ancestor(params.btc.bip34_height)
 }
 
-pub(super) fn remember_connected_bip34(query: &Query, params: &ChainParams, prepared: &[Prepared]) {
+pub fn remember_connected_bip34(query: &Query, params: &ChainParams, prepared: &[Prepared]) {
     if let Some(hash) = bip34_header_in_write(params, prepared) {
         query.remember_bip34_ancestor(params.btc.bip34_height, Some(hash));
     }
@@ -324,7 +331,7 @@ pub(super) fn remember_connected_bip34(query: &Query, params: &ChainParams, prep
 
 /// Durable spentness + maturity + subsidy after scripts (height order).
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-pub(super) fn structural_run(
+pub fn structural_run(
     query: &Query,
     params: &ChainParams,
     milestone: Milestone,
@@ -418,7 +425,7 @@ pub(super) fn structural_run(
     Ok((tot, std::mem::take(&mut reuse.scratch.slots)))
 }
 
-pub(super) fn class_c_commit(
+pub fn class_c_commit(
     query: &Query,
     prepared: &mut [Prepared],
     write_create_pins: &FkMap<crate::CreatePin>,
@@ -464,7 +471,7 @@ pub(super) fn class_c_commit(
 /// Returns spend-annotate wall ns measured with a local `Instant`.
 ///
 /// Pure-write annotate from structural slots (no pin `get_spender_abs`).
-pub(super) fn post_commit(
+pub fn post_commit(
     query: &Query,
     slots: &crate::block_pipeline::AnnotateSlots,
 ) -> Result<u64, ConfirmError> {
@@ -503,8 +510,8 @@ pub(super) fn post_commit(
     Ok(spend_ann_ns)
 }
 
-#[cfg(test)]
-pub(super) fn expected_bits_extending(
+#[cfg(debug_assertions)]
+pub fn expected_bits_extending(
     query: &Query,
     params: &ChainParams,
     height: Height,
@@ -527,94 +534,4 @@ pub(super) fn expected_bits_extending(
         |h| header_bits_plan_or_store(query, h),
     ))
     .map_err(ConfirmError::from)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::accept_and_connect_block;
-    use crate::TxPrecompute;
-    use bitcoin::blockdata::constants;
-    use bitcoin::ScriptBuf;
-    use rbitcoin_consensus::mine_empty_regtest;
-    use rbitcoin_consensus::{ChainParams, Milestone};
-    use rbitcoin_primitives::{Fk, Height};
-    use rbitcoin_store::HeaderRecord;
-    use std::sync::Arc;
-
-    #[test]
-    fn mtp_window_keeps_the_last_eleven_times() {
-        let mut window: Vec<u32> = (1..=11).collect();
-        trim_mtp_window(&mut window);
-        assert_eq!(window, (1..=11).collect::<Vec<_>>());
-        window.push(12);
-        trim_mtp_window(&mut window);
-        assert_eq!(window, (2..=12).collect::<Vec<_>>());
-        window.push(13);
-        window.push(14);
-        trim_mtp_window(&mut window);
-        assert_eq!(window, (4..=14).collect::<Vec<_>>());
-    }
-
-    fn tiny() -> (crate::testutil::TempDir, crate::Query) {
-        crate::testutil::tiny_query_labeled("phases-pin")
-    }
-
-    #[test]
-    fn signet_challenge_applies_above_genesis() {
-        let (path, q) = tiny();
-        let mut params = ChainParams::regtest();
-        params.signet_challenge = Some(ScriptBuf::from_bytes(vec![0x51]));
-        let genesis = constants::genesis_block(bitcoin::Network::Regtest);
-        accept_and_connect_block(&q, &params, Height::GENESIS, &genesis, Milestone::NONE).unwrap();
-        let b1 = mine_empty_regtest(genesis.block_hash(), genesis.header.time + 600, 1);
-        let block = Arc::new(b1);
-        let pres: Arc<[TxPrecompute]> = block
-            .txdata
-            .iter()
-            .map(TxPrecompute::from_tx)
-            .collect::<Vec<_>>()
-            .into();
-        let meta = BodyMeta {
-            height: Height(1),
-            hash: block.block_hash().to_byte_array(),
-            header_fk: Fk(1),
-            header_rec: HeaderRecord {
-                prev_fk: Fk(1),
-                version: block.header.version.to_consensus(),
-                timestamp: block.header.time,
-                bits: block.header.bits.to_consensus(),
-                nonce: block.header.nonce,
-                merkle_root: block.header.merkle_root.to_byte_array(),
-                hash: block.block_hash().to_byte_array(),
-                size: 0,
-                weight: 0,
-            },
-            tx_fks: Vec::new(),
-            txids: block
-                .txdata
-                .iter()
-                .map(|tx| tx.compute_txid().to_byte_array())
-                .collect(),
-            pres,
-        };
-        let err = match assemble_run(
-            &q,
-            &params,
-            Milestone::NONE,
-            vec![meta],
-            std::slice::from_ref(&block),
-            &crate::BatchParents::new(),
-            &crate::SpendEdges::default(),
-        ) {
-            Ok(_) => panic!("height 1 with a challenge must reject a block that has no solution"),
-            Err(e) => e,
-        };
-        let msg = err.to_string();
-        assert!(
-            msg.contains("signet"),
-            "height 1 with a challenge must check the solution, got {msg}"
-        );
-        let _ = std::fs::remove_dir_all(&path);
-    }
 }

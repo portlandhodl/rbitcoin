@@ -1,23 +1,32 @@
 //! Block and transaction validation / confirmability.
 
 pub mod block;
-mod clock;
-mod error;
+#[doc(hidden)]
+pub mod clock;
+#[doc(hidden)]
+pub mod error;
 pub mod header;
-mod id_map;
-mod milestone;
-mod params;
+#[doc(hidden)]
+pub mod id_map;
+#[doc(hidden)]
+pub mod milestone;
+#[doc(hidden)]
+pub mod params;
 pub mod policy;
-mod regtest_pad;
-mod script;
+#[doc(hidden)]
+pub mod regtest_pad;
+#[doc(hidden)]
+pub mod script;
 #[cfg(feature = "corpus")]
 pub use script::core_script;
 pub mod script_pool;
-mod signet;
+#[doc(hidden)]
+pub mod signet;
 pub mod silent_payments;
-mod tx_precompute;
+#[doc(hidden)]
+pub mod tx_precompute;
 
-pub(crate) use block::ScriptCheckJob;
+pub use block::ScriptCheckJob;
 
 /// Consensus script verify for a single tx on the shared `rbtc-scripts` path.
 ///

@@ -13,8 +13,8 @@ use rbitcoin_store::{elapsed_after_checkpoint, SPEND_DURABLE_INTERVAL_MS};
 use crate::Query;
 
 pub struct SpendSync {
-    wake: Arc<(Mutex<bool>, Condvar)>,
-    join: Option<JoinHandle<()>>,
+    pub wake: Arc<(Mutex<bool>, Condvar)>,
+    pub join: Option<JoinHandle<()>>,
 }
 
 impl SpendSync {
@@ -36,7 +36,8 @@ impl SpendSync {
         self.stop_and_join();
     }
 
-    fn stop_and_join(&mut self) {
+    #[doc(hidden)]
+    pub fn stop_and_join(&mut self) {
         {
             let (lock, cv) = &*self.wake;
             let mut stop = lock.lock().unwrap();
@@ -55,7 +56,8 @@ impl Drop for SpendSync {
     }
 }
 
-fn run(query: Arc<Query>, wake: Arc<(Mutex<bool>, Condvar)>) {
+#[doc(hidden)]
+pub fn run(query: Arc<Query>, wake: Arc<(Mutex<bool>, Condvar)>) {
     let (lock, cv) = &*wake;
     let mut since_ok = Instant::now();
     loop {
@@ -99,29 +101,7 @@ fn run(query: Arc<Query>, wake: Arc<(Mutex<bool>, Condvar)>) {
     }
 }
 
-fn checkpoint(query: &Query) -> Result<(), rbitcoin_store::StoreError> {
+#[doc(hidden)]
+pub fn checkpoint(query: &Query) -> Result<(), rbitcoin_store::StoreError> {
     query.store().checkpoint_observed_spend()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use rbitcoin_primitives::{Fk, Height};
-
-    use super::SpendSync;
-
-    #[test]
-    fn shutdown_publishes_the_snapshot() {
-        let (dir, q) = crate::testutil::tiny_query_labeled("spend-sync-stop");
-        q.store().confirmed.set(Height(4), Fk(1)).unwrap();
-        q.store().note_spend_snapshot(4);
-        let q = Arc::new(q);
-        let sync = SpendSync::spawn(Arc::clone(&q));
-        sync.shutdown();
-        let raw = std::fs::read(q.store().path().join(rbitcoin_store::SPEND_DURABLE_NAME)).unwrap();
-        assert_eq!(u32::from_le_bytes(raw[8..12].try_into().unwrap()), 4);
-        assert_eq!(u32::from_le_bytes(raw[12..16].try_into().unwrap()), 4);
-        let _ = dir;
-    }
 }

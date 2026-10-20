@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-cli"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "rbitcoin RPC CLI client"
+
+[lib]
+test = false
 
 [[bin]]
 name = "rbitcoin-cli"
@@ -20,6 +24,9 @@ mimalloc = { workspace = true }
 serde_json = { workspace = true }
 socket2 = { version = "0.6", features = ["all"] }
 
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-net"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-description = "Bitcoin P2P (BIP324, IBD, tip follow, compact v2, tx relay)"
+description = "Bitcoin P2P (BIP324, tip follow, compact v2, tx relay)"
+
+[lib]
+test = false
 
 [features]
 mutants = []
@@ -21,26 +25,20 @@ bitcoin = { workspace = true }
 bip324 = { workspace = true }
 tokio = { workspace = true }
 arc-swap = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 getrandom = "0.4"
 sha3 = "0.12"
-
-[dev-dependencies]
-# Relay tests pin a full mempool slot table. Dependents of this crate do
-# not turn the feature on.
-rbitcoin-mempool = { workspace = true, features = ["test-hooks"] }
-# Side-block accept arms one cancelled header read. Dependents do not.
-rbitcoin-query = { workspace = true, features = ["test-hooks"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # POLLRDHUP: peer FIN with unread bytes still in the receive buffer.
 libc = "0.2"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-# proc_pid_rusage: resident size for `ibd: sizes` / `tip: perf`; Darwin
-# has no /proc.
-libc = "0.2"
+[dev-dependencies]
+rbitcoin-ibd = { workspace = true }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

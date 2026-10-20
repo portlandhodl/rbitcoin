@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Monotonic event count. `/metrics` reads the running total; the `tip: perf`
 /// line takes the change since its previous sample.
 #[derive(Debug, Default)]
-pub(crate) struct PerfCounter {
-    total: AtomicU64,
-    window_mark: AtomicU64,
+pub struct PerfCounter {
+    pub total: AtomicU64,
+    pub window_mark: AtomicU64,
 }
 
 impl PerfCounter {
@@ -36,7 +36,7 @@ impl PerfCounter {
 /// Largest value noted since the previous [`Self::take`]. A window maximum
 /// cannot be derived from running totals, so this one resets.
 #[derive(Debug, Default)]
-pub(crate) struct PerfMax(AtomicU64);
+pub struct PerfMax(AtomicU64);
 
 impl PerfMax {
     pub const fn new() -> Self {
@@ -56,9 +56,9 @@ impl PerfMax {
 /// surface (Esplora REST, Electrum JSON-RPC).
 #[derive(Debug, Default)]
 pub struct RequestMeter {
-    requests: PerfCounter,
-    wall_us: PerfCounter,
-    max_us: PerfMax,
+    pub requests: PerfCounter,
+    pub wall_us: PerfCounter,
+    pub max_us: PerfMax,
 }
 
 impl RequestMeter {
@@ -88,41 +88,5 @@ impl RequestMeter {
     /// Running `(requests, sum_us)` (`/metrics`).
     pub fn totals(&self) -> (u64, u64) {
         (self.requests.total(), self.wall_us.total())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_window_sample_leaves_the_running_total() {
-        let c = PerfCounter::new();
-        c.add(1);
-        c.add(2);
-        assert_eq!((c.take_window(), c.total()), (3, 3));
-        assert_eq!((c.take_window(), c.total()), (0, 3));
-        c.add(1);
-        assert_eq!((c.take_window(), c.total()), (1, 4));
-    }
-
-    #[test]
-    fn a_request_window_keeps_the_totals() {
-        let m = RequestMeter::new();
-        m.note(10);
-        m.note(30);
-        assert_eq!(m.take_window(), (2, 40, 30));
-        m.note(5);
-        assert_eq!(m.take_window(), (1, 5, 5));
-        assert_eq!(m.totals(), (3, 45));
-    }
-
-    #[test]
-    fn a_window_max_resets_per_sample() {
-        let m = PerfMax::new();
-        m.note(5);
-        m.note(3);
-        assert_eq!(m.take(), 5);
-        assert_eq!(m.take(), 0);
     }
 }

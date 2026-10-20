@@ -73,7 +73,7 @@ done
 assert_filter_matches() {
   local pkg="$1" f="$2"
   local listed
-  if ! listed="$(cargo test -q -p "$pkg" --lib -- --list "$f")"; then
+  if ! listed="$(cargo test -q -p "$pkg" --test suite -- --list "$f")"; then
     echo "ci-os-smoke: failed to list tests for '$f' in $pkg" >&2
     exit 1
   fi
@@ -85,17 +85,17 @@ assert_filter_matches() {
 
 for f in "${STORE_PLATFORM_FILTERS[@]}"; do
   assert_filter_matches rbitcoin-store "$f"
-  cargo test -p rbitcoin-store --lib -- "$f" ${skip_args[@]+"${skip_args[@]}"}
+  cargo test -p rbitcoin-store --test suite -- "$f" ${skip_args[@]+"${skip_args[@]}"}
 done
 
 for f in "${QUERY_PLATFORM_FILTERS[@]}"; do
   assert_filter_matches rbitcoin-query "$f"
-  cargo test -p rbitcoin-query --lib -- "$f"
+  cargo test -p rbitcoin-query --test suite -- "$f"
 done
 
 for f in ${PRIMITIVES_PLATFORM_FILTERS[@]+"${PRIMITIVES_PLATFORM_FILTERS[@]}"}; do
   assert_filter_matches rbitcoin-primitives "$f"
-  cargo test -p rbitcoin-primitives --lib -- "$f"
+  cargo test -p rbitcoin-primitives --test suite -- "$f"
 done
 
 cargo build -p rbitcoin-node -p rbitcoin-cli

@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-nightly}"
-cmd=(cargo "+${RUSTUP_TOOLCHAIN}" miri test -p rbitcoin-primitives)
+cmd=(cargo "+${RUSTUP_TOOLCHAIN}" miri test -p rbitcoin-primitives --test suite)
 
 if [[ "${MIRI_DRY_RUN:-}" == "1" ]]; then
   echo "RUSTUP_TOOLCHAIN=$RUSTUP_TOOLCHAIN"

@@ -2,16 +2,19 @@
 
 use super::*;
 
-type CreatePin = crate::CreatePin;
+#[doc(hidden)]
+pub type CreatePin = crate::CreatePin;
 
-struct PlanSpend<'a> {
-    spend_edges: std::borrow::Cow<'a, crate::SpendEdges>,
-    parent_vouts: U64Map<Vec<u32>>,
-    vouts_from_stamp: bool,
-    batch_pin_by_id: U64Map<&'a CreatePin>,
+#[doc(hidden)]
+pub struct PlanSpend<'a> {
+    pub spend_edges: std::borrow::Cow<'a, crate::SpendEdges>,
+    pub parent_vouts: U64Map<Vec<u32>>,
+    pub vouts_from_stamp: bool,
+    pub batch_pin_by_id: U64Map<&'a CreatePin>,
 }
 
-fn spend_edges_from_plan<'a>(
+#[doc(hidden)]
+pub fn spend_edges_from_plan<'a>(
     plan: &'a crate::ArchiveWritePlan,
     parent_pin: &mut ParentPinStamp,
 ) -> Result<PlanSpend<'a>, ConfirmError> {
@@ -55,7 +58,8 @@ fn spend_edges_from_plan<'a>(
     })
 }
 
-fn spend_edges_from_stamp(
+#[doc(hidden)]
+pub fn spend_edges_from_stamp(
     parent_pin: &ParentPinStamp,
     metas: &[BodyMeta],
     wire_blocks: &[Arc<Block>],
@@ -127,7 +131,8 @@ fn spend_edges_from_stamp(
     (spend_edges, parent_vouts)
 }
 
-fn fill_pins(
+#[doc(hidden)]
+pub fn fill_pins(
     parent_vouts: &U64Map<Vec<u32>>,
     batch_pin_by_id: &U64Map<&CreatePin>,
     parent_pin: &ParentPinStamp,
@@ -174,7 +179,8 @@ fn fill_pins(
 
 /// Schema 25 leaves `input_count` at 0, which stays unknown. More than one
 /// input is not a coinbase.
-fn coinbase_flag(input_count: u32) -> Option<bool> {
+#[doc(hidden)]
+pub fn coinbase_flag(input_count: u32) -> Option<bool> {
     if input_count > 1 {
         Some(false)
     } else {
@@ -182,7 +188,8 @@ fn coinbase_flag(input_count: u32) -> Option<bool> {
     }
 }
 
-fn apply_plan_pins(
+#[doc(hidden)]
+pub fn apply_plan_pins(
     parent_vouts: &U64Map<Vec<u32>>,
     plan_by_id: &U64Map<CreatePin>,
     parent_pin: &ParentPinStamp,
@@ -233,7 +240,8 @@ fn apply_plan_pins(
 /// The wire `vout` is peer-chosen. It is checked against the lookup-stamped
 /// `create.loc` count, or the full wire tx of a batch / in-flight pin, before
 /// any body read. A short load after this point stays store `Corrupt`.
-fn reject_vout_past_n_out(
+#[doc(hidden)]
+pub fn reject_vout_past_n_out(
     parent_vouts: &U64Map<Vec<u32>>,
     parent_pin: &ParentPinStamp,
     plan_by_id: &U64Map<CreatePin>,
@@ -258,7 +266,8 @@ fn reject_vout_past_n_out(
 }
 
 #[allow(clippy::type_complexity)] // packed row / pin / script-hash tuple is the on-disk shape
-fn denserels_by_stamped_range(
+#[doc(hidden)]
+pub fn denserels_by_stamped_range(
     query: &Query,
     parent_pin: &ParentPinStamp,
     still_need: &mut U64Map<Vec<u32>>,
@@ -346,7 +355,7 @@ fn denserels_by_stamped_range(
 /// **txout body by range** from [`ParentPinStamp`] (lookup-stamped). Load never
 /// reads head / `tx.idx` / `txid.body`. Load **copies** lookup-stamped
 /// `spent_range` onto pins. Write [`collect_spend_abs_after_fill`] is abs-or-Corrupt.
-pub(super) fn pin_for_wire_batch<'a>(
+pub fn pin_for_wire_batch<'a>(
     query: &Query,
     plan: Option<&'a crate::ArchiveWritePlan>,
     parent_pin: &mut ParentPinStamp,
@@ -467,7 +476,7 @@ pub(super) fn pin_for_wire_batch<'a>(
 /// Missing in-range abs is the ensure `Corrupt`. The write phase returns that
 /// before `tx.head` insert and passes the jobs to structural, which does not
 /// look them up again. Null create fk is skipped; duplicate abs is one job.
-pub(super) fn collect_spend_abs_after_fill(
+pub fn collect_spend_abs_after_fill(
     batch_parents: &crate::BatchParents,
     prepared: &[Prepared],
 ) -> Result<Vec<Vec<crate::block_pipeline::StructuralAbsJob>>, ConfirmError> {
@@ -497,8 +506,8 @@ pub(super) fn collect_spend_abs_after_fill(
 ///
 /// Direct tests keep this walk, including its skip of a null spend fk.
 /// [`collect_spend_abs_after_fill`] is the write-phase post-condition.
-#[cfg(test)]
-pub(super) fn ensure_spend_abs_layouts(
+#[cfg(debug_assertions)]
+pub fn ensure_spend_abs_layouts(
     batch_parents: &crate::BatchParents,
     prepared: &[Prepared],
 ) -> Result<(), ConfirmError> {
@@ -515,100 +524,4 @@ pub(super) fn ensure_spend_abs_layouts(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{CreatePin, ParentIdent, U64Map};
-    use rbitcoin_primitives::Fk;
-    use rbitcoin_store::{OutputRecord, TxRecord};
-
-    fn pin_with(txid: [u8; 32], inputs: u32) -> CreatePin {
-        crate::CreatePinInner::records(
-            TxRecord {
-                txid,
-                version: 1,
-                locktime: 0,
-                input_start_fk: Fk::NULL,
-                input_count: inputs,
-                output_start_fk: Fk::NULL,
-                output_count: 1,
-            },
-            vec![OutputRecord::unspent(50, vec![0x51])],
-        )
-    }
-
-    #[test]
-    fn plan_pin_coinbase_flag_follows_input_count() {
-        let one = pin_with([0x31; 32], 1);
-        let two = pin_with([0x32; 32], 2);
-        let mut parents = crate::BatchParents::new();
-        parents.insert_owned(
-            Fk(1),
-            one.tx().clone(),
-            vec![(0, OutputRecord::unspent(50, vec![0x51]))],
-            vec![0],
-            None,
-            None,
-            Vec::new(),
-        );
-        let mut by_id: U64Map<CreatePin> = U64Map::default();
-        by_id.insert(1, one);
-        let mut vouts: U64Map<Vec<u32>> = U64Map::default();
-        vouts.insert(1, vec![0]);
-        let mut still = U64Map::default();
-        apply_plan_pins(
-            &vouts,
-            &by_id,
-            &ParentPinStamp::default(),
-            &mut parents,
-            &mut still,
-        );
-        assert_eq!(parents.get_parent_coinbase(Fk(1)), None);
-
-        let mut stamp = ParentPinStamp::default();
-        stamp
-            .idents
-            .insert(1, ParentIdent::with_body([0x31; 32], (4, 8)));
-        apply_plan_pins(&vouts, &by_id, &stamp, &mut parents, &mut still);
-        assert_eq!(
-            parents.get_body_range(Fk(1)),
-            Some((4, 8)),
-            "a one-input pin still publishes a body range"
-        );
-
-        let mut fresh = crate::BatchParents::new();
-        let mut by_two: U64Map<CreatePin> = U64Map::default();
-        by_two.insert(2, two);
-        let mut need: U64Map<Vec<u32>> = U64Map::default();
-        need.insert(2, vec![0]);
-        let mut still = U64Map::default();
-        apply_plan_pins(
-            &need,
-            &by_two,
-            &ParentPinStamp::default(),
-            &mut fresh,
-            &mut still,
-        );
-        assert_eq!(fresh.get_parent_coinbase(Fk(2)), Some(false));
-
-        let mut empty_need: U64Map<Vec<u32>> = U64Map::default();
-        empty_need.insert(3, Vec::new());
-        let mut by_empty: U64Map<CreatePin> = U64Map::default();
-        by_empty.insert(3, pin_with([0x33; 32], 1));
-        let mut dest = crate::BatchParents::new();
-        let mut still = U64Map::default();
-        apply_plan_pins(
-            &empty_need,
-            &by_empty,
-            &ParentPinStamp::default(),
-            &mut dest,
-            &mut still,
-        );
-        assert!(
-            dest.get_parent_tx(Fk(3)).is_some(),
-            "an empty need list is not already covered"
-        );
-    }
 }

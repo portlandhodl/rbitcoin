@@ -132,14 +132,18 @@ pub fn validate_block_structure_hashed(
 }
 
 /// Structure checks plus per-tx [`TxPrecompute`] (one walk: txid/wtxid/weight/common SHA256).
-pub(crate) fn validate_block_structure_precomputed(
+pub fn validate_block_structure_precomputed(
     block: &Block,
     ctx: &ValidationContext<'_>,
 ) -> Result<Vec<TxPrecompute>, ConsensusError> {
     Ok(validate_block_structure_with_pres(block, ctx, None, None)?.to_vec())
 }
 
-fn reject_bad_block_tx_layout(block: &Block, pres: &[TxPrecompute]) -> Result<(), ConsensusError> {
+#[doc(hidden)]
+pub fn reject_bad_block_tx_layout(
+    block: &Block,
+    pres: &[TxPrecompute],
+) -> Result<(), ConsensusError> {
     if block.txdata.is_empty() {
         return Err(ConsensusError::BadBlock("no transactions"));
     }
@@ -271,7 +275,8 @@ pub fn validate_block_structure_with_pres(
 }
 
 /// Witness commitment before weight. Padding is not the block hash's fault.
-fn reject_witness_malleation(
+#[doc(hidden)]
+pub fn reject_witness_malleation(
     block: &Block,
     ctx: &ValidationContext<'_>,
     pres: &[TxPrecompute],
@@ -290,7 +295,8 @@ fn reject_witness_malleation(
     Ok(())
 }
 
-fn coinbase_has_witness_commitment(block: &Block) -> bool {
+#[doc(hidden)]
+pub fn coinbase_has_witness_commitment(block: &Block) -> bool {
     block
         .txdata
         .first()
@@ -445,7 +451,8 @@ pub fn last_script_push(script: &[u8]) -> Option<&[u8]> {
 }
 
 /// BIP16 P2SH sigops from redeem scripts (accurate CHECKMULTISIG count).
-fn p2sh_sigops_one(inp: &bitcoin::TxIn, spk: &[u8]) -> u64 {
+#[doc(hidden)]
+pub fn p2sh_sigops_one(inp: &bitcoin::TxIn, spk: &[u8]) -> u64 {
     if !Script::from_bytes(spk).is_p2sh() {
         return 0;
     }
@@ -454,8 +461,9 @@ fn p2sh_sigops_one(inp: &bitcoin::TxIn, spk: &[u8]) -> u64 {
         .unwrap_or(0)
 }
 
-#[cfg(test)]
-fn p2sh_sigop_count(tx: &Transaction, prev_spks: &[&[u8]]) -> u64 {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn p2sh_sigop_count(tx: &Transaction, prev_spks: &[&[u8]]) -> u64 {
     let mut n = 0u64;
     for (i, inp) in tx.input.iter().enumerate() {
         let Some(spk) = prev_spks.get(i) else {
@@ -467,7 +475,8 @@ fn p2sh_sigop_count(tx: &Transaction, prev_spks: &[&[u8]]) -> u64 {
 }
 
 /// BIP141 witness sigop count (not witness-scaled).
-fn witness_sigops_one(inp: &bitcoin::TxIn, spk: &[u8]) -> u64 {
+#[doc(hidden)]
+pub fn witness_sigops_one(inp: &bitcoin::TxIn, spk: &[u8]) -> u64 {
     let mut program = spk;
     if Script::from_bytes(program).is_p2sh() {
         if let Some(redeem) = last_script_push(inp.script_sig.as_bytes()) {
@@ -489,8 +498,9 @@ fn witness_sigops_one(inp: &bitcoin::TxIn, spk: &[u8]) -> u64 {
     }
 }
 
-#[cfg(test)]
-fn witness_sigop_count(tx: &Transaction, prev_spks: &[&[u8]]) -> u64 {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn witness_sigop_count(tx: &Transaction, prev_spks: &[&[u8]]) -> u64 {
     let mut n = 0u64;
     for (i, inp) in tx.input.iter().enumerate() {
         let Some(spk) = prev_spks.get(i) else {
@@ -529,7 +539,8 @@ pub fn tx_sigop_cost(tx: &Transaction, prev_spks: &[&[u8]], bip16: bool, witness
 /// BIP141: coinbase must commit to witness merkle root when segwit is used.
 ///
 /// `precomputed_non_cb` is wtxids for non-coinbase txs (same order as `txdata[1..]`).
-fn check_witness_commitment_with_wtxids(
+#[doc(hidden)]
+pub fn check_witness_commitment_with_wtxids(
     block: &Block,
     precomputed_non_cb: &[[u8; 32]],
 ) -> Result<(), ConsensusError> {
@@ -633,7 +644,8 @@ pub const TAPROOT_EXCEPTION_MAINNET: [u8; 32] = [
 ];
 
 /// Testnet3 BIP16 exception block, Core `CTestNetParams` `script_flag_exceptions`.
-const BIP16_EXCEPTION_TESTNET3: [u8; 32] = [
+#[doc(hidden)]
+pub const BIP16_EXCEPTION_TESTNET3: [u8; 32] = [
     // little-endian display hash 00000000dd30457c001f4095d208cc1296b0eed002427aa599874af7a432b105
     0x05, 0xb1, 0x32, 0xa4, 0xf7, 0x4a, 0x87, 0x99, 0xa5, 0x7a, 0x42, 0x02, 0xd0, 0xee, 0xb0, 0x96,
     0x12, 0xcc, 0x08, 0xd2, 0x95, 0x40, 0x1f, 0x00, 0x7c, 0x45, 0x30, 0xdd, 0x00, 0x00, 0x00, 0x00,
@@ -643,7 +655,6 @@ const BIP16_EXCEPTION_TESTNET3: [u8; 32] = [
 ///
 /// Callers must pass the same prev-block MTP used for BIP113 / header MTP checks
 /// and the once-computed block hash (plan `meta.hash` / structure).
-#[inline]
 pub fn bip16_active_from_prev_mtp(
     params: &ChainParams,
     height: u32,
@@ -675,11 +686,12 @@ pub fn bip16_active_from_prev_mtp(
 /// Deref to [`Transaction`] so script paths keep `job.tx.input` / `&job.tx` ergonomics.
 #[derive(Clone)]
 pub struct JobTx {
-    inner: JobTxInner,
+    pub inner: JobTxInner,
 }
 
 #[derive(Clone)]
-enum JobTxInner {
+#[doc(hidden)]
+pub enum JobTxInner {
     Owned(Transaction),
     Shared { block: Arc<Block>, index: usize },
 }
@@ -700,7 +712,8 @@ impl JobTx {
         }
     }
 
-    fn output_at(&self, tx_index: u32, vout: u32) -> Option<&TxOut> {
+    #[doc(hidden)]
+    pub fn output_at(&self, tx_index: u32, vout: u32) -> Option<&TxOut> {
         match &self.inner {
             JobTxInner::Shared { block, .. } => block
                 .txdata
@@ -814,7 +827,6 @@ impl ScriptVerifyFlags {
 
     /// Core `GetBlockScriptFlags` for `block_hash` at `ctx`. `bip16_active` is
     /// false only for a BIP16 exception block or genesis.
-    #[inline]
     pub fn consensus_at(
         ctx: &ValidationContext<'_>,
         block_hash: &[u8; 32],
@@ -916,9 +928,9 @@ pub struct ScriptCheckJob {
     pub prevouts: JobPrevouts,
     /// Owned (tests) or shared wire block + index (confirm path).
     pub tx: JobTx,
-    pub(crate) flags: ScriptVerifyFlags,
+    pub flags: ScriptVerifyFlags,
     /// Lookup/structure `TxPrecompute`. Set on the confirm path; tests lazy-`from_tx`.
-    pub(crate) pre: std::sync::OnceLock<JobPre>,
+    pub pre: std::sync::OnceLock<JobPre>,
 }
 
 impl Deref for ScriptCheckJob {
@@ -935,7 +947,7 @@ impl DerefMut for ScriptCheckJob {
 }
 
 /// Confirm jobs borrow the lookup/structure slice; tests own an `Arc`.
-pub(crate) enum JobPre {
+pub enum JobPre {
     Owned(std::sync::Arc<crate::TxPrecompute>),
     Slice {
         slice: std::sync::Arc<[crate::TxPrecompute]>,
@@ -987,7 +999,8 @@ impl ScriptCheckJob {
         self
     }
 
-    fn job_pre(&self) -> &JobPre {
+    #[doc(hidden)]
+    pub fn job_pre(&self) -> &JobPre {
         self.pre.get_or_init(|| {
             JobPre::Owned(std::sync::Arc::new(crate::TxPrecompute::from_tx(&self.tx)))
         })
@@ -1022,7 +1035,8 @@ impl ScriptCheckJob {
         }
     }
 
-    fn wire_output(&self, tx_index: u32, vout: u32) -> Result<&TxOut, ConsensusError> {
+    #[doc(hidden)]
+    pub fn wire_output(&self, tx_index: u32, vout: u32) -> Result<&TxOut, ConsensusError> {
         self.tx
             .output_at(tx_index, vout)
             .ok_or(ConsensusError::Internal("invariant: wire prevout"))
@@ -1034,7 +1048,7 @@ impl ScriptCheckJob {
     }
 
     #[inline]
-    pub(crate) fn prevout_amount(&self, i: usize) -> Result<Amount, ConsensusError> {
+    pub fn prevout_amount(&self, i: usize) -> Result<Amount, ConsensusError> {
         self.prevout_parts(i)
             .map(|(value, _)| Amount::from_sat(value))
     }
@@ -1172,8 +1186,8 @@ pub fn reject_one_create(
 /// OP_TRUE scriptPubKey alone is **not** sufficient: scriptSig still runs
 /// (CLTV/CSV may live there). Only skip when every input is a pure ACS spend
 /// (empty scriptSig + empty witness + OP_TRUE spk).
-#[inline]
-fn job_needs_script_check(job: &ScriptCheckJob) -> bool {
+#[doc(hidden)]
+pub fn job_needs_script_check(job: &ScriptCheckJob) -> bool {
     let tx: &bitcoin::Transaction = &job.tx;
     for i in 0..job.prevouts.len() {
         let Ok(spk) = job.prevout_script(i) else {
@@ -1299,11 +1313,13 @@ pub fn sequence_locks_satisfied(
     true
 }
 
-fn is_anyone_can_spend(script: &Script) -> bool {
+#[doc(hidden)]
+pub fn is_anyone_can_spend(script: &Script) -> bool {
     crate::script::is_anyone_can_spend(script)
 }
 
-mod facts;
+#[doc(hidden)]
+pub mod facts;
 pub use facts::{
     add_fee, add_sigops, add_value_in, fee_from_values, fee_sat, header_gap_on_chain,
     median_or_bad_header, reject_assemble_block_shape, reject_batch_starts_at, reject_bits,
@@ -1318,46 +1334,3 @@ pub use facts::{
 };
 
 pub use crate::TxPrecompute;
-
-#[cfg(test)]
-mod fact_reject_tests {
-    use super::{reject_bip30_unspent_prior, reject_one_create};
-    use crate::ConsensusError;
-
-    #[test]
-    fn bip30_and_immature_coinbase_reject_from_facts() {
-        assert!(reject_bip30_unspent_prior(2, 2, true).is_ok());
-        let bip30 = reject_bip30_unspent_prior(5, 1, true).unwrap_err();
-        assert!(
-            matches!(bip30, ConsensusError::BadTx(s) if s.contains("BIP30")),
-            "{bip30:?}"
-        );
-        assert!(reject_bip30_unspent_prior(5, 1, false).is_ok());
-
-        let missing = reject_one_create(10, 100, None, false).unwrap_err();
-        assert!(
-            matches!(missing, ConsensusError::BadTx(s) if s.contains("missingorspent")),
-            "{missing:?}"
-        );
-        let forward = reject_one_create(10, 100, Some(11), false).unwrap_err();
-        assert!(
-            matches!(forward, ConsensusError::MissingPrevout),
-            "{forward:?}"
-        );
-        let immature = reject_one_create(10, 100, Some(1), true).unwrap_err();
-        assert!(
-            matches!(immature, ConsensusError::BadTx(s) if s.contains("immature")),
-            "{immature:?}"
-        );
-        assert!(reject_one_create(101, 100, Some(1), true).is_ok());
-    }
-}
-
-#[cfg(test)]
-mod bip34_tests;
-#[cfg(test)]
-mod block_866342;
-#[cfg(test)]
-mod finality_tests;
-#[cfg(test)]
-mod sigop_cost_tests;

@@ -26,11 +26,11 @@ add a rust unit instead.
 
 | Corpus | Test (lib) |
 |--------|------------|
-| `script_tests.json` | `cargo test -p rbitcoin-consensus --lib core_script_tests_all_rows -- --nocapture` |
-| `tx_valid.json` | `cargo test -p rbitcoin-consensus --lib core_tx_valid_all_rows -- --nocapture` (flag subsets: `core_tx_valid_flag_subsets`) |
-| `tx_invalid.json` | `cargo test -p rbitcoin-consensus --lib core_tx_invalid_all_rows -- --nocapture` (restriction supersets: `core_tx_invalid_flag_supersets`) |
-| `sighash.json` | `cargo test -p rbitcoin-consensus --lib core_sighash_all_rows -- --nocapture` |
-| `bip341_wallet_vectors.json` | `cargo test -p rbitcoin-consensus --lib core_bip341 -- --nocapture` |
-| `block_866342/` (vendored zstd) | `cargo test -p rbitcoin-consensus --lib block_866342 -- --nocapture` |
+| `script_tests.json` | `cargo test -p rbitcoin-consensus --test suite core_script_tests_all_rows -- --nocapture` |
+| `tx_valid.json` | `cargo test -p rbitcoin-consensus --test suite core_tx_valid_all_rows -- --nocapture` (flag subsets: `core_tx_valid_flag_subsets`) |
+| `tx_invalid.json` | `cargo test -p rbitcoin-consensus --test suite core_tx_invalid_all_rows -- --nocapture` (restriction supersets: `core_tx_invalid_flag_supersets`) |
+| `sighash.json` | `cargo test -p rbitcoin-consensus --test suite core_sighash_all_rows -- --nocapture` |
+| `bip341_wallet_vectors.json` | `cargo test -p rbitcoin-consensus --test suite core_bip341 -- --nocapture` |
+| `block_866342/` (vendored zstd) | `cargo test -p rbitcoin-consensus --test suite block_866342 -- --nocapture` |
 
 Success requires **fail == 0** with no allowlist (see `docs/consensus-tests.md`). Soft majority pass rates are not used.

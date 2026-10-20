@@ -1,0 +1,13 @@
+use bitcoin::consensus::Encodable;
+use bitcoin::hashes::Hash;
+use bitcoin::key::XOnlyPublicKey;
+use bitcoin::script::Script;
+use bitcoin::secp256k1::{Message, Parity};
+use bitcoin::sighash::TapSighashType;
+use bitcoin::taproot::{TapLeafHash, TapNodeHash, TapTweakHash};
+use bitcoin::{Transaction, Witness};
+use rbitcoin_consensus::block::ScriptCheckJob;
+use rbitcoin_consensus::error::ConsensusError;
+use rbitcoin_consensus::script::crypto;
+use rbitcoin_consensus::script::interpreter::{self, EvalContext, SigVersion};
+mod bip341_tests;

@@ -1,11 +1,15 @@
 [package]
 name = "rbitcoin-store"
+autotests = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 description = "Relational archive store (Class A/B/C; fd-only bulk IO)"
+
+[lib]
+test = false
 
 [dependencies]
 rbitcoin-primitives = { workspace = true }
@@ -19,15 +23,15 @@ getrandom = "0.4"
 
 [features]
 mutants = []
-# Downstream tests call hooks a production build does not compile:
-# spend-checkpoint interleaving, and a raw confirmed slot.
-# A crate's dev-dependency turns this on. A production build leaves it off.
-test-hooks = []
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Bulk pread submission for head-resolve / confirm body load (Linux).
 io-uring = "0.7"
 # Sealed segment fuse8 is in-tree (`binary_fuse8` + `fuse8_filter`); no xorf/bincode.
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
 
 [lints]
 workspace = true

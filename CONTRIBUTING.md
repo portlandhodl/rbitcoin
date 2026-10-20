@@ -112,8 +112,8 @@ You can also run the script yourself before the first consensus test:
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target/dev}"
 cargo fmt --all                            # includes nested fuzz/ crate
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test -p rbitcoin-primitives --lib          # fast sanity
-cargo test -p rbitcoin-store --lib               # store (tests pass Tiny at open; production default is Mainnet)
+cargo test -p rbitcoin-primitives --test suite  # fast sanity
+cargo test -p rbitcoin-store --test suite        # store (tests pass Tiny at open; production default is Mainnet)
 cargo test --workspace                           # default suite — Linux / macOS; see table
 ./scripts/ci-os-smoke.sh                         # Windows/macOS PR surface
 ```

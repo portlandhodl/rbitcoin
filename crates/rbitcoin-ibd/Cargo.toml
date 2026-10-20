@@ -1,0 +1,38 @@
+[package]
+name = "rbitcoin-ibd"
+autotests = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Multi-peer initial block download and confirm pipeline"
+
+[lib]
+test = false
+
+[features]
+mutants = []
+
+[dependencies]
+rbitcoin-primitives = { workspace = true }
+rbitcoin-log = { workspace = true }
+rbitcoin-consensus = { workspace = true }
+rbitcoin-query = { workspace = true }
+rbitcoin-store = { workspace = true }
+rbitcoin-net = { workspace = true }
+bitcoin = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# proc_pid_rusage: resident size for `ibd: sizes` / `tip: perf`.
+libc = "0.2"
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
+
+[lints]
+workspace = true

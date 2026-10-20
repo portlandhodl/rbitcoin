@@ -33,16 +33,19 @@ pub struct TweakWave {
     pub parents: U64Map<([u8; 32], Vec<OutputRecord>)>,
 }
 
-fn is_p2tr(spk: &[u8]) -> bool {
+#[doc(hidden)]
+pub fn is_p2tr(spk: &[u8]) -> bool {
     spk.len() == 34 && spk[0] == 0x51 && spk[1] == 0x20
 }
 
-struct PreadJob {
-    off: u64,
-    buf: Vec<u8>,
+#[doc(hidden)]
+pub struct PreadJob {
+    pub off: u64,
+    pub buf: Vec<u8>,
 }
 
-fn jobs_from_ranges(ranges: &[Option<(u64, u64)>], cap: Option<usize>) -> Vec<PreadJob> {
+#[doc(hidden)]
+pub fn jobs_from_ranges(ranges: &[Option<(u64, u64)>], cap: Option<usize>) -> Vec<PreadJob> {
     ranges
         .iter()
         .map(|r| match r {
@@ -64,7 +67,12 @@ fn jobs_from_ranges(ranges: &[Option<(u64, u64)>], cap: Option<usize>) -> Vec<Pr
         .collect()
 }
 
-fn run_preads_serial(fd: IoHandle, path: &Path, jobs: &mut [PreadJob]) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn run_preads_serial(
+    fd: IoHandle,
+    path: &Path,
+    jobs: &mut [PreadJob],
+) -> Result<(), StoreError> {
     for job in jobs.iter_mut() {
         if job.buf.is_empty() {
             continue;
@@ -75,7 +83,8 @@ fn run_preads_serial(fd: IoHandle, path: &Path, jobs: &mut [PreadJob]) -> Result
     Ok(())
 }
 
-fn run_preads(
+#[doc(hidden)]
+pub fn run_preads(
     session: &mut UringSession,
     fd: IoHandle,
     path: &Path,
@@ -135,7 +144,13 @@ fn run_preads(
     Ok(())
 }
 
-fn run_stage(fd: IoHandle, path: &Path, kind: u8, jobs: &mut [PreadJob]) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn run_stage(
+    fd: IoHandle,
+    path: &Path,
+    kind: u8,
+    jobs: &mut [PreadJob],
+) -> Result<(), StoreError> {
     if jobs.iter().all(|j| j.buf.is_empty()) {
         return Ok(());
     }
@@ -148,7 +163,8 @@ fn run_stage(fd: IoHandle, path: &Path, kind: u8, jobs: &mut [PreadJob]) -> Resu
     }
 }
 
-fn empty_rec(txid: [u8; 32]) -> TxRecord {
+#[doc(hidden)]
+pub fn empty_rec(txid: [u8; 32]) -> TxRecord {
     TxRecord {
         txid,
         version: 1,
@@ -293,75 +309,4 @@ pub fn load_tweak_wave(table: &TxTable, fks: &[Fk]) -> Result<TweakWave, StoreEr
     }
 
     Ok(TweakWave { txs, parents })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::address_head::HeadLayout;
-    use crate::tx_table::TxTable;
-    use rbitcoin_primitives::Fk;
-
-    fn tmp_dir() -> crate::testutil::TempDir {
-        crate::testutil::TempDir::labeled("sp-uring").unwrap()
-    }
-
-    fn tiny_table(dir: &std::path::Path) -> TxTable {
-        TxTable::create_with_head_layout(
-            dir,
-            HeadLayout::new(crate::address_head::TINY_BITS).unwrap(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn filter_marks_only_p2tr_need_seqsigwit() {
-        let dir = tmp_dir();
-        let t = tiny_table(&dir);
-        let p2tr = {
-            let mut s = vec![0x51, 0x20];
-            s.extend_from_slice(&[3u8; 32]);
-            s
-        };
-        let op_true = vec![0x51];
-        let a = TxRecord {
-            txid: [1u8; 32],
-            version: 1,
-            locktime: 0,
-            input_start_fk: Fk::NULL,
-            input_count: 1,
-            output_start_fk: Fk::NULL,
-            output_count: 1,
-        };
-        let b = TxRecord {
-            txid: [2u8; 32],
-            version: 1,
-            locktime: 0,
-            input_start_fk: Fk::NULL,
-            input_count: 1,
-            output_start_fk: Fk::NULL,
-            output_count: 1,
-        };
-        let ins = vec![InputRecord::coinbase(u32::MAX, vec![0x01], vec![])];
-        let fks = t
-            .put_full_batch_indexed(
-                &[
-                    (a, ins.clone(), vec![OutputRecord::unspent(1, op_true)]),
-                    (b, ins, vec![OutputRecord::unspent(2, p2tr)]),
-                ],
-                true,
-            )
-            .unwrap();
-        let wave = load_tweak_wave(&t, &fks).unwrap();
-        assert_eq!(wave.txs.len(), 2);
-        assert!(
-            !wave.txs[0].need_seqsigwit,
-            "OP_TRUE must not load seqsigwit"
-        );
-        assert!(wave.txs[0].inputs.is_none());
-        assert!(wave.txs[1].need_seqsigwit, "P2TR must need seqsigwit");
-        assert_eq!(wave.txs[1].rec.input_count, 1);
-        assert_eq!(wave.txs[1].inputs.as_ref().map(Vec::len), Some(1));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }

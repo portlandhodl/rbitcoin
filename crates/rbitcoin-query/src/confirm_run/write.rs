@@ -9,29 +9,31 @@ thread_local! {
         RefCell::new(super::phases::StructuralReuse::default());
 }
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 thread_local! {
     static SPINDLE_TRACE: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
 }
 
-fn spindle_mark(_ev: &'static str) {
-    #[cfg(test)]
+#[doc(hidden)]
+pub fn spindle_mark(_ev: &'static str) {
+    #[cfg(debug_assertions)]
     SPINDLE_TRACE.with(|trace| trace.borrow_mut().push(_ev));
 }
 
-#[cfg(test)]
-pub(super) fn spindle_trace_clear() {
+#[cfg(debug_assertions)]
+pub fn spindle_trace_clear() {
     SPINDLE_TRACE.with(|trace| trace.borrow_mut().clear());
 }
 
-#[cfg(test)]
-pub(super) fn spindle_trace_snapshot() -> Vec<&'static str> {
+#[cfg(debug_assertions)]
+pub fn spindle_trace_snapshot() -> Vec<&'static str> {
     SPINDLE_TRACE.with(|trace| trace.borrow().clone())
 }
 
-struct SpindleScope<'a> {
-    _hold: rbitcoin_store::SpindleHold<'a>,
-    armed: bool,
+#[doc(hidden)]
+pub struct SpindleScope<'a> {
+    pub _hold: rbitcoin_store::SpindleHold<'a>,
+    pub armed: bool,
 }
 
 impl Drop for SpindleScope<'_> {
@@ -42,7 +44,8 @@ impl Drop for SpindleScope<'_> {
     }
 }
 
-fn hold_spindle(query: &Query) -> SpindleScope<'_> {
+#[doc(hidden)]
+pub fn hold_spindle(query: &Query) -> SpindleScope<'_> {
     let armed = query.store().datadir_hdd();
     let scope = SpindleScope {
         _hold: query.store().spindle_hold(),
@@ -54,7 +57,8 @@ fn hold_spindle(query: &Query) -> SpindleScope<'_> {
     scope
 }
 
-fn submit_queued<'a>(
+#[doc(hidden)]
+pub fn submit_queued<'a>(
     query: &'a Query,
     queued: Vec<([u8; 32], rbitcoin_primitives::Fk)>,
 ) -> super::head_drain::HeadDrainHandle<'a> {
@@ -68,7 +72,7 @@ fn submit_queued<'a>(
     drain
 }
 
-pub(super) fn write_height_needed(tip: Option<u32>, height: u32) -> bool {
+pub fn write_height_needed(tip: Option<u32>, height: u32) -> bool {
     match tip {
         None => true,
         Some(t) => height > t,
@@ -76,13 +80,13 @@ pub(super) fn write_height_needed(tip: Option<u32>, height: u32) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum WriteBatchVsTip {
+pub enum WriteBatchVsTip {
     AllOld,
     AllNew,
     SpansTip,
 }
 
-pub(super) fn write_batch_vs_tip(
+pub fn write_batch_vs_tip(
     tip: Option<u32>,
     heights: impl IntoIterator<Item = u32>,
 ) -> WriteBatchVsTip {
@@ -105,7 +109,8 @@ pub(super) fn write_batch_vs_tip(
     }
 }
 
-fn finish_already_committed_write(
+#[doc(hidden)]
+pub fn finish_already_committed_write(
     query: &Query,
     batch: &ScriptOkBatch,
 ) -> Result<Vec<rbitcoin_primitives::Fk>, ConfirmError> {
@@ -121,16 +126,18 @@ fn finish_already_committed_write(
     Ok(Vec::new())
 }
 
-struct ArchivePlanNs {
-    pins: FkMap<crate::CreatePin>,
-    class_a_wave: crate::block_pipeline::ClassAWave,
-    class_a_ns: u64,
-    ensure_ns: u64,
-    plan_take_ns: u64,
-    create_map_ns: u64,
+#[doc(hidden)]
+pub struct ArchivePlanNs {
+    pub pins: FkMap<crate::CreatePin>,
+    pub class_a_wave: crate::block_pipeline::ClassAWave,
+    pub class_a_ns: u64,
+    pub ensure_ns: u64,
+    pub plan_take_ns: u64,
+    pub create_map_ns: u64,
 }
 
-fn apply_archive_plan(
+#[doc(hidden)]
+pub fn apply_archive_plan(
     query: &Query,
     batch: &mut ScriptOkBatch,
 ) -> Result<ArchivePlanNs, ConfirmError> {
@@ -230,7 +237,8 @@ pub fn confirm_write_phase_or_return(
     write_phase(query, params, milestone, &mut batch).map_err(|e| (e, batch))
 }
 
-fn write_phase(
+#[doc(hidden)]
+pub fn write_phase(
     query: &Query,
     params: &ChainParams,
     milestone: Milestone,
@@ -414,11 +422,7 @@ fn write_phase(
 ///
 /// Session-fault retry must not skip this: `height_of_hash` matching is not
 /// "write finished."
-pub(crate) fn finish_post_commit(
-    query: &Query,
-    height: u32,
-    hash: &[u8; 32],
-) -> Result<(), ConfirmError> {
+pub fn finish_post_commit(query: &Query, height: u32, hash: &[u8; 32]) -> Result<(), ConfirmError> {
     finish_post_commit_hashes(query, &[(height, *hash)])
 }
 
@@ -486,8 +490,10 @@ pub fn finish_post_commit_hashes(
     Ok(())
 }
 
-const REPLAY_BATCH: usize = 8;
-const REPLAY_STATUS_MS: u64 = 10_000;
+#[doc(hidden)]
+pub const REPLAY_BATCH: usize = 8;
+#[doc(hidden)]
+pub const REPLAY_STATUS_MS: u64 = 10_000;
 
 /// Rewrite spend annotations above the durable marker, then `sync_data` and advance it.
 ///
@@ -530,7 +536,8 @@ pub fn replay_spend_annotations(query: &Query) -> Result<u32, ConfirmError> {
     rewrite_spend_heights(query, a, tip)
 }
 
-fn publish_spend_marker(query: &Query, tip: u32) -> Result<(), ConfirmError> {
+#[doc(hidden)]
+pub fn publish_spend_marker(query: &Query, tip: u32) -> Result<(), ConfirmError> {
     let sync_ns = query
         .store()
         .sync_spend_durable(tip)
@@ -539,7 +546,8 @@ fn publish_spend_marker(query: &Query, tip: u32) -> Result<(), ConfirmError> {
     Ok(())
 }
 
-fn rewrite_spend_heights(query: &Query, annotated: u32, tip: u32) -> Result<u32, ConfirmError> {
+#[doc(hidden)]
+pub fn rewrite_spend_heights(query: &Query, annotated: u32, tip: u32) -> Result<u32, ConfirmError> {
     rbitcoin_log::info!("store: replay spend annotations ({annotated}, {tip}]");
     let replayed = annotate_spend_heights(query, annotated + 1, tip)?;
     publish_spend_marker(query, tip)?;
@@ -550,7 +558,8 @@ fn rewrite_spend_heights(query: &Query, annotated: u32, tip: u32) -> Result<u32,
 ///
 /// The next batch's spentness reads those slots, so it must not run until they
 /// are written. A replay that fails returns the error and the batch does not run.
-fn annotate_pending_spends(query: &Query) -> Result<(), ConfirmError> {
+#[doc(hidden)]
+pub fn annotate_pending_spends(query: &Query) -> Result<(), ConfirmError> {
     let token = query.store().spend_annotate_token();
     let Some(from) = query.store().spend_annotate_pending() else {
         return Ok(());
@@ -570,7 +579,8 @@ fn annotate_pending_spends(query: &Query) -> Result<(), ConfirmError> {
     Ok(())
 }
 
-fn annotate_spend_heights(query: &Query, start: u32, tip: u32) -> Result<u32, ConfirmError> {
+#[doc(hidden)]
+pub fn annotate_spend_heights(query: &Query, start: u32, tip: u32) -> Result<u32, ConfirmError> {
     let heights: Vec<u32> = (start..=tip).collect();
     let replayed = heights.len() as u32;
     let started = std::time::Instant::now();
@@ -601,7 +611,8 @@ fn annotate_spend_heights(query: &Query, start: u32, tip: u32) -> Result<u32, Co
     Ok(replayed)
 }
 
-fn annotate_slots_from_connected_hash(
+#[doc(hidden)]
+pub fn annotate_slots_from_connected_hash(
     query: &Query,
     height: u32,
     hash: &[u8; 32],
@@ -676,7 +687,7 @@ fn annotate_slots_from_connected_hash(
 /// After Class A commit, stamp spend creates from append RAM loc
 /// (this pack + just-written packs still in the write loc window).
 /// Write never preads `create.loc`.
-pub(super) fn fill_planned_create_layout_after_commit(
+pub fn fill_planned_create_layout_after_commit(
     query: &Query,
     batch_parents: &mut crate::BatchParents,
     planned_fks: &[rbitcoin_primitives::Fk],

@@ -12,36 +12,36 @@ use std::sync::Arc;
 use std::time::Instant;
 
 pub use chain::difficulty_rpc_f64;
-pub(crate) use chain::{tip_hash_height, wait_timeout_ms};
+pub use chain::{tip_hash_height, wait_timeout_ms};
 
 /// Cap for `waitfor*` and `getblocktemplate` long-poll. Not a knob.
-pub(crate) const RPC_WAIT_TIMEOUT_MS: u64 = 120_000;
-pub(crate) use mine::gbt_longpoll_id;
+pub const RPC_WAIT_TIMEOUT_MS: u64 = 120_000;
+pub use mine::gbt_longpoll_id;
 pub use mine::{gbt_template, submit_received_block};
-pub(crate) use rest::{dispatch_rest, RestReply};
+pub use rest::{dispatch_rest, RestReply};
 thread_local! {
     static HTTP_WAIT_SATISFIED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// The HTTP task already waited. The blocking dispatch must not sleep again.
-pub(crate) fn set_http_wait_satisfied(v: bool) {
+pub fn set_http_wait_satisfied(v: bool) {
     HTTP_WAIT_SATISFIED.with(|c| c.set(v));
 }
 
-pub(crate) fn http_wait_satisfied() -> bool {
+pub fn http_wait_satisfied() -> bool {
     HTTP_WAIT_SATISFIED.with(|c| c.get())
 }
 
-pub(crate) fn sat_kvb_to_btc(sat_kvb: u64) -> f64 {
+pub fn sat_kvb_to_btc(sat_kvb: u64) -> f64 {
     sat_kvb as f64 / 100_000_000.0
 }
 
-pub(crate) fn hash_hex_display(h: &[u8; 32]) -> String {
+pub fn hash_hex_display(h: &[u8; 32]) -> String {
     rbitcoin_primitives::display_hash_hex(*h)
 }
 
 /// Parse Core display-order 32-byte hex → internal byte order.
-pub(crate) fn parse_hash32_display(hex: &str) -> Result<[u8; 32], Value> {
+pub fn parse_hash32_display(hex: &str) -> Result<[u8; 32], Value> {
     rbitcoin_primitives::parse_display_hash32(hex)
         .map_err(|e| rpc_error(ERR_INVALID_PARAMS, e.to_string()))
 }
@@ -49,19 +49,25 @@ pub(crate) fn parse_hash32_display(hex: &str) -> Result<[u8; 32], Value> {
 /// Core's `ConnectBlock` returns before adding the genesis coinbase output
 /// to the coins view, and its txindex skips height 0. The coin is never
 /// unspent and the tx is not an ordinary transaction.
-pub(crate) fn genesis_coinbase_txid(ctx: &RpcContext) -> [u8; 32] {
+pub fn genesis_coinbase_txid(ctx: &RpcContext) -> [u8; 32] {
     use bitcoin::hashes::Hash;
     bitcoin::blockdata::constants::genesis_block(rpc_btc_network(ctx.network)).txdata[0]
         .compute_txid()
         .to_byte_array()
 }
 
-mod chain;
-mod decode;
-mod mempool;
-mod mine;
-mod net;
-mod rest;
+#[doc(hidden)]
+pub mod chain;
+#[doc(hidden)]
+pub mod decode;
+#[doc(hidden)]
+pub mod mempool;
+#[doc(hidden)]
+pub mod mine;
+#[doc(hidden)]
+pub mod net;
+#[doc(hidden)]
+pub mod rest;
 
 use chain::*;
 use decode::*;
@@ -106,8 +112,8 @@ pub struct RpcContext {
 /// Concurrent `dispatch` entries keyed by id (not a Vec pop).
 #[derive(Default)]
 pub struct RpcActive {
-    next: u64,
-    cmds: HashMap<u64, (String, Instant)>,
+    pub next: u64,
+    pub cmds: HashMap<u64, (String, Instant)>,
 }
 
 impl RpcActive {
@@ -234,7 +240,7 @@ pub const ERR_VERIFY_REJECTED: i64 = -26;
 pub const ERR_INVALID_PARAMS: i64 = -32602;
 pub const ERR_METHOD_NOT_FOUND: i64 = -32601;
 
-pub(crate) fn map_query(e: rbitcoin_query::QueryError, pruned: &'static str) -> Value {
+pub fn map_query(e: rbitcoin_query::QueryError, pruned: &'static str) -> Value {
     match e {
         rbitcoin_store::StoreError::Pruned { .. } => rpc_error(ERR_INVALID_PARAMETER, pruned),
         other => rpc_error(ERR_MISC, other.to_string()),
@@ -244,8 +250,8 @@ pub(crate) fn map_query(e: rbitcoin_query::QueryError, pruned: &'static str) -> 
 /// JSON-RPC `params`: positional array or Core named object.
 #[derive(Clone, Debug, Default)]
 pub struct RpcParams {
-    pos: Vec<Value>,
-    named: Option<serde_json::Map<String, Value>>,
+    pub pos: Vec<Value>,
+    pub named: Option<serde_json::Map<String, Value>>,
 }
 
 impl RpcParams {
@@ -357,18 +363,18 @@ impl RpcParams {
     }
 }
 
-pub(crate) fn json_u64(v: &Value) -> Option<u64> {
+pub fn json_u64(v: &Value) -> Option<u64> {
     v.as_u64()
         .or_else(|| v.as_i64().and_then(|n| u64::try_from(n).ok()))
 }
 
-pub(crate) fn json_i64(v: &Value) -> Option<i64> {
+pub fn json_i64(v: &Value) -> Option<i64> {
     v.as_i64()
         .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
 }
 
 /// Core `getblock` verbosity: integer, or bool (`false` → 0, `true` → 1).
-pub(crate) fn opt_verbosity(params: &RpcParams, index: usize, name: &str) -> Result<u32, Value> {
+pub fn opt_verbosity(params: &RpcParams, index: usize, name: &str) -> Result<u32, Value> {
     match params.get(index, name) {
         None | Some(Value::Null) => Ok(1),
         Some(Value::Bool(false)) => Ok(0),
@@ -402,13 +408,13 @@ pub fn dispatch(
 }
 
 /// One `getrpcinfo.active_commands` entry for the life of the guard.
-pub(crate) struct ActiveCall<'a> {
-    active: &'a std::sync::Mutex<RpcActive>,
-    id: u64,
+pub struct ActiveCall<'a> {
+    pub active: &'a std::sync::Mutex<RpcActive>,
+    pub id: u64,
 }
 
 impl<'a> ActiveCall<'a> {
-    pub(crate) fn enter(active: &'a std::sync::Mutex<RpcActive>, method: &str) -> Self {
+    pub fn enter(active: &'a std::sync::Mutex<RpcActive>, method: &str) -> Self {
         let id = active
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -426,11 +432,7 @@ impl Drop for ActiveCall<'_> {
     }
 }
 
-pub(crate) fn dispatch_inner(
-    ctx: &RpcContext,
-    method: &str,
-    params: RpcParams,
-) -> Result<Value, Value> {
+pub fn dispatch_inner(ctx: &RpcContext, method: &str, params: RpcParams) -> Result<Value, Value> {
     match method {
         "help" => help(&params),
         "echo" => echo(&params),
@@ -554,7 +556,7 @@ pub(crate) fn dispatch_inner(
     }
 }
 
-pub(crate) fn help(params: &RpcParams) -> Result<Value, Value> {
+pub fn help(params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["command"])?;
     if let Some(v) = params.get(0, "command") {
         let m = v
@@ -566,7 +568,8 @@ pub(crate) fn help(params: &RpcParams) -> Result<Value, Value> {
 }
 
 /// Core `echo` names (`rpc_named_arguments.py`).
-const ECHO_NAMES: [&str; 10] = [
+#[doc(hidden)]
+pub const ECHO_NAMES: [&str; 10] = [
     "arg0", "arg1", "arg2", "arg3", "arg4", "arg5", "arg6", "arg7", "arg8", "arg9",
 ];
 
@@ -574,7 +577,7 @@ const ECHO_NAMES: [&str; 10] = [
 ///
 /// AuthServiceProxy mixed: `{args: [0, 1], arg3: 3}` → `[0, 1, null, 3]`.
 /// Named-only `arg9` sizes the array to 10 with null holes.
-pub(crate) fn echo(params: &RpcParams) -> Result<Value, Value> {
+pub fn echo(params: &RpcParams) -> Result<Value, Value> {
     const ECHO_ALLOWED: [&str; 11] = [
         "args", "arg0", "arg1", "arg2", "arg3", "arg4", "arg5", "arg6", "arg7", "arg8", "arg9",
     ];
@@ -635,7 +638,8 @@ pub(crate) fn echo(params: &RpcParams) -> Result<Value, Value> {
     Ok(Value::Array(out))
 }
 
-const METHOD_LIST: &[&str] = &[
+#[doc(hidden)]
+pub const METHOD_LIST: &[&str] = &[
     "help",
     "echo",
     "getrpcinfo",
@@ -702,7 +706,8 @@ const METHOD_LIST: &[&str] = &[
     "preciousblock",
 ];
 
-const NAMED_HELP: &[(&str, &str)] = &[
+#[doc(hidden)]
+pub const NAMED_HELP: &[(&str, &str)] = &[
     (
         "estimatesmartfee",
         "estimatesmartfee conf_target (estimate_mode)\n\
@@ -854,7 +859,7 @@ const NAMED_HELP: &[(&str, &str)] = &[
     ),
 ];
 
-pub(crate) fn method_help(m: &str) -> String {
+pub fn method_help(m: &str) -> String {
     for (name, text) in NAMED_HELP {
         if *name == m {
             return (*text).into();
@@ -867,7 +872,7 @@ pub(crate) fn method_help(m: &str) -> String {
     }
 }
 
-pub(crate) fn getrpcinfo(ctx: &RpcContext) -> Value {
+pub fn getrpcinfo(ctx: &RpcContext) -> Value {
     let active = ctx
         .active
         .lock()
@@ -889,7 +894,7 @@ pub(crate) fn getrpcinfo(ctx: &RpcContext) -> Value {
     })
 }
 
-pub(crate) fn chain_name(n: Network) -> &'static str {
+pub fn chain_name(n: Network) -> &'static str {
     match n {
         Network::Mainnet => "main",
         Network::Testnet => "test",
@@ -898,7 +903,7 @@ pub(crate) fn chain_name(n: Network) -> &'static str {
     }
 }
 
-pub(crate) fn json_type_name(v: &Value) -> &'static str {
+pub fn json_type_name(v: &Value) -> &'static str {
     match v {
         Value::Null => "null",
         Value::Bool(_) => "bool",
@@ -908,7 +913,3 @@ pub(crate) fn json_type_name(v: &Value) -> &'static str {
         Value::Object(_) => "object",
     }
 }
-
-#[cfg(test)]
-#[path = "../methods_tests.rs"]
-mod tests;

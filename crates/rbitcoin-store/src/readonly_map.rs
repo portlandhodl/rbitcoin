@@ -15,11 +15,11 @@ use std::ptr;
 
 /// Process mapping of a sealed file prefix. Fingerprints are a subrange.
 pub struct ReadonlyMap {
-    ptr: *mut u8,
-    map_len: usize,
-    fp_off: usize,
-    fp_len: usize,
-    _file: File,
+    pub ptr: *mut u8,
+    pub map_len: usize,
+    pub fp_off: usize,
+    pub fp_len: usize,
+    pub _file: File,
 }
 
 // SAFETY: mapping is read-only and immutable after [`ReadonlyMap::map_path`].
@@ -59,7 +59,8 @@ impl ReadonlyMap {
         Self::map_file(path, file, len)
     }
 
-    fn map_file(path: &Path, file: File, map_len: usize) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn map_file(path: &Path, file: File, map_len: usize) -> Result<Self, StoreError> {
         let ptr = map_readonly(&file, map_len).map_err(|e| StoreError::io(path, e))?;
         Ok(Self {
             ptr,
@@ -98,7 +99,8 @@ impl Drop for ReadonlyMap {
 }
 
 #[cfg(unix)]
-fn map_readonly(file: &File, len: usize) -> std::io::Result<*mut u8> {
+#[doc(hidden)]
+pub fn map_readonly(file: &File, len: usize) -> std::io::Result<*mut u8> {
     use std::os::fd::AsRawFd;
     let ptr = unsafe {
         libc::mmap(
@@ -117,7 +119,8 @@ fn map_readonly(file: &File, len: usize) -> std::io::Result<*mut u8> {
 }
 
 #[cfg(unix)]
-fn unmap(ptr: *mut u8, len: usize) {
+#[doc(hidden)]
+pub fn unmap(ptr: *mut u8, len: usize) {
     if ptr.is_null() || len == 0 {
         return;
     }
@@ -127,7 +130,8 @@ fn unmap(ptr: *mut u8, len: usize) {
 }
 
 #[cfg(windows)]
-fn map_readonly(file: &File, len: usize) -> std::io::Result<*mut u8> {
+#[doc(hidden)]
+pub fn map_readonly(file: &File, len: usize) -> std::io::Result<*mut u8> {
     use std::os::windows::io::AsRawHandle;
     let handle = file.as_raw_handle() as *mut std::ffi::c_void;
     let mapping =
@@ -146,7 +150,8 @@ fn map_readonly(file: &File, len: usize) -> std::io::Result<*mut u8> {
 }
 
 #[cfg(windows)]
-fn unmap(ptr: *mut u8, _len: usize) {
+#[doc(hidden)]
+pub fn unmap(ptr: *mut u8, _len: usize) {
     if ptr.is_null() {
         return;
     }
@@ -156,9 +161,11 @@ fn unmap(ptr: *mut u8, _len: usize) {
 }
 
 #[cfg(windows)]
-const PAGE_READONLY: u32 = 0x02;
+#[doc(hidden)]
+pub const PAGE_READONLY: u32 = 0x02;
 #[cfg(windows)]
-const FILE_MAP_READ: u32 = 0x0004;
+#[doc(hidden)]
+pub const FILE_MAP_READ: u32 = 0x0004;
 
 #[cfg(windows)]
 extern "system" {
@@ -182,7 +189,8 @@ extern "system" {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn map_readonly(_file: &File, _len: usize) -> std::io::Result<*mut u8> {
+#[doc(hidden)]
+pub fn map_readonly(_file: &File, _len: usize) -> std::io::Result<*mut u8> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
         "readonly mmap requires unix or windows",
@@ -190,52 +198,5 @@ fn map_readonly(_file: &File, _len: usize) -> std::io::Result<*mut u8> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn unmap(_ptr: *mut u8, _len: usize) {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn tmp() -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "rbitcoin-romap-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&p).unwrap();
-        p
-    }
-
-    #[test]
-    fn map_prefix_excludes_file_tail() {
-        let dir = tmp();
-        let path = dir.join("t.bin");
-        let mut body = vec![0u8; 64];
-        body[0..4].copy_from_slice(b"HEAD");
-        body[32..36].copy_from_slice(b"OCC!");
-        body[48..52].copy_from_slice(b"TAIL");
-        std::fs::write(&path, &body).unwrap();
-        let map = ReadonlyMap::map_prefix(&path, 40).unwrap();
-        let b = map.as_file_bytes();
-        assert_eq!(b.len(), 40);
-        assert_eq!(&b[0..4], b"HEAD");
-        assert_eq!(&b[32..36], b"OCC!");
-        assert!(!b.windows(4).any(|w| w == b"TAIL"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn map_prefix_longer_than_file_is_corrupt() {
-        let dir = tmp();
-        let path = dir.join("short.bin");
-        std::fs::write(&path, b"abcd").unwrap();
-        match ReadonlyMap::map_prefix(&path, 16) {
-            Err(StoreError::Corrupt(m)) => assert_eq!(m, "mapped file truncated"),
-            other => panic!("expected truncated, got {other:?}"),
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}
+#[doc(hidden)]
+pub fn unmap(_ptr: *mut u8, _len: usize) {}

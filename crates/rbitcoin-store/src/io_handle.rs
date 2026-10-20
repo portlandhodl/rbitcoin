@@ -6,9 +6,9 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct IoHandle {
     #[cfg(unix)]
-    fd: std::os::fd::RawFd,
+    pub fd: std::os::fd::RawFd,
     #[cfg(windows)]
-    handle: isize,
+    pub handle: isize,
 }
 
 impl IoHandle {
@@ -113,17 +113,20 @@ impl From<std::os::fd::RawFd> for IoHandle {
 }
 
 #[cfg(windows)]
-fn win_pread(handle: isize, offset: u64, buf: &mut [u8]) -> i32 {
+#[doc(hidden)]
+pub fn win_pread(handle: isize, offset: u64, buf: &mut [u8]) -> i32 {
     win_xfer(handle, offset, buf.as_mut_ptr(), buf.len(), false)
 }
 
 #[cfg(windows)]
-fn win_pwrite(handle: isize, offset: u64, buf: &[u8]) -> i32 {
+#[doc(hidden)]
+pub fn win_pwrite(handle: isize, offset: u64, buf: &[u8]) -> i32 {
     win_xfer(handle, offset, buf.as_ptr() as *mut u8, buf.len(), true)
 }
 
 #[cfg(windows)]
-struct PositionalXferEvent(*mut core::ffi::c_void);
+#[doc(hidden)]
+pub struct PositionalXferEvent(*mut core::ffi::c_void);
 
 #[cfg(windows)]
 impl Drop for PositionalXferEvent {
@@ -158,7 +161,8 @@ thread_local! {
 }
 
 #[cfg(windows)]
-fn win_xfer(handle: isize, offset: u64, ptr: *mut u8, len: usize, write: bool) -> i32 {
+#[doc(hidden)]
+pub fn win_xfer(handle: isize, offset: u64, ptr: *mut u8, len: usize, write: bool) -> i32 {
     #[repr(C)]
     struct Overlapped {
         internal: usize,
@@ -249,7 +253,7 @@ fn win_xfer(handle: isize, offset: u64, ptr: *mut u8, len: usize, write: bool) -
 /// on current rustc already uses this API; keep an explicit path so table grow
 /// does not regress if std changes.
 #[cfg(windows)]
-pub(crate) fn win_set_eof(file: &std::fs::File, new_len: u64) -> std::io::Result<()> {
+pub fn win_set_eof(file: &std::fs::File, new_len: u64) -> std::io::Result<()> {
     use std::os::windows::io::AsRawHandle;
     #[repr(C)]
     struct FileEndOfFileInfo {

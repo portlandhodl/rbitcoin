@@ -20,22 +20,28 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Records per data page (170 × 24 B = 4080 B).
 pub const SH_SORTED_RECS_PER_PAGE: usize = 170;
-const DATA_MAGIC: &[u8; 4] = b"SHSR";
-const IDX_MAGIC: &[u8; 4] = b"SHIX";
-const FORMAT_VER: u16 = 2;
-const DATA_HEADER_LEN: u64 = 32;
-const IDX_HEADER_LEN: usize = 16;
-const IDX_ENT_LEN: usize = SH_HEAD_KEY_LEN + 8;
+#[doc(hidden)]
+pub const DATA_MAGIC: &[u8; 4] = b"SHSR";
+#[doc(hidden)]
+pub const IDX_MAGIC: &[u8; 4] = b"SHIX";
+#[doc(hidden)]
+pub const FORMAT_VER: u16 = 2;
+#[doc(hidden)]
+pub const DATA_HEADER_LEN: u64 = 32;
+#[doc(hidden)]
+pub const IDX_HEADER_LEN: usize = 16;
+#[doc(hidden)]
+pub const IDX_ENT_LEN: usize = SH_HEAD_KEY_LEN + 8;
 
 /// Sealed sorted head file (one shard or one global ovf segment).
 pub struct SortedHead {
-    path: PathBuf,
-    file: File,
-    count: u64,
+    pub path: PathBuf,
+    pub file: File,
+    pub count: u64,
     /// First key of each 4 KiB data page + file offset of that page.
-    idx: Vec<(ShHeadKey, u64)>,
-    fuse: Option<SealedFuse8>,
-    preads: AtomicU64,
+    pub idx: Vec<(ShHeadKey, u64)>,
+    pub fuse: Option<SealedFuse8>,
+    pub preads: AtomicU64,
 }
 
 impl SortedHead {
@@ -144,7 +150,7 @@ impl SortedHead {
     }
 
     /// Byte offset of the pack8 word, when the key is on this file.
-    pub(crate) fn value_word_offset(&self, key: &ShHeadKey) -> Result<Option<u64>, StoreError> {
+    pub fn value_word_offset(&self, key: &ShHeadKey) -> Result<Option<u64>, StoreError> {
         let Some((slot, _)) = self.locate_rec(key)? else {
             return Ok(None);
         };
@@ -153,13 +159,13 @@ impl SortedHead {
         ))
     }
 
-    pub(crate) fn read_value_word(&self, off: u64) -> Result<[u8; 8], StoreError> {
+    pub fn read_value_word(&self, off: u64) -> Result<[u8; 8], StoreError> {
         let mut buf = [0u8; 8];
         pread_file_exact(&self.file, off, &mut buf).map_err(|e| StoreError::io(&self.path, e))?;
         Ok(buf)
     }
 
-    pub(crate) fn write_value_word(&self, off: u64, bytes: &[u8; 8]) -> Result<(), StoreError> {
+    pub fn write_value_word(&self, off: u64, bytes: &[u8; 8]) -> Result<(), StoreError> {
         pwrite_file(&self.file, off, bytes).map_err(|e| StoreError::io(&self.path, e))
     }
 
@@ -198,7 +204,8 @@ impl SortedHead {
         Ok(())
     }
 
-    fn locate_rec(
+    #[doc(hidden)]
+    pub fn locate_rec(
         &self,
         key: &ShHeadKey,
     ) -> Result<Option<(u64, [u8; SH_HEAD_SLOT_SIZE])>, StoreError> {
@@ -235,7 +242,8 @@ impl SortedHead {
     }
 }
 
-fn pread_file(file: &File, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+#[doc(hidden)]
+pub fn pread_file(file: &File, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
     let n = IoHandle::from_file(file).pread(offset, buf);
     if n < 0 {
         Err(std::io::Error::last_os_error())
@@ -244,35 +252,41 @@ fn pread_file(file: &File, offset: u64, buf: &mut [u8]) -> std::io::Result<usize
     }
 }
 
-fn pread_file_exact(file: &File, offset: u64, buf: &mut [u8]) -> std::io::Result<()> {
+#[doc(hidden)]
+pub fn pread_file_exact(file: &File, offset: u64, buf: &mut [u8]) -> std::io::Result<()> {
     crate::file::handle_pread_all(file, std::path::Path::new("scripthash"), offset, buf)
         .map_err(StoreError::into_io)
 }
 
-fn pwrite_file(file: &File, offset: u64, buf: &[u8]) -> std::io::Result<()> {
+#[doc(hidden)]
+pub fn pwrite_file(file: &File, offset: u64, buf: &[u8]) -> std::io::Result<()> {
     crate::file::handle_pwrite_all(file, std::path::Path::new("scripthash"), offset, buf)
         .map_err(StoreError::into_io)
 }
 
-fn fuse_key16(key: &ShHeadKey) -> u64 {
+#[doc(hidden)]
+pub fn fuse_key16(key: &ShHeadKey) -> u64 {
     let mut pad = [0u8; 32];
     pad[..SH_HEAD_KEY_LEN].copy_from_slice(key);
     fuse_key_from_mixed(&pad)
 }
 
-fn idx_path(data: &Path) -> PathBuf {
+#[doc(hidden)]
+pub fn idx_path(data: &Path) -> PathBuf {
     let mut s = data.as_os_str().to_os_string();
     s.push(".idx");
     PathBuf::from(s)
 }
 
-fn fuse_path(data: &Path) -> PathBuf {
+#[doc(hidden)]
+pub fn fuse_path(data: &Path) -> PathBuf {
     let mut s = data.as_os_str().to_os_string();
     s.push(".fuse8");
     PathBuf::from(s)
 }
 
-fn write_idx(path: &Path, idx: &[(ShHeadKey, u64)]) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn write_idx(path: &Path, idx: &[(ShHeadKey, u64)]) -> Result<(), StoreError> {
     let mut buf = vec![0u8; IDX_HEADER_LEN + idx.len() * IDX_ENT_LEN];
     buf[0..4].copy_from_slice(IDX_MAGIC);
     buf[4..6].copy_from_slice(&FORMAT_VER.to_le_bytes());
@@ -288,7 +302,8 @@ fn write_idx(path: &Path, idx: &[(ShHeadKey, u64)]) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn read_idx(path: &Path) -> Result<Vec<(ShHeadKey, u64)>, StoreError> {
+#[doc(hidden)]
+pub fn read_idx(path: &Path) -> Result<Vec<(ShHeadKey, u64)>, StoreError> {
     let buf = std::fs::read(path).map_err(|e| StoreError::io(path, e))?;
     if buf.len() < IDX_HEADER_LEN || buf[0..4] != *IDX_MAGIC {
         return Err(StoreError::Corrupt("scripthash sorted head: bad idx"));
@@ -307,137 +322,4 @@ fn read_idx(path: &Path) -> Result<Vec<(ShHeadKey, u64)>, StoreError> {
         out.push((k, rec_off));
     }
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rbitcoin_primitives::Fk;
-    use std::sync::atomic::Ordering;
-
-    fn tmp() -> PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "rbitcoin-shsort-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = std::fs::create_dir_all(&p);
-        p.join("head")
-    }
-
-    fn key_of(i: u32) -> ShHeadKey {
-        let mut k = [0u8; 16];
-        k[0..4].copy_from_slice(&i.to_be_bytes());
-        k
-    }
-
-    fn recs(n: u32) -> Vec<(ShHeadKey, [u8; SH_HEAD_VALUE_LEN])> {
-        (0..n)
-            .map(|i| {
-                let v = ShHeadValue::inline_one(Fk(u64::from(i) + 1));
-                (key_of(i), pack8_bytes(&v).unwrap())
-            })
-            .collect()
-    }
-
-    #[test]
-    fn sorted_head_hit_miss_update() {
-        let path = tmp();
-        let n = 10_000u32;
-        let recs = recs(n);
-        let h = SortedHead::write(&path, &recs).unwrap();
-        assert_eq!(h.count, u64::from(n));
-        assert!(h.fuse.is_some());
-        assert_eq!(
-            h.fuse.as_ref().unwrap().fingerprint_heap_bytes(),
-            0,
-            "sorted head fuse is mapped, not the build Box"
-        );
-        assert_eq!(h.path(), path.as_path());
-        assert!(path.is_file());
-        assert!(idx_path(&path).is_file());
-        assert!(fuse_path(&path).is_file());
-
-        h.preads.store(0, Ordering::Relaxed);
-        let got = h.get(&key_of(1234)).unwrap().unwrap();
-        assert_eq!(got.inline_fks(), vec![Fk(1235)]);
-        assert!(
-            h.preads.load(Ordering::Relaxed) <= 2,
-            "hit must be ≤2 preads, got {}",
-            h.preads.load(Ordering::Relaxed)
-        );
-
-        h.preads.store(0, Ordering::Relaxed);
-        assert!(h.get(&key_of(n + 10_000)).unwrap().is_none());
-
-        let new_val = ShHeadValue::slab(0, 2, 4096);
-        assert!(h.update_value(&key_of(7), &new_val).unwrap());
-        assert_eq!(h.get(&key_of(7)).unwrap().unwrap(), new_val);
-        assert!(!h.update_value(&key_of(n + 1), &new_val).unwrap());
-
-        let h2 = SortedHead::open(&path).unwrap();
-        assert!(h2.fuse.is_some());
-        assert_eq!(h2.get(&key_of(7)).unwrap().unwrap(), new_val);
-
-        let unsorted = vec![(key_of(2), recs[0].1), (key_of(1), recs[0].1)];
-        assert!(SortedHead::write(path.with_extension("bad"), &unsorted).is_err());
-        let junk = path.with_extension("junk");
-        std::fs::write(&junk, b"XXXX").unwrap();
-        assert!(matches!(SortedHead::open(&junk), Err(StoreError::BadMagic)));
-        let mut bad_ver = std::fs::read(&path).unwrap();
-        bad_ver[4..6].copy_from_slice(&99u16.to_le_bytes());
-        let verp = path.with_extension("ver");
-        std::fs::write(&verp, &bad_ver).unwrap();
-        std::fs::copy(idx_path(&path), idx_path(&verp)).unwrap();
-        std::fs::copy(fuse_path(&path), fuse_path(&verp)).unwrap();
-        assert!(SortedHead::open(&verp).is_err());
-
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(idx_path(&path));
-        let _ = std::fs::remove_file(fuse_path(&path));
-        let _ = std::fs::remove_file(&junk);
-        let _ = std::fs::remove_file(&verp);
-        let _ = std::fs::remove_file(idx_path(&verp));
-        let _ = std::fs::remove_file(fuse_path(&verp));
-    }
-
-    #[test]
-    fn sorted_ovf_fuse_skips_pread_on_miss() {
-        let path = tmp();
-        let n = 10_000u32;
-        let recs = recs(n);
-        let h = SortedHead::write(&path, &recs).unwrap();
-        assert!(h.fuse.is_some());
-        assert!(fuse_path(&path).is_file());
-
-        h.preads.store(0, Ordering::Relaxed);
-        assert!(h.get(&key_of(1234)).unwrap().is_some());
-        assert!(h.preads.load(Ordering::Relaxed) <= 2);
-
-        let mut saw_fuse_miss = false;
-        for extra in 0..2000u32 {
-            let k = key_of(n + 10_000 + extra);
-            h.preads.store(0, Ordering::Relaxed);
-            let got = h.get(&k).unwrap();
-            if got.is_none() && h.preads.load(Ordering::Relaxed) == 0 {
-                saw_fuse_miss = true;
-                break;
-            }
-            assert!(got.is_none(), "absent key must not decode as present");
-        }
-        assert!(
-            saw_fuse_miss,
-            "ovf fuse must skip data/idx IO on a true miss"
-        );
-
-        assert!(SortedHead::open(&path).unwrap().fuse.is_some());
-        let _ = std::fs::remove_file(fuse_path(&path));
-        assert!(SortedHead::open(&path).is_err());
-
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(idx_path(&path));
-    }
 }

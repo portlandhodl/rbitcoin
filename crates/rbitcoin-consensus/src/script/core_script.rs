@@ -76,7 +76,8 @@ pub fn assemble_script(src: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-fn push_data(out: &mut Vec<u8>, data: &[u8]) {
+#[doc(hidden)]
+pub fn push_data(out: &mut Vec<u8>, data: &[u8]) {
     let n = data.len();
     if n < 0x4c {
         out.push(n as u8);
@@ -93,7 +94,8 @@ fn push_data(out: &mut Vec<u8>, data: &[u8]) {
     out.extend_from_slice(data);
 }
 
-fn encode_scriptnum(mut n: i64) -> Vec<u8> {
+#[doc(hidden)]
+pub fn encode_scriptnum(mut n: i64) -> Vec<u8> {
     if n == 0 {
         return vec![];
     }
@@ -114,7 +116,8 @@ fn encode_scriptnum(mut n: i64) -> Vec<u8> {
     out
 }
 
-fn opcode_byte(name: &str) -> Option<u8> {
+#[doc(hidden)]
+pub fn opcode_byte(name: &str) -> Option<u8> {
     static MAP: &[(&str, u8)] = &[
         ("OP_0", 0x00),
         ("OP_FALSE", 0x00),
@@ -415,7 +418,8 @@ pub fn spend_shape_from_json(v: Option<&serde_json::Value>) -> Result<SpendShape
     Ok(shape)
 }
 
-fn u32_field(n: &serde_json::Value, name: &str) -> Result<u32, String> {
+#[doc(hidden)]
+pub fn u32_field(n: &serde_json::Value, name: &str) -> Result<u32, String> {
     let u = n.as_u64().ok_or(name)?;
     u32::try_from(u).map_err(|_| name.to_string())
 }
@@ -509,43 +513,4 @@ pub fn push_core_witness_token(
     }
     stack.push(bytes);
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{decode_hex, spend_shape_from_json, SpendShape};
-
-    #[test]
-    fn decode_hex_strips_0x_and_names_odd_length() {
-        assert_eq!(decode_hex("0x0a").unwrap(), vec![0x0a]);
-        assert_eq!(decode_hex("0Xff").unwrap(), vec![0xff]);
-        assert_eq!(decode_hex("abc").unwrap_err(), {
-            use bitcoin::hex::FromHex;
-            <Vec<u8> as FromHex>::from_hex("abc")
-                .unwrap_err()
-                .to_string()
-        });
-        assert_eq!(decode_hex("zz").unwrap_err(), {
-            use bitcoin::hex::FromHex;
-            <Vec<u8> as FromHex>::from_hex("zz")
-                .unwrap_err()
-                .to_string()
-        });
-    }
-
-    #[test]
-    fn spend_shape_defaults_and_unsigned_version_bits() {
-        assert_eq!(spend_shape_from_json(None).unwrap(), SpendShape::default());
-        let row = serde_json::json!({
-            "version": 4294967295u32,
-            "locktime": 500_000_000,
-            "sequence": 0,
-            "n_outputs": 0
-        });
-        let shape = spend_shape_from_json(Some(&row)).unwrap();
-        assert_eq!(shape.version, -1);
-        assert_eq!(shape.lock_time, 500_000_000);
-        assert_eq!(shape.sequence, 0);
-        assert_eq!(shape.n_outputs, 0);
-    }
 }

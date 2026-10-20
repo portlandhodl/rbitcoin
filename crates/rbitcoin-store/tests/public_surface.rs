@@ -2,23 +2,63 @@
 //! This test only asserts those names still resolve. Dropped names
 //! (`AddressHead`, `NetConfig`, `P2PHandle`, `LiveShardTable`, …) are
 //! denied by `lint/ast-grep/rules/crate-root-dropped-pub.yml`.
-
-use rbitcoin_store::{
-    block_header_hash, block_wire_input_count, clear_unsorted_shard_dir,
-    collect_unsorted_shard_files, decode_packed_tx_outs_with_spender_rels,
-    decode_packed_tx_outs_with_spender_rels_secret, decode_packed_tx_with_spender_rels_secret,
-    decode_seqsigwit_secret, encode_packed_tx, encode_packed_tx_with_secret,
-    encode_txout_meta_and_outs, encode_unspent_output_into_secret, ensure_nofile_budget,
-    free_gib_label, is_probe_exhausted_error, is_store_corrupt_display, leftover_probe_diag_ready,
-    leftover_probe_diag_recorded, load_tweak_wave, materialize_sh_unsorted_from_class_a,
-    merkle_branch, merkle_root_from_txids, merkle_root_mutated, output_flags, script_hash,
-    sh_heads_insert_capped, spend_ann_backend, spend_meta_backend, spent_abs,
+use rbitcoin_primitives::{
+    merkle_branch, merkle_root_from_branch, merkle_root_from_txids, merkle_root_mutated,
+};
+use rbitcoin_store::address_head::{is_probe_exhausted_error, is_store_corrupt_display};
+use rbitcoin_store::block_filter::{
+    BlockFilterRecord, BlockFilterSlot, BlockFilterTable, StoredBlockFilter,
+};
+use rbitcoin_store::block_queue::{BlockQueue, QueuedBlockMeta, TakenRaw};
+use rbitcoin_store::block_wire::block_wire_input_count;
+use rbitcoin_store::chain::HeaderTxsTable;
+use rbitcoin_store::compact::output_flags;
+use rbitcoin_store::create_loc::CreateLocPair;
+use rbitcoin_store::error::StoreError;
+use rbitcoin_store::file::ensure_nofile_budget;
+use rbitcoin_store::hashhead::{HeadOpenOpts, HeadScale};
+use rbitcoin_store::head_resolve_stats::{leftover_probe_diag_ready, leftover_probe_diag_recorded};
+use rbitcoin_store::header_table::{block_header_hash, HeaderRecord};
+use rbitcoin_store::height_fence::HeightFence;
+use rbitcoin_store::idx_body_pipeline::run_idx_body_pipeline;
+use rbitcoin_store::idx_body_pipeline::{BodyMode as IdxBodyMode, IdxBodyJob, SpendSlotRun};
+use rbitcoin_store::index_build_uring::{read_index_window, IndexBlock, IndexHeight, IndexWindow};
+use rbitcoin_store::input::InputEdge;
+use rbitcoin_store::int_map::{FkMap, FkSet, U32Map, U64IdentityHasher, U64Map, U64Set};
+use rbitcoin_store::integrity::VERIFY_TIP_BLOCKS;
+use rbitcoin_store::io_backend::{ReadIoBackend, WriteIoBackend};
+use rbitcoin_store::point_table::PointRecord;
+use rbitcoin_store::scripthash::{
+    script_hash, sh_heads_insert_capped, ColdProgress, ScriptHashRecord, INCLUDE_HWM_NAME,
+    SH_HEADS_CAP,
+};
+use rbitcoin_store::scripthash_layout::ShHeadValue;
+use rbitcoin_store::scripthash_materialize::{
+    clear_unsorted_shard_dir, collect_unsorted_shard_files, materialize_sh_unsorted_from_class_a,
     unsorted_collect_workers, unsorted_done_last_fk, unsorted_pack_workers, unsorted_shard_dir,
-    BlockQueue, ColdProgress, FkMap, FkSet, HeadOpenOpts, HeadResizeSizeSnapshot, HeadScale,
-    HeaderRecord, HeightFence, IdxBodyJob, IdxBodyMode, InputRecord, OutputRecord, PackedCreate,
-    PointRecord, QueuedBlockMeta, ReadIoBackend, ScriptHashRecord, ShHeadValue, SpTweaksTable,
-    Store, StoreError, StoreLayout, StoreSecret, TakenRaw, TxRecord, U32Map, U64IdentityHasher,
-    U64Map, U64Set, WriteIoBackend, INCLUDE_HWM_NAME, SH_HEADS_CAP,
+};
+use rbitcoin_store::sorted_run::free_gib_label;
+use rbitcoin_store::sorted_run::host_mem_available_bytes;
+use rbitcoin_store::sp_tweaks::{SpTweaksTable, TrimLast};
+use rbitcoin_store::sp_tweaks_uring::{load_tweak_wave, LoadedTweakTx};
+use rbitcoin_store::spend_annotate_uring::spend_ann_backend;
+use rbitcoin_store::spend_durable::{
+    elapsed_after_checkpoint, spend_sync_due, SPEND_DURABLE_INTERVAL_MS, SPEND_DURABLE_NAME,
+};
+use rbitcoin_store::store::{keep_unspent_vout_subsequence, SpindleHold, Store, StoreLayout};
+use rbitcoin_store::store_secret::StoreSecret;
+use rbitcoin_store::tx_table::HeadResizeSizeSnapshot;
+use rbitcoin_store::tx_table::{
+    decode_packed_tx_outs_with_spender_rels, decode_packed_tx_outs_with_spender_rels_secret,
+    decode_packed_tx_with_spender_rels_secret, decode_seqsigwit_secret, encode_packed_tx,
+    encode_packed_tx_with_secret, encode_seqsigwit_with_secret, encode_txout_meta_and_outs,
+    encode_unspent_output_into_secret, encode_wire_seqsigwit_input, seqsigwit_input_len_upper,
+    spend_meta_backend, spent_abs, InputParent, InputRecord, OutputRecord, PackedCreate, TxRecord,
+};
+use rbitcoin_store::txstat::TxStatRow;
+use rbitcoin_store::uring_session::IoCtx;
+use rbitcoin_store::uring_session::{
+    abort_uring_unusable, note_uring_recover, uring_recover_count, uring_slow_drain_count,
 };
 
 #[test]

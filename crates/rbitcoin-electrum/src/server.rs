@@ -23,14 +23,18 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, Notify, Semaphore};
 use tokio::task::JoinHandle;
 
-const PROTOCOL_MIN: &str = "1.4";
-const PROTOCOL_MAX: &str = "1.6";
+#[doc(hidden)]
+pub const PROTOCOL_MIN: &str = "1.4";
+#[doc(hidden)]
+pub const PROTOCOL_MAX: &str = "1.6";
 // Dialect version: trailing `asof:<blockhash>`. Not a dotted-int; `protocol_max` stays 1.6.
-const PROTOCOL_ASOF: &str = "1.4.2-asof";
+#[doc(hidden)]
+pub const PROTOCOL_ASOF: &str = "1.4.2-asof";
 /// First `server.version` element. Cake Wallet `getNodeIsElectrs()` requires
 /// this string (lowercased) to contain `electrs` before it will probe
 /// `blockchain.tweaks.subscribe [0, 1, false]`.
-const SERVER_VERSION: &str = concat!("rbitcoin-electrs ", env!("CARGO_PKG_VERSION"));
+#[doc(hidden)]
+pub const SERVER_VERSION: &str = concat!("rbitcoin-electrs ", env!("CARGO_PKG_VERSION"));
 
 /// One JSON-RPC request line. Junk is `None`; must not panic.
 pub fn parse_electrum_request_line(line: &str) -> Option<Value> {
@@ -38,7 +42,8 @@ pub fn parse_electrum_request_line(line: &str) -> Option<Value> {
 }
 
 /// Electrum JSON-RPC requests: the `tip: perf` window and the `/metrics` totals.
-static METER: RequestMeter = RequestMeter::new();
+#[doc(hidden)]
+pub static METER: RequestMeter = RequestMeter::new();
 
 /// Electrum request meters since the previous sample: `(count, sum_us, max_us)`.
 /// Running totals are untouched ([`perf_totals`]).
@@ -51,7 +56,8 @@ pub fn perf_totals() -> (u64, u64) {
     METER.totals()
 }
 
-fn meter_dispatch_wall(us: u64) {
+#[doc(hidden)]
+pub fn meter_dispatch_wall(us: u64) {
     METER.note(us);
 }
 
@@ -167,9 +173,9 @@ impl ElectrumConfig {
 
 pub struct ElectrumHandle {
     pub local_addr: SocketAddr,
-    shutdown: Arc<AtomicBool>,
-    tasks: Vec<JoinHandle<()>>,
-    clients: Arc<Mutex<Vec<JoinHandle<()>>>>,
+    pub shutdown: Arc<AtomicBool>,
+    pub tasks: Vec<JoinHandle<()>>,
+    pub clients: Arc<Mutex<Vec<JoinHandle<()>>>>,
 }
 
 impl ElectrumHandle {
@@ -333,19 +339,21 @@ where
     }
 }
 
-struct ElectrumConn {
-    protocol: String,
-    header_sub: bool,
-    sh_subs: HashSet<[u8; 32]>,
-    sh_join: Option<Arc<ShJoinSlot>>,
-    outpoint_subs: HashSet<([u8; 32], u32)>,
-    sp_sub: Option<crate::silent_scan::SpSub>,
+#[doc(hidden)]
+pub struct ElectrumConn {
+    pub protocol: String,
+    pub header_sub: bool,
+    pub sh_subs: HashSet<[u8; 32]>,
+    pub sh_join: Option<Arc<ShJoinSlot>>,
+    pub outpoint_subs: HashSet<([u8; 32], u32)>,
+    pub sp_sub: Option<crate::silent_scan::SpSub>,
     /// One historical silent-payment scan at a time on this connection.
-    sp_scan_busy: bool,
+    pub sp_scan_busy: bool,
 }
 
 impl ElectrumConn {
-    fn new() -> Self {
+    #[doc(hidden)]
+    pub fn new() -> Self {
         Self {
             protocol: String::new(),
             header_sub: false,
@@ -360,7 +368,7 @@ impl ElectrumConn {
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
 #[allow(clippy::cognitive_complexity)] // Electrum session dispatch
-async fn handle_client<S>(
+pub async fn handle_client<S>(
     stream: S,
     peer: SocketAddr,
     query: Arc<Query>,
@@ -761,7 +769,7 @@ where
 /// Tweaks stream: JSON-RPC result = first height, then one notify per
 /// following height, then `{"message":"done"}`. Honor `count` through tip.
 /// Answer `server.ping` while computing.
-async fn serve_sp_subscribe<R, W>(
+pub async fn serve_sp_subscribe<R, W>(
     reader: &mut R,
     writer: &mut W,
     query: &Arc<Query>,
@@ -831,7 +839,8 @@ where
     Ok(())
 }
 
-fn silentpayments_unsubscribe(
+#[doc(hidden)]
+pub fn silentpayments_unsubscribe(
     conn: &mut ElectrumConn,
     query: &Query,
     chain: &ChainParams,
@@ -849,7 +858,7 @@ fn silentpayments_unsubscribe(
     Ok(json!(sub.address))
 }
 
-async fn emit_sp_tip<W: AsyncWrite + Unpin>(
+pub async fn emit_sp_tip<W: AsyncWrite + Unpin>(
     writer: &mut W,
     query: &Query,
     chain: &ChainParams,
@@ -873,7 +882,7 @@ async fn emit_sp_tip<W: AsyncWrite + Unpin>(
     write_line(writer, &note, idle).await
 }
 
-async fn emit_outpoint_notes<W: AsyncWrite + Unpin>(
+pub async fn emit_outpoint_notes<W: AsyncWrite + Unpin>(
     writer: &mut W,
     query: &Arc<Query>,
     mempool: Option<Arc<MempoolHub>>,
@@ -906,7 +915,8 @@ async fn emit_outpoint_notes<W: AsyncWrite + Unpin>(
     Ok(())
 }
 
-fn redact_sp_params(params: &Value) -> String {
+#[doc(hidden)]
+pub fn redact_sp_params(params: &Value) -> String {
     let mut v = params.clone();
     if let Some(arr) = v.as_array_mut() {
         if !arr.is_empty() {
@@ -916,7 +926,8 @@ fn redact_sp_params(params: &Value) -> String {
     serde_json::to_string(&v).unwrap_or_else(|_| "[]".into())
 }
 
-fn sp_scan_ranges(start: u32, last: u32) -> Vec<(u32, u32)> {
+#[doc(hidden)]
+pub fn sp_scan_ranges(start: u32, last: u32) -> Vec<(u32, u32)> {
     use crate::silent_scan::SP_SCAN_CHUNK;
     if start > last {
         return Vec::new();
@@ -936,16 +947,18 @@ fn sp_scan_ranges(start: u32, last: u32) -> Vec<(u32, u32)> {
     ranges
 }
 
-struct SpScan {
-    hits: Vec<Value>,
+#[doc(hidden)]
+pub struct SpScan {
+    pub hits: Vec<Value>,
     /// Chunks scanned before the client hung up.
-    chunks: usize,
+    pub chunks: usize,
 }
 
 /// One poll. `fill_buf` does not consume: an empty ready buffer is EOF,
 /// and pending means the client is still connected. A zero timeout can
 /// poll twice, so this does not use one.
-fn peer_hung_up<R: AsyncBufRead + Unpin>(reader: &mut R) -> bool {
+#[doc(hidden)]
+pub fn peer_hung_up<R: AsyncBufRead + Unpin>(reader: &mut R) -> bool {
     let waker = std::task::Waker::noop();
     let mut cx = std::task::Context::from_waker(waker);
     let mut fut = std::pin::pin!(reader.fill_buf());
@@ -956,7 +969,7 @@ fn peer_hung_up<R: AsyncBufRead + Unpin>(reader: &mut R) -> bool {
     }
 }
 
-async fn scan_sp_off_connection<R: AsyncBufRead + Unpin>(
+pub async fn scan_sp_off_connection<R: AsyncBufRead + Unpin>(
     reader: &mut R,
     query: &Arc<Query>,
     chain: &Arc<ChainParams>,
@@ -991,7 +1004,7 @@ async fn scan_sp_off_connection<R: AsyncBufRead + Unpin>(
 }
 
 #[allow(clippy::too_many_arguments)] // matches handle_client call-site
-async fn serve_tweaks_subscribe<R, W>(
+pub async fn serve_tweaks_subscribe<R, W>(
     reader: &mut R,
     writer: &mut W,
     query: &Arc<Query>,
@@ -1065,7 +1078,7 @@ where
 
 /// After wave 0: more waves while the chunk is open, then Cake `done`.
 #[allow(clippy::too_many_arguments)]
-async fn serve_tweaks_rest<R, W>(
+pub async fn serve_tweaks_rest<R, W>(
     reader: &mut R,
     writer: &mut W,
     query: &Arc<Query>,
@@ -1094,7 +1107,7 @@ where
     Ok(())
 }
 
-async fn tweaks_sub_err<W: AsyncWrite + Unpin>(
+pub async fn tweaks_sub_err<W: AsyncWrite + Unpin>(
     writer: &mut W,
     peer: &SocketAddr,
     id: &Value,
@@ -1119,7 +1132,8 @@ async fn tweaks_sub_err<W: AsyncWrite + Unpin>(
     .await
 }
 
-fn tweaks_sub_ok_log(peer: &SocketAddr, params_v: &Value, wall_ms: u64) {
+#[doc(hidden)]
+pub fn tweaks_sub_ok_log(peer: &SocketAddr, params_v: &Value, wall_ms: u64) {
     rbitcoin_log::api_call(
         "electrum",
         &peer.to_string(),
@@ -1131,7 +1145,7 @@ fn tweaks_sub_ok_log(peer: &SocketAddr, params_v: &Value, wall_ms: u64) {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn serve_tweaks_empty_last<W: AsyncWrite + Unpin>(
+pub async fn serve_tweaks_empty_last<W: AsyncWrite + Unpin>(
     writer: &mut W,
     query: &Arc<Query>,
     chain: &Arc<ChainParams>,
@@ -1163,7 +1177,7 @@ async fn serve_tweaks_empty_last<W: AsyncWrite + Unpin>(
     serve_tweaks_empty_ok(writer, peer, id, params_v, t0, &first, idle).await
 }
 
-async fn serve_tweaks_empty_ok<W: AsyncWrite + Unpin>(
+pub async fn serve_tweaks_empty_ok<W: AsyncWrite + Unpin>(
     writer: &mut W,
     peer: &SocketAddr,
     id: &Value,
@@ -1180,7 +1194,7 @@ async fn serve_tweaks_empty_ok<W: AsyncWrite + Unpin>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn serve_tweaks_follow_waves<R, W>(
+pub async fn serve_tweaks_follow_waves<R, W>(
     reader: &mut R,
     writer: &mut W,
     query: &Arc<Query>,
@@ -1247,13 +1261,14 @@ where
     Ok(())
 }
 
-enum TweaksWait {
+#[doc(hidden)]
+pub enum TweaksWait {
     Wave(Result<crate::tweaks::NotifyWave, String>),
     Continue,
     Eof,
 }
 
-async fn tweaks_wait_wave_or_ping<R, W>(
+pub async fn tweaks_wait_wave_or_ping<R, W>(
     reader: &mut R,
     writer: &mut W,
     idle: Duration,
@@ -1298,7 +1313,7 @@ where
     }
 }
 
-async fn write_bytes_within<W: AsyncWrite + Unpin>(
+pub async fn write_bytes_within<W: AsyncWrite + Unpin>(
     writer: &mut W,
     bytes: &[u8],
     deadline: Duration,
@@ -1317,7 +1332,7 @@ async fn write_bytes_within<W: AsyncWrite + Unpin>(
     }
 }
 
-async fn write_line<W: AsyncWrite + Unpin>(
+pub async fn write_line<W: AsyncWrite + Unpin>(
     writer: &mut W,
     msg: &Value,
     deadline: Duration,
@@ -1327,7 +1342,8 @@ async fn write_line<W: AsyncWrite + Unpin>(
     write_bytes_within(writer, s.as_bytes(), deadline).await
 }
 
-fn restatus_notes(
+#[doc(hidden)]
+pub fn restatus_notes(
     query: &Query,
     mempool: Option<&MempoolHub>,
     subs: &[[u8; 32]],
@@ -1376,9 +1392,11 @@ fn restatus_notes(
     out
 }
 
-const TICK_SCAN_MAX_GAP: u32 = 32;
+#[doc(hidden)]
+pub const TICK_SCAN_MAX_GAP: u32 = 32;
 
-fn tick_scan(seen: Option<u32>, now: Option<u32>) -> Option<Option<Vec<u32>>> {
+#[doc(hidden)]
+pub fn tick_scan(seen: Option<u32>, now: Option<u32>) -> Option<Option<Vec<u32>>> {
     if seen == now {
         return None;
     }
@@ -1401,7 +1419,8 @@ fn tick_scan(seen: Option<u32>, now: Option<u32>) -> Option<Option<Vec<u32>>> {
 /// so this only catches leftovers and only runs when `last_sent` outgrows the
 /// sub set. Sweeping unconditionally on every push made each notification
 /// O(subs), so a block touching many subs of a large wallet went quadratic.
-fn drop_unsubscribed_status(
+#[doc(hidden)]
+pub fn drop_unsubscribed_status(
     last_sent: &mut HashMap<[u8; 32], String>,
     sh_subs: &HashSet<[u8; 32]>,
 ) {
@@ -1413,7 +1432,8 @@ fn drop_unsubscribed_status(
 /// Electrum status on the wire: `null` for a script with no history, else the
 /// hex digest. Internally "no history" is the empty string, so dedup compares
 /// one type.
-fn status_json(status: String) -> Value {
+#[doc(hidden)]
+pub fn status_json(status: String) -> Value {
     if status.is_empty() {
         Value::Null
     } else {
@@ -1423,7 +1443,8 @@ fn status_json(status: String) -> Value {
 
 /// Remember the status a `scripthash.subscribe` reply sent, so the next push
 /// for an unchanged hash (including a still-empty one) is deduplicated.
-fn record_sent_status(last_sent: &mut HashMap<[u8; 32], String>, sh: [u8; 32], sent: &Value) {
+#[doc(hidden)]
+pub fn record_sent_status(last_sent: &mut HashMap<[u8; 32], String>, sh: [u8; 32], sent: &Value) {
     match sent {
         Value::Null => {
             last_sent.insert(sh, String::new());
@@ -1435,7 +1456,8 @@ fn record_sent_status(last_sent: &mut HashMap<[u8; 32], String>, sh: [u8; 32], s
     }
 }
 
-fn take_new_status(
+#[doc(hidden)]
+pub fn take_new_status(
     last_sent: &mut HashMap<[u8; 32], String>,
     sh_subs: &HashSet<[u8; 32]>,
     sh: [u8; 32],
@@ -1449,7 +1471,7 @@ fn take_new_status(
     Some(status)
 }
 
-async fn emit_sh_notes<W: AsyncWrite + Unpin>(
+pub async fn emit_sh_notes<W: AsyncWrite + Unpin>(
     writer: &mut W,
     query: &Arc<Query>,
     mempool: Option<Arc<MempoolHub>>,
@@ -1480,7 +1502,7 @@ async fn emit_sh_notes<W: AsyncWrite + Unpin>(
     Ok(())
 }
 
-async fn write_raw_line<W: AsyncWrite + Unpin>(
+pub async fn write_raw_line<W: AsyncWrite + Unpin>(
     writer: &mut W,
     msg: &str,
     deadline: Duration,
@@ -1491,7 +1513,7 @@ async fn write_raw_line<W: AsyncWrite + Unpin>(
     write_bytes_within(writer, &bytes, deadline).await
 }
 
-async fn write_raw_lines<W: AsyncWrite + Unpin>(
+pub async fn write_raw_lines<W: AsyncWrite + Unpin>(
     writer: &mut W,
     lines: &[String],
     deadline: Duration,
@@ -1511,7 +1533,7 @@ async fn write_raw_lines<W: AsyncWrite + Unpin>(
     write_bytes_within(writer, &buf, deadline).await
 }
 
-async fn write_rpc_result<W: AsyncWrite + Unpin>(
+pub async fn write_rpc_result<W: AsyncWrite + Unpin>(
     writer: &mut W,
     id: &Value,
     result_json: &str,
@@ -1528,7 +1550,8 @@ async fn write_rpc_result<W: AsyncWrite + Unpin>(
 
 /// Instant methods that must stay on the connection task so a 1-worker runtime
 /// can answer `server.ping` while another socket is in `spawn_blocking`.
-fn method_stays_on_worker(method: &str) -> bool {
+#[doc(hidden)]
+pub fn method_stays_on_worker(method: &str) -> bool {
     matches!(
         method,
         "server.ping"
@@ -1542,13 +1565,15 @@ fn method_stays_on_worker(method: &str) -> bool {
     )
 }
 
-fn method_needs_sh_index(method: &str) -> bool {
+#[doc(hidden)]
+pub fn method_needs_sh_index(method: &str) -> bool {
     method.starts_with("blockchain.scripthash.")
         || method.starts_with("blockchain.tweaks.")
         || method.starts_with("blockchain.silentpayments.")
 }
 
-fn method_stamps_chain_tip(method: &str) -> bool {
+#[doc(hidden)]
+pub fn method_stamps_chain_tip(method: &str) -> bool {
     matches!(
         method,
         "blockchain.scripthash.get_history"
@@ -1559,7 +1584,8 @@ fn method_stamps_chain_tip(method: &str) -> bool {
     )
 }
 
-fn rpc_result(id: &Value, result: &Value, view: Option<&ChainView>) -> Value {
+#[doc(hidden)]
+pub fn rpc_result(id: &Value, result: &Value, view: Option<&ChainView>) -> Value {
     let mut obj = json!({"jsonrpc":"2.0","id": id, "result": result});
     if let Some(v) = view {
         obj["chain_tip"] = json!(hash_hex_rev(&v.hash));
@@ -1568,7 +1594,8 @@ fn rpc_result(id: &Value, result: &Value, view: Option<&ChainView>) -> Value {
     obj
 }
 
-fn electrum_pin_kind(method: &str) -> ChainViewKind {
+#[doc(hidden)]
+pub fn electrum_pin_kind(method: &str) -> ChainViewKind {
     if method.starts_with("blockchain.scripthash.") {
         ChainViewKind::ScriptHash
     } else {
@@ -1576,7 +1603,8 @@ fn electrum_pin_kind(method: &str) -> ChainViewKind {
     }
 }
 
-fn electrum_at_chain_view<F>(
+#[doc(hidden)]
+pub fn electrum_at_chain_view<F>(
     query: &Query,
     method: &str,
     params: &Value,
@@ -1613,8 +1641,9 @@ where
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-#[cfg(test)]
-fn dispatch(
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn dispatch(
     method: &str,
     params: &Value,
     query: &Query,
@@ -1639,7 +1668,8 @@ fn dispatch(
     r
 }
 
-fn dispatch_with_join(
+#[doc(hidden)]
+pub fn dispatch_with_join(
     method: &str,
     params: &Value,
     query: &Query,
@@ -1660,7 +1690,8 @@ fn dispatch_with_join(
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-fn sh_at_view<T>(
+#[doc(hidden)]
+pub fn sh_at_view<T>(
     query: &Query,
     pinned: Option<&ChainView>,
     is_asof: bool,
@@ -1686,14 +1717,16 @@ fn sh_at_view<T>(
     live_fn(query, sh_join)
 }
 
-fn features_hosts_json(config: &ElectrumConfig) -> Value {
+#[doc(hidden)]
+pub fn features_hosts_json(config: &ElectrumConfig) -> Value {
     match config.onion_tcp.get() {
         Some((host, port)) => json!({ host: { "tcp_port": port } }),
         None => json!({}),
     }
 }
 
-fn broadcast_raw_tx(
+#[doc(hidden)]
+pub fn broadcast_raw_tx(
     params: &Value,
     config: &ElectrumConfig,
     mempool: Option<&MempoolHub>,
@@ -1719,7 +1752,8 @@ fn broadcast_raw_tx(
     Ok(json!(format!("{}", r.txid)))
 }
 
-fn broadcast_package(
+#[doc(hidden)]
+pub fn broadcast_package(
     params: &Value,
     config: &ElectrumConfig,
     mempool: Option<&MempoolHub>,
@@ -1777,7 +1811,8 @@ fn broadcast_package(
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-fn dispatch_pinned(
+#[doc(hidden)]
+pub fn dispatch_pinned(
     method: &str,
     params: &Value,
     query: &Query,
@@ -2149,7 +2184,8 @@ fn dispatch_pinned(
     }
 }
 
-fn tip_header_obj(query: &Query) -> Result<Value, String> {
+#[doc(hidden)]
+pub fn tip_header_obj(query: &Query) -> Result<Value, String> {
     let tip = query
         .tip_height()
         .ok_or_else(|| "no chain tip".to_string())?;
@@ -2162,13 +2198,14 @@ fn tip_header_obj(query: &Query) -> Result<Value, String> {
     }))
 }
 
-fn header_hex(hdr: &bitcoin::block::Header) -> String {
+#[doc(hidden)]
+pub fn header_hex(hdr: &bitcoin::block::Header) -> String {
     let mut buf = Vec::new();
     hdr.consensus_encode(&mut buf).expect("header encode");
     rbitcoin_primitives::hex_encode(&(buf))
 }
 
-pub(crate) fn param_u32(params: &Value, idx: usize) -> Result<u32, String> {
+pub fn param_u32(params: &Value, idx: usize) -> Result<u32, String> {
     params
         .as_array()
         .and_then(|a| a.get(idx))
@@ -2180,7 +2217,8 @@ pub(crate) fn param_u32(params: &Value, idx: usize) -> Result<u32, String> {
         .ok_or_else(|| format!("param {idx} expected number"))
 }
 
-fn param_i64(params: &Value, idx: usize) -> Result<i64, String> {
+#[doc(hidden)]
+pub fn param_i64(params: &Value, idx: usize) -> Result<i64, String> {
     params
         .as_array()
         .and_then(|a| a.get(idx))
@@ -2192,7 +2230,8 @@ fn param_i64(params: &Value, idx: usize) -> Result<i64, String> {
         .ok_or_else(|| format!("param {idx} expected integer"))
 }
 
-fn method_accepts_asof(method: &str) -> bool {
+#[doc(hidden)]
+pub fn method_accepts_asof(method: &str) -> bool {
     matches!(
         method,
         "blockchain.scripthash.get_history"
@@ -2203,25 +2242,29 @@ fn method_accepts_asof(method: &str) -> bool {
     )
 }
 
-fn parse_blockhash32(s: &str) -> Option<[u8; 32]> {
+#[doc(hidden)]
+pub fn parse_blockhash32(s: &str) -> Option<[u8; 32]> {
     rbitcoin_primitives::parse_display_hash32(s).ok()
 }
 
-fn protocol_tuple(s: &str) -> Option<Vec<u32>> {
+#[doc(hidden)]
+pub fn protocol_tuple(s: &str) -> Option<Vec<u32>> {
     if s.is_empty() {
         return None;
     }
     s.split('.').map(|p| p.parse().ok()).collect()
 }
 
-fn protocol_ge_1_6(protocol: &str) -> bool {
+#[doc(hidden)]
+pub fn protocol_ge_1_6(protocol: &str) -> bool {
     match protocol_tuple(protocol) {
         Some(v) => v.first() == Some(&1) && v.get(1).copied().unwrap_or(0) >= 6,
         None => false,
     }
 }
 
-fn admit_outpoint_sub(
+#[doc(hidden)]
+pub fn admit_outpoint_sub(
     subs: &mut HashSet<([u8; 32], u32)>,
     txid: [u8; 32],
     vout: u32,
@@ -2235,13 +2278,15 @@ fn admit_outpoint_sub(
     Ok(())
 }
 
-fn param_outpoint(params: &Value) -> Result<([u8; 32], u32), String> {
+#[doc(hidden)]
+pub fn param_outpoint(params: &Value) -> Result<([u8; 32], u32), String> {
     let txid = param_txid(params, 0)?;
     let vout = param_u32(params, 1)?;
     Ok((txid, vout))
 }
 
-fn outpoint_status(
+#[doc(hidden)]
+pub fn outpoint_status(
     query: &Query,
     mempool: Option<&MempoolHub>,
     params: &Value,
@@ -2281,7 +2326,8 @@ fn outpoint_status(
     }))
 }
 
-fn protocol_string(parts: &[u32]) -> String {
+#[doc(hidden)]
+pub fn protocol_string(parts: &[u32]) -> String {
     parts
         .iter()
         .map(ToString::to_string)
@@ -2289,7 +2335,8 @@ fn protocol_string(parts: &[u32]) -> String {
         .join(".")
 }
 
-fn pick_dotted(cmin_s: &str, cmax_s: &str) -> Result<String, String> {
+#[doc(hidden)]
+pub fn pick_dotted(cmin_s: &str, cmax_s: &str) -> Result<String, String> {
     let cmin =
         protocol_tuple(cmin_s).ok_or_else(|| format!("unsupported protocol version {cmin_s}"))?;
     let cmax =
@@ -2304,7 +2351,8 @@ fn pick_dotted(cmin_s: &str, cmax_s: &str) -> Result<String, String> {
     Ok(protocol_string(&hi))
 }
 
-fn negotiate_protocol(params: &Value) -> Result<String, String> {
+#[doc(hidden)]
+pub fn negotiate_protocol(params: &Value) -> Result<String, String> {
     let pv = params
         .as_array()
         .and_then(|a| a.get(1))
@@ -2336,7 +2384,8 @@ fn negotiate_protocol(params: &Value) -> Result<String, String> {
     pick_dotted(a, b)
 }
 
-fn take_trailing_asof(
+#[doc(hidden)]
+pub fn take_trailing_asof(
     method: &str,
     params: &Value,
     asof_ok: bool,
@@ -2370,7 +2419,8 @@ fn take_trailing_asof(
 /// - 1-arg / omitted heights: open confirmed window + mempool (BTC 1.4 / BCH defaults).
 /// - `to_height == -1` (or only `from_height`): open upper bound + mempool.
 /// - Finite exclusive `to_height`: confirmed `[from, to)` only — **no** mempool.
-fn parse_get_history_window(params: &Value) -> Result<(HistoryFilter, bool), String> {
+#[doc(hidden)]
+pub fn parse_get_history_window(params: &Value) -> Result<(HistoryFilter, bool), String> {
     let arr = params
         .as_array()
         .ok_or_else(|| "params expected array".to_string())?;
@@ -2398,7 +2448,7 @@ fn parse_get_history_window(params: &Value) -> Result<(HistoryFilter, bool), Str
     Ok((HistoryFilter::height_window(from, to_excl), include_mempool))
 }
 
-pub(crate) fn param_str(params: &Value, idx: usize) -> Result<&str, String> {
+pub fn param_str(params: &Value, idx: usize) -> Result<&str, String> {
     params
         .as_array()
         .and_then(|a| a.get(idx))
@@ -2406,25 +2456,30 @@ pub(crate) fn param_str(params: &Value, idx: usize) -> Result<&str, String> {
         .ok_or_else(|| format!("param {idx} expected string"))
 }
 
-fn param_scripthash(params: &Value, idx: usize) -> Result<[u8; 32], String> {
+#[doc(hidden)]
+pub fn param_scripthash(params: &Value, idx: usize) -> Result<[u8; 32], String> {
     let s = param_str(params, idx)?;
     rbitcoin_primitives::parse_display_hash32(s).map_err(|e| e.to_string())
 }
 
-fn param_txid(params: &Value, idx: usize) -> Result<[u8; 32], String> {
+#[doc(hidden)]
+pub fn param_txid(params: &Value, idx: usize) -> Result<[u8; 32], String> {
     let s = param_str(params, idx)?;
     rbitcoin_primitives::parse_display_hash32(s).map_err(|e| e.to_string())
 }
 
-fn decode_hex_bytes(s: &str) -> Result<Vec<u8>, String> {
+#[doc(hidden)]
+pub fn decode_hex_bytes(s: &str) -> Result<Vec<u8>, String> {
     rbitcoin_primitives::hex_decode(s).map_err(|e| e.to_string())
 }
 
-fn txid_hex(txid: &[u8; 32]) -> String {
+#[doc(hidden)]
+pub fn txid_hex(txid: &[u8; 32]) -> String {
     hash_hex_rev(txid)
 }
 
-fn id_from_pos(query: &Query, params: &Value) -> Result<Value, String> {
+#[doc(hidden)]
+pub fn id_from_pos(query: &Query, params: &Value) -> Result<Value, String> {
     let height = param_u32(params, 0)?;
     let tx_pos = param_u32(params, 1)? as usize;
     let want_merkle = params
@@ -2454,7 +2509,8 @@ fn id_from_pos(query: &Query, params: &Value) -> Result<Value, String> {
 
 /// Electrs-shaped verbose `transaction.get`. `fk` Some = confirmed (header
 /// stamp); None = mempool (`confirmations: 0`, no block fields).
-fn verbose_tx_json(
+#[doc(hidden)]
+pub fn verbose_tx_json(
     query: &Query,
     raw: &[u8],
     txid: &[u8; 32],
@@ -2499,7 +2555,8 @@ fn verbose_tx_json(
     obj
 }
 
-fn verbose_vin(input: &bitcoin::TxIn) -> Value {
+#[doc(hidden)]
+pub fn verbose_vin(input: &bitcoin::TxIn) -> Value {
     if input.previous_output.is_null() {
         json!({
             "coinbase": rbitcoin_primitives::hex_encode(input.script_sig.as_bytes()),
@@ -2528,7 +2585,8 @@ fn verbose_vin(input: &bitcoin::TxIn) -> Value {
     }
 }
 
-fn verbose_vout(n: usize, out: &bitcoin::TxOut, network: bitcoin::Network) -> Value {
+#[doc(hidden)]
+pub fn verbose_vout(n: usize, out: &bitcoin::TxOut, network: bitcoin::Network) -> Value {
     let mut spk = json!({
         "asm": out.script_pubkey.to_asm_string(),
         "hex": rbitcoin_primitives::hex_encode(out.script_pubkey.as_bytes()),
@@ -2544,11 +2602,13 @@ fn verbose_vout(n: usize, out: &bitcoin::TxOut, network: bitcoin::Network) -> Va
     })
 }
 
-fn hash_hex_rev(h: &[u8; 32]) -> String {
+#[doc(hidden)]
+pub fn hash_hex_rev(h: &[u8; 32]) -> String {
     rbitcoin_primitives::display_hash_hex(*(h))
 }
 
-fn history_row_json(i: &rbitcoin_query::ScriptHashHistoryItem) -> Value {
+#[doc(hidden)]
+pub fn history_row_json(i: &rbitcoin_query::ScriptHashHistoryItem) -> Value {
     let mut row = json!({
         "height": i.height,
         "tx_hash": txid_hex(&i.txid),
@@ -2559,11 +2619,13 @@ fn history_row_json(i: &rbitcoin_query::ScriptHashHistoryItem) -> Value {
     row
 }
 
-fn history_has_txid(hist: &[rbitcoin_query::ScriptHashHistoryItem], txid: &[u8; 32]) -> bool {
+#[doc(hidden)]
+pub fn history_has_txid(hist: &[rbitcoin_query::ScriptHashHistoryItem], txid: &[u8; 32]) -> bool {
     hist.iter().any(|h| h.txid == *txid)
 }
 
-fn append_mempool_history(
+#[doc(hidden)]
+pub fn append_mempool_history(
     hist: &mut Vec<rbitcoin_query::ScriptHashHistoryItem>,
     mp: &MempoolHub,
     sh: &[u8; 32],
@@ -2584,7 +2646,8 @@ fn append_mempool_history(
 /// Electrum protocol status: SHA-256 of `tx_hash:height:` for each row in
 /// `get_history` order (confirmed by height, then the mempool tail). Clients
 /// recompute it from `get_history` and drop the history when it differs.
-fn scripthash_status(hist: &[rbitcoin_query::ScriptHashHistoryItem]) -> String {
+#[doc(hidden)]
+pub fn scripthash_status(hist: &[rbitcoin_query::ScriptHashHistoryItem]) -> String {
     if hist.is_empty() {
         return String::new();
     }
@@ -2597,12 +2660,18 @@ fn scripthash_status(hist: &[rbitcoin_query::ScriptHashHistoryItem]) -> String {
     rbitcoin_primitives::hex_encode(hash.to_byte_array())
 }
 
-fn scripthash_status_full(query: &Query, mp: &MempoolHub, sh: &[u8; 32]) -> Result<String, String> {
+#[doc(hidden)]
+pub fn scripthash_status_full(
+    query: &Query,
+    mp: &MempoolHub,
+    sh: &[u8; 32],
+) -> Result<String, String> {
     let mut slot = None;
     scripthash_status_full_slot(query, mp, sh, &mut slot)
 }
 
-fn scripthash_status_full_slot(
+#[doc(hidden)]
+pub fn scripthash_status_full_slot(
     query: &Query,
     mp: &MempoolHub,
     sh: &[u8; 32],
@@ -2620,20 +2689,3 @@ pub fn electrum_scripthash_hex(script: &[u8]) -> String {
     let h = script_hash(script);
     hash_hex_rev(&h)
 }
-
-#[cfg(test)]
-mod surface_tests {
-    use super::*;
-
-    #[test]
-    fn silent_payment_log_drops_the_scan_secret() {
-        let secret = "ab".repeat(32);
-        let line = redact_sp_params(&json!([secret, "02ff", 1]));
-        assert!(!line.contains(&secret), "{line}");
-        assert!(line.contains("<redacted>"), "{line}");
-    }
-}
-
-#[cfg(test)]
-#[path = "server_tests.rs"]
-mod tests;

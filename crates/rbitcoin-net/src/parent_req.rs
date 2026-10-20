@@ -8,19 +8,19 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use super::{GETDATA_TX_INTERVAL_SECS, MAX_PARENTS_PER_PARK};
 
 /// Announcements one peer may add. Past this the map does not grow.
-pub(super) const MAX_PARENT_ANN_PER_PEER: usize = 5_000;
+pub const MAX_PARENT_ANN_PER_PEER: usize = 5_000;
 /// Process-wide announcements. A few hundred thousand, not tens of millions.
-pub(super) const MAX_PARENT_ANN_GLOBAL: usize = 200_000;
+pub const MAX_PARENT_ANN_GLOBAL: usize = 200_000;
 
 /// One parent GETDATA the sweep should send.
-pub(crate) struct DueParent {
+pub struct DueParent {
     pub hash: [u8; 32],
     pub wtxid: bool,
 }
 
 /// Why `note_inv` did or did not ask this peer for the transaction now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ParentNote {
+pub enum ParentNote {
     /// This peer holds the in-flight request. Send getdata now.
     RequestNow,
     /// Recorded, or already recorded. Another request for these bytes is
@@ -32,37 +32,39 @@ pub(crate) enum ParentNote {
     GlobalFull,
 }
 
-struct ParentAnn {
-    peer: u64,
-    preferred: bool,
-    reqtime: u64,
+#[doc(hidden)]
+pub struct ParentAnn {
+    pub peer: u64,
+    pub preferred: bool,
+    pub reqtime: u64,
     /// Bucket in `due_by_peer` while this ann is waiting to be selected.
-    due_at: Option<u64>,
-    requested_until: Option<u64>,
-    failed: bool,
+    pub due_at: Option<u64>,
+    pub requested_until: Option<u64>,
+    pub failed: bool,
     /// This announcement's getdata type. A wtxid inv does not retarget
     /// another peer's txid row.
-    wtxid: bool,
+    pub wtxid: bool,
 }
 
-struct ParentSlot {
-    anns: Vec<ParentAnn>,
+#[doc(hidden)]
+pub struct ParentSlot {
+    pub anns: Vec<ParentAnn>,
 }
 
 /// Hash map plus per-peer due and in-flight indexes. The indexes are one
 /// entry per announcement and stop at the same caps (extra RAM, not a scan
 /// of every peer on the heartbeat).
-pub(super) struct ParentTracker {
-    by_hash: HashMap<[u8; 32], ParentSlot>,
-    due_by_peer: HashMap<u64, BTreeMap<u64, Vec<[u8; 32]>>>,
-    inflight_by_peer: HashMap<u64, BTreeMap<u64, Vec<[u8; 32]>>>,
-    hashes_by_peer: HashMap<u64, HashSet<[u8; 32]>>,
-    ann_per_peer: HashMap<u64, usize>,
-    announcements: usize,
+pub struct ParentTracker {
+    pub by_hash: HashMap<[u8; 32], ParentSlot>,
+    pub due_by_peer: HashMap<u64, BTreeMap<u64, Vec<[u8; 32]>>>,
+    pub inflight_by_peer: HashMap<u64, BTreeMap<u64, Vec<[u8; 32]>>>,
+    pub hashes_by_peer: HashMap<u64, HashSet<[u8; 32]>>,
+    pub ann_per_peer: HashMap<u64, usize>,
+    pub announcements: usize,
 }
 
 impl ParentTracker {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             by_hash: HashMap::new(),
             due_by_peer: HashMap::new(),
@@ -73,15 +75,17 @@ impl ParentTracker {
         }
     }
 
-    fn peer_at_cap(&self, peer: u64) -> bool {
+    #[doc(hidden)]
+    pub fn peer_at_cap(&self, peer: u64) -> bool {
         self.ann_per_peer.get(&peer).copied().unwrap_or(0) >= MAX_PARENT_ANN_PER_PEER
     }
 
-    fn global_full(&self) -> bool {
+    #[doc(hidden)]
+    pub fn global_full(&self) -> bool {
         self.announcements >= MAX_PARENT_ANN_GLOBAL
     }
 
-    pub(super) fn note_inv(
+    pub fn note_inv(
         &mut self,
         peer: u64,
         hash: [u8; 32],
@@ -125,7 +129,7 @@ impl ParentTracker {
         note
     }
 
-    pub(super) fn schedule(&mut self, hash: [u8; 32], peer: u64, preferred: bool, reqtime: u64) {
+    pub fn schedule(&mut self, hash: [u8; 32], peer: u64, preferred: bool, reqtime: u64) {
         if self
             .by_hash
             .get(&hash)
@@ -151,7 +155,8 @@ impl ParentTracker {
     }
 
     /// `Some` when this peer already had this kind of announcement for `hash`.
-    fn rearm_existing(
+    #[doc(hidden)]
+    pub fn rearm_existing(
         &mut self,
         peer: u64,
         hash: [u8; 32],
@@ -184,7 +189,8 @@ impl ParentTracker {
         Some(ParentNote::RequestNow)
     }
 
-    fn add_ann(&mut self, hash: [u8; 32], ann: ParentAnn) {
+    #[doc(hidden)]
+    pub fn add_ann(&mut self, hash: [u8; 32], ann: ParentAnn) {
         let peer = ann.peer;
         let due_at = ann.due_at;
         let exp = ann.requested_until;
@@ -205,7 +211,7 @@ impl ParentTracker {
 
     /// The peer answered notfound for a hash we asked it for. That request
     /// is over, and a waiter of the same kind is due at its announcement.
-    pub(super) fn note_not_found(&mut self, peer: u64, hash: [u8; 32]) {
+    pub fn note_not_found(&mut self, peer: u64, hash: [u8; 32]) {
         let inflight: Vec<(u64, bool)> = self
             .by_hash
             .get(&hash)
@@ -223,7 +229,7 @@ impl ParentTracker {
         }
     }
 
-    pub(super) fn forget_peer(&mut self, peer: u64) {
+    pub fn forget_peer(&mut self, peer: u64) {
         self.due_by_peer.remove(&peer);
         self.inflight_by_peer.remove(&peer);
         let Some(hashes) = self.hashes_by_peer.remove(&peer) else {
@@ -234,7 +240,7 @@ impl ParentTracker {
         }
     }
 
-    pub(super) fn announcer_peers(&self, hashes: [[u8; 32]; 2]) -> Vec<u64> {
+    pub fn announcer_peers(&self, hashes: [[u8; 32]; 2]) -> Vec<u64> {
         let mut peers = Vec::new();
         for hash in hashes {
             let Some(slot) = self.by_hash.get(&hash) else {
@@ -249,7 +255,7 @@ impl ParentTracker {
         peers
     }
 
-    pub(super) fn resolve(&mut self, hashes: [[u8; 32]; 2], admitted: bool) {
+    pub fn resolve(&mut self, hashes: [[u8; 32]; 2], admitted: bool) {
         for hash in hashes {
             if admitted {
                 self.remove_hash(&hash);
@@ -265,7 +271,7 @@ impl ParentTracker {
         }
     }
 
-    pub(super) fn take_due(
+    pub fn take_due(
         &mut self,
         peer: u64,
         now: u64,
@@ -302,7 +308,8 @@ impl ParentTracker {
         out
     }
 
-    fn due_hashes(&self, peer: u64, now: u64) -> Vec<[u8; 32]> {
+    #[doc(hidden)]
+    pub fn due_hashes(&self, peer: u64, now: u64) -> Vec<[u8; 32]> {
         let Some(tree) = self.due_by_peer.get(&peer) else {
             return Vec::new();
         };
@@ -312,7 +319,8 @@ impl ParentTracker {
     }
 
     /// When this kind is already in flight, the time that request ends.
-    fn kind_inflight_until(&self, hash: &[u8; 32], wtxid: bool) -> Option<u64> {
+    #[doc(hidden)]
+    pub fn kind_inflight_until(&self, hash: &[u8; 32], wtxid: bool) -> Option<u64> {
         self.by_hash.get(hash).and_then(|slot| {
             slot.anns
                 .iter()
@@ -322,7 +330,8 @@ impl ParentTracker {
         })
     }
 
-    fn select(&mut self, peer: u64, now: u64, hash: &[u8; 32]) -> Option<bool> {
+    #[doc(hidden)]
+    pub fn select(&mut self, peer: u64, now: u64, hash: &[u8; 32]) -> Option<bool> {
         let exp = now.saturating_add(GETDATA_TX_INTERVAL_SECS);
         let (due_at, wtxid) = {
             let slot = self.by_hash.get_mut(hash)?;
@@ -351,7 +360,8 @@ impl ParentTracker {
         Some(wtxid)
     }
 
-    fn expire_peer_inflight(&mut self, peer: u64, now: u64) {
+    #[doc(hidden)]
+    pub fn expire_peer_inflight(&mut self, peer: u64, now: u64) {
         let expired = self
             .inflight_by_peer
             .get(&peer)
@@ -369,7 +379,8 @@ impl ParentTracker {
         }
     }
 
-    fn expire_hash_inflight(&mut self, hash: &[u8; 32], now: u64) {
+    #[doc(hidden)]
+    pub fn expire_hash_inflight(&mut self, hash: &[u8; 32], now: u64) {
         let expired = self.inflight_peers(hash);
         for (peer, exp) in expired {
             if exp <= now {
@@ -381,7 +392,8 @@ impl ParentTracker {
         }
     }
 
-    fn inflight_peers(&self, hash: &[u8; 32]) -> Vec<(u64, u64)> {
+    #[doc(hidden)]
+    pub fn inflight_peers(&self, hash: &[u8; 32]) -> Vec<(u64, u64)> {
         self.by_hash
             .get(hash)
             .map(|slot| {
@@ -393,7 +405,8 @@ impl ParentTracker {
             .unwrap_or_default()
     }
 
-    fn fail_inflight(&mut self, hash: &[u8; 32], peer: u64, exp: u64) {
+    #[doc(hidden)]
+    pub fn fail_inflight(&mut self, hash: &[u8; 32], peer: u64, exp: u64) {
         // Expire the ann whose window is `exp`. A same-peer txid parent is a
         // different row and must stay eligible once this window ends.
         if let Some(slot) = self.by_hash.get_mut(hash) {
@@ -409,13 +422,15 @@ impl ParentTracker {
         unindex(&mut self.inflight_by_peer, peer, exp, hash);
     }
 
-    fn slot_all_failed(&self, hash: &[u8; 32]) -> bool {
+    #[doc(hidden)]
+    pub fn slot_all_failed(&self, hash: &[u8; 32]) -> bool {
         self.by_hash
             .get(hash)
             .is_some_and(|slot| !slot.anns.is_empty() && slot.anns.iter().all(|a| a.failed))
     }
 
-    fn remove_hash(&mut self, hash: &[u8; 32]) {
+    #[doc(hidden)]
+    pub fn remove_hash(&mut self, hash: &[u8; 32]) {
         let Some(slot) = self.by_hash.remove(hash) else {
             return;
         };
@@ -424,7 +439,8 @@ impl ParentTracker {
         }
     }
 
-    fn drop_kind(&mut self, hash: &[u8; 32], wtxid: bool) {
+    #[doc(hidden)]
+    pub fn drop_kind(&mut self, hash: &[u8; 32], wtxid: bool) {
         let peers: Vec<u64> = self
             .by_hash
             .get(hash)
@@ -441,11 +457,13 @@ impl ParentTracker {
         }
     }
 
-    fn remove_peer_ann(&mut self, hash: &[u8; 32], peer: u64) {
+    #[doc(hidden)]
+    pub fn remove_peer_ann(&mut self, hash: &[u8; 32], peer: u64) {
         self.remove_peer_ann_kind(hash, peer, None);
     }
 
-    fn remove_peer_ann_kind(&mut self, hash: &[u8; 32], peer: u64, kind: Option<bool>) {
+    #[doc(hidden)]
+    pub fn remove_peer_ann_kind(&mut self, hash: &[u8; 32], peer: u64, kind: Option<bool>) {
         loop {
             let Some(ann) = self.by_hash.get_mut(hash).and_then(|slot| {
                 let pos = slot
@@ -470,7 +488,8 @@ impl ParentTracker {
         }
     }
 
-    fn note_removed_ann(&mut self, ann: &ParentAnn, hash: &[u8; 32]) {
+    #[doc(hidden)]
+    pub fn note_removed_ann(&mut self, ann: &ParentAnn, hash: &[u8; 32]) {
         self.announcements = self.announcements.saturating_sub(1);
         if let Some(c) = self.ann_per_peer.get_mut(&ann.peer) {
             *c = c.saturating_sub(1);
@@ -503,7 +522,8 @@ impl ParentTracker {
 
     /// The in-flight request is gone. Waiters of this kind were due when
     /// that window ended. They are due at their own announcement time.
-    fn release_waiters(&mut self, hash: &[u8; 32], wtxid: bool) {
+    #[doc(hidden)]
+    pub fn release_waiters(&mut self, hash: &[u8; 32], wtxid: bool) {
         if self.kind_inflight_until(hash, wtxid).is_some() {
             return;
         }
@@ -535,7 +555,8 @@ impl ParentTracker {
     }
 }
 
-fn index_at(
+#[doc(hidden)]
+pub fn index_at(
     tree: &mut HashMap<u64, BTreeMap<u64, Vec<[u8; 32]>>>,
     peer: u64,
     time: u64,
@@ -548,7 +569,8 @@ fn index_at(
         .push(hash);
 }
 
-fn unindex(
+#[doc(hidden)]
+pub fn unindex(
     tree: &mut HashMap<u64, BTreeMap<u64, Vec<[u8; 32]>>>,
     peer: u64,
     time: u64,
@@ -568,65 +590,5 @@ fn unindex(
     }
     if by_time.is_empty() {
         tree.remove(&peer);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn txid_parent_already_have_does_not_follow_another_peers_wtxid() {
-        let mut t = ParentTracker::new();
-        let hash = [0xcd; 32];
-        t.schedule(hash, 2, true, 1_000);
-        assert_eq!(
-            t.note_inv(1, hash, false, 1_000, true),
-            ParentNote::RequestNow
-        );
-        assert_eq!(
-            t.note_inv(3, hash, false, 1_000, true),
-            ParentNote::Deferred
-        );
-        let now = 1_000 + GETDATA_TX_INTERVAL_SECS;
-        let mut saw_txid = false;
-        let dropped = t.take_due(2, now, |h, wtxid| {
-            assert_eq!(*h, hash);
-            assert!(!wtxid, "txid parent is checked as a txid");
-            saw_txid = true;
-            true
-        });
-        assert!(saw_txid);
-        assert!(
-            dropped.is_empty(),
-            "a txid parent already in the mempool is not requested"
-        );
-        let follow = t.take_due(3, now, |_, wtxid| {
-            assert!(wtxid, "wtxid follow-up is not checked as a txid");
-            false
-        });
-        assert_eq!(follow.len(), 1);
-        assert!(follow[0].wtxid);
-    }
-
-    #[test]
-    fn inflight_wtxid_of_the_same_hash_is_not_requested_again_as_txid() {
-        let mut t = ParentTracker::new();
-        let inflight = [0x11; 32];
-        let missing = [0x22; 32];
-        assert_eq!(
-            t.note_inv(1, inflight, true, 1_000, true),
-            ParentNote::RequestNow
-        );
-        t.schedule(inflight, 2, false, 1_000);
-        t.schedule(missing, 2, false, 1_000);
-        let due = t.take_due(2, 1_000, |_, _| false);
-        assert_eq!(
-            due.len(),
-            1,
-            "the in-flight hash must not join this getdata"
-        );
-        assert_eq!(due[0].hash, missing);
-        assert!(!due[0].wtxid, "the other parent stays a txid request");
     }
 }

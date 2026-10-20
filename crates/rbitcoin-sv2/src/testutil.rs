@@ -13,7 +13,7 @@ use template_distribution_sv2::{
 use tokio::net::TcpSocket;
 
 pub struct TpClient {
-    conn: NoiseConn,
+    pub conn: NoiseConn,
 }
 
 impl TpClient {
@@ -28,7 +28,7 @@ impl TpClient {
     /// then keeps completing, because this socket ACKs everything into that
     /// window. Setting the option turns autotune off. The kernel doubles the
     /// value; the handshake reply still fits.
-    pub(crate) async fn connect_recv_buffer(
+    pub async fn connect_recv_buffer(
         addr: SocketAddr,
         authority_pubkey: [u8; 32],
         recv_buffer: Option<u32>,

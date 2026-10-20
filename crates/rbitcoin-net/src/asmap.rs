@@ -7,25 +7,34 @@
 use std::net::IpAddr;
 use std::path::Path;
 
-const INVALID: u32 = 0xFFFFFFFF;
+#[doc(hidden)]
+pub const INVALID: u32 = 0xFFFFFFFF;
 
-const TYPE_BIT_SIZES: [u8; 3] = [0, 0, 1];
-const ASN_BIT_SIZES: [u8; 10] = [15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
-const MATCH_BIT_SIZES: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
-const JUMP_BIT_SIZES: [u8; 26] = [
+#[doc(hidden)]
+pub const TYPE_BIT_SIZES: [u8; 3] = [0, 0, 1];
+#[doc(hidden)]
+pub const ASN_BIT_SIZES: [u8; 10] = [15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
+#[doc(hidden)]
+pub const MATCH_BIT_SIZES: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+#[doc(hidden)]
+pub const JUMP_BIT_SIZES: [u8; 26] = [
     5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
     30,
 ];
 
-const RETURN: u32 = 0;
-const JUMP: u32 = 1;
-const MATCH: u32 = 2;
-const DEFAULT: u32 = 3;
+#[doc(hidden)]
+pub const RETURN: u32 = 0;
+#[doc(hidden)]
+pub const JUMP: u32 = 1;
+#[doc(hidden)]
+pub const MATCH: u32 = 2;
+#[doc(hidden)]
+pub const DEFAULT: u32 = 3;
 
 /// Validated asmap bytecode.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AsMap {
-    bytes: Vec<u8>,
+    pub bytes: Vec<u8>,
 }
 
 impl AsMap {
@@ -131,7 +140,8 @@ pub fn ip16_for_lookup(ip: IpAddr) -> [u8; 16] {
     }
 }
 
-fn consume_bit_le(bitpos: &mut usize, data: &[u8]) -> Option<bool> {
+#[doc(hidden)]
+pub fn consume_bit_le(bitpos: &mut usize, data: &[u8]) -> Option<bool> {
     if *bitpos >= data.len().saturating_mul(8) {
         return None;
     }
@@ -140,7 +150,8 @@ fn consume_bit_le(bitpos: &mut usize, data: &[u8]) -> Option<bool> {
     Some(b)
 }
 
-fn consume_bit_be(bitpos: &mut usize, data: &[u8]) -> Option<bool> {
+#[doc(hidden)]
+pub fn consume_bit_be(bitpos: &mut usize, data: &[u8]) -> Option<bool> {
     if *bitpos >= data.len().saturating_mul(8) {
         return None;
     }
@@ -149,7 +160,8 @@ fn consume_bit_be(bitpos: &mut usize, data: &[u8]) -> Option<bool> {
     Some(b)
 }
 
-fn decode_bits(bitpos: &mut usize, data: &[u8], minval: u32, bit_sizes: &[u8]) -> u32 {
+#[doc(hidden)]
+pub fn decode_bits(bitpos: &mut usize, data: &[u8], minval: u32, bit_sizes: &[u8]) -> u32 {
     let mut val = minval;
     for (i, &sz) in bit_sizes.iter().enumerate() {
         let last = i + 1 == bit_sizes.len();
@@ -178,23 +190,28 @@ fn decode_bits(bitpos: &mut usize, data: &[u8], minval: u32, bit_sizes: &[u8]) -
     INVALID
 }
 
-fn decode_type(bitpos: &mut usize, data: &[u8]) -> u32 {
+#[doc(hidden)]
+pub fn decode_type(bitpos: &mut usize, data: &[u8]) -> u32 {
     decode_bits(bitpos, data, 0, &TYPE_BIT_SIZES)
 }
 
-fn decode_asn(bitpos: &mut usize, data: &[u8]) -> u32 {
+#[doc(hidden)]
+pub fn decode_asn(bitpos: &mut usize, data: &[u8]) -> u32 {
     decode_bits(bitpos, data, 1, &ASN_BIT_SIZES)
 }
 
-fn decode_match(bitpos: &mut usize, data: &[u8]) -> u32 {
+#[doc(hidden)]
+pub fn decode_match(bitpos: &mut usize, data: &[u8]) -> u32 {
     decode_bits(bitpos, data, 2, &MATCH_BIT_SIZES)
 }
 
-fn decode_jump(bitpos: &mut usize, data: &[u8]) -> u32 {
+#[doc(hidden)]
+pub fn decode_jump(bitpos: &mut usize, data: &[u8]) -> u32 {
     decode_bits(bitpos, data, 17, &JUMP_BIT_SIZES)
 }
 
-fn bit_width(x: u32) -> u32 {
+#[doc(hidden)]
+pub fn bit_width(x: u32) -> u32 {
     32 - x.leading_zeros()
 }
 
@@ -274,7 +291,8 @@ pub fn sanity_check(asmap: &[u8]) -> bool {
     sanity_check_bits(asmap, 128)
 }
 
-fn sanity_return(
+#[doc(hidden)]
+pub fn sanity_return(
     pos: &mut usize,
     asmap: &[u8],
     endpos: usize,
@@ -312,7 +330,8 @@ fn sanity_return(
     None
 }
 
-fn sanity_jump(
+#[doc(hidden)]
+pub fn sanity_jump(
     pos: &mut usize,
     asmap: &[u8],
     bits: &mut i32,
@@ -338,7 +357,8 @@ fn sanity_jump(
     true
 }
 
-fn sanity_match(
+#[doc(hidden)]
+pub fn sanity_match(
     pos: &mut usize,
     asmap: &[u8],
     prevopcode: u32,
@@ -364,7 +384,8 @@ fn sanity_match(
     true
 }
 
-fn sanity_check_bits(asmap: &[u8], mut bits: i32) -> bool {
+#[doc(hidden)]
+pub fn sanity_check_bits(asmap: &[u8], mut bits: i32) -> bool {
     let mut pos = 0usize;
     let endpos = asmap.len().saturating_mul(8);
     let mut jumps: Vec<(usize, i32)> = Vec::new();
@@ -414,13 +435,14 @@ fn sanity_check_bits(asmap: &[u8], mut bits: i32) -> bool {
     false
 }
 
-#[cfg(test)]
-pub(crate) fn two_prefix_asmap_bytes() -> Vec<u8> {
+#[cfg(debug_assertions)]
+pub fn two_prefix_asmap_bytes() -> Vec<u8> {
     encode_two_prefix_asmap()
 }
 
-#[cfg(test)]
-fn encode_bits(val: u32, minval: u32, bit_sizes: &[u8]) -> Vec<bool> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn encode_bits(val: u32, minval: u32, bit_sizes: &[u8]) -> Vec<bool> {
     let mut x = val - minval;
     let mut out = Vec::new();
     for (i, &sz) in bit_sizes.iter().enumerate() {
@@ -446,8 +468,9 @@ fn encode_bits(val: u32, minval: u32, bit_sizes: &[u8]) -> Vec<bool> {
     out
 }
 
-#[cfg(test)]
-fn pack_le(bits: &[bool]) -> Vec<u8> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn pack_le(bits: &[bool]) -> Vec<u8> {
     if bits.is_empty() {
         return Vec::new();
     }
@@ -460,27 +483,31 @@ fn pack_le(bits: &[bool]) -> Vec<u8> {
     out
 }
 
-#[cfg(test)]
-fn instr_type(t: u32) -> Vec<bool> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn instr_type(t: u32) -> Vec<bool> {
     encode_bits(t, 0, &TYPE_BIT_SIZES)
 }
 
-#[cfg(test)]
-fn instr_return(asn: u32) -> Vec<bool> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn instr_return(asn: u32) -> Vec<bool> {
     let mut out = instr_type(RETURN);
     out.extend(encode_bits(asn, 1, &ASN_BIT_SIZES));
     out
 }
 
-#[cfg(test)]
-fn instr_jump(offset: u32) -> Vec<bool> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn instr_jump(offset: u32) -> Vec<bool> {
     let mut out = instr_type(JUMP);
     out.extend(encode_bits(offset, 17, &JUMP_BIT_SIZES));
     out
 }
 
-#[cfg(test)]
-fn instr_match(pattern: &[bool]) -> Vec<bool> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn instr_match(pattern: &[bool]) -> Vec<bool> {
     let n = pattern.len();
     assert!((1..=8).contains(&n));
     let mut matchv = 1u32 << n;
@@ -494,8 +521,9 @@ fn instr_match(pattern: &[bool]) -> Vec<bool> {
     out
 }
 
-#[cfg(test)]
-fn encode_two_prefix_asmap() -> Vec<u8> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn encode_two_prefix_asmap() -> Vec<u8> {
     let mut bits = Vec::new();
     for _ in 0..10 {
         bits.extend(instr_match(&[false; 8]));
@@ -510,56 +538,4 @@ fn encode_two_prefix_asmap() -> Vec<u8> {
     bits.extend(left);
     bits.extend(instr_return(2));
     pack_le(&bits)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
-
-    #[test]
-    fn asmap_rejected_bytecodes_fail_sanity() {
-        for bytes in [
-            ASMAP_SECOND_DEFAULT,
-            ASMAP_TRAILING_ONE,
-            ASMAP_EIGHT_TRAILING_ZEROS,
-            ASMAP_TWO_SHORT_MATCHES,
-            ASMAP_MATCH_PAST_END,
-            ASMAP_JUMP_PAST_FILE,
-            ASMAP_JUMP_SHORT_TAIL,
-            ASMAP_JUMP_OFF_END,
-            &[],
-            &[0],
-        ] {
-            assert!(
-                AsMap::from_bytes(bytes.to_vec()).is_none(),
-                "accepted {bytes:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn asmap_interpret_garbage_returns_zero_no_panic() {
-        assert_eq!(interpret(&[], &[0u8; 16]), 0);
-        assert_eq!(interpret(&[0xff, 0xff], &[0u8; 16]), 0);
-        assert_eq!(interpret(&[0], &[0u8; 16]), 0);
-    }
-
-    #[test]
-    fn asmap_two_prefix_const_matches_encoder() {
-        assert_eq!(two_prefix_asmap_bytes(), TWO_PREFIX_ASMAP);
-    }
-
-    #[test]
-    fn asmap_fuzz_seed_fixture_is_two_prefix_then_ip16() {
-        const SEED: &[u8] = include_bytes!("../tests/fixtures/asmap_two_prefix_plus_ip.bin");
-        assert!(SEED.len() > 16, "asmap then leftover ip16");
-        let (asmap, ip) = SEED.split_at(SEED.len() - 16);
-        assert_eq!(asmap, TWO_PREFIX_ASMAP);
-        let m = AsMap::from_bytes(asmap.to_vec()).expect("two-prefix");
-        let mut ip16 = [0u8; 16];
-        ip16.copy_from_slice(ip);
-        assert_eq!(m.interpret_ip16(&ip16), 1);
-        assert_eq!(ip16, ip16_for_lookup(IpAddr::V4(Ipv4Addr::new(1, 2, 0, 0))));
-    }
 }

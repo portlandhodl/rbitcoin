@@ -13,6 +13,8 @@
 
 use crate::error::StoreError;
 use crate::file::{TableFile, FILE_HEADER_LEN};
+#[cfg(debug_assertions)]
+use crate::open_address::{self, MAX_LOAD_DEN, MAX_LOAD_NUM};
 use crate::scripthash_layout::{
     head_key_from_full, pack8_bytes, unpack8_bytes, ShHeadKey, ShHeadValue, SH_HEAD_KEY_LEN,
     SH_HEAD_SLOT_SIZE, SH_HEAD_VALUE_LEN,
@@ -21,19 +23,19 @@ use rbitcoin_primitives::TableKind;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-#[cfg(test)]
-use std::time::Instant;
-
-use crate::open_address::{self, MAX_LOAD_DEN, MAX_LOAD_NUM};
 
 /// Full occupancy scan only for tiny head files (tests / early IBD).
-const OCC_SCAN_BYTE_CAP: u64 = 16 * 1024 * 1024;
-const OCC_MAGIC: &[u8; 8] = b"SHOCC001";
+#[doc(hidden)]
+pub const OCC_SCAN_BYTE_CAP: u64 = 16 * 1024 * 1024;
+#[doc(hidden)]
+pub const OCC_MAGIC: &[u8; 8] = b"SHOCC001";
 
-const SLOTS_PER_CHUNK: u64 = 128;
-const CHUNK_CACHE_MAX: usize = 256;
+#[doc(hidden)]
+pub const SLOTS_PER_CHUNK: u64 = 128;
+#[doc(hidden)]
+pub const CHUNK_CACHE_MAX: usize = 256;
 
-pub(crate) const SH_HEAD_FULL: &str = "invariant: scripthash head full";
+pub const SH_HEAD_FULL: &str = "invariant: scripthash head full";
 
 /// Shard index from the **high bits** of `scripthash[0]` (power-of-two `n_shards`).
 ///
@@ -58,25 +60,28 @@ pub fn prefix_shard_of(full: &[u8; 32], n_shards: usize) -> usize {
 }
 
 pub struct ScriptHashHead {
-    file: TableFile,
-    state: Mutex<HashState>,
+    pub file: TableFile,
+    pub state: Mutex<HashState>,
 }
 
-struct HashState {
-    slots: u64,
-    occupied: u64,
+#[doc(hidden)]
+pub struct HashState {
+    pub slots: u64,
+    pub occupied: u64,
     /// When false, `occupied` is not authoritative (large open without `.occ`).
     /// Never treat as empty / never bulk-fill from this state.
-    occ_known: bool,
+    pub occ_known: bool,
 }
 
-fn occ_sidecar_path(head_path: &Path) -> PathBuf {
+#[doc(hidden)]
+pub fn occ_sidecar_path(head_path: &Path) -> PathBuf {
     let mut p = head_path.as_os_str().to_os_string();
     p.push(".occ");
     PathBuf::from(p)
 }
 
-fn load_occ_sidecar(head_path: &Path) -> Option<u64> {
+#[doc(hidden)]
+pub fn load_occ_sidecar(head_path: &Path) -> Option<u64> {
     let p = occ_sidecar_path(head_path);
     let Ok(buf) = std::fs::read(&p) else {
         return None;
@@ -87,7 +92,8 @@ fn load_occ_sidecar(head_path: &Path) -> Option<u64> {
     Some(u64::from_le_bytes(buf[8..16].try_into().ok()?))
 }
 
-fn store_occ_sidecar(head_path: &Path, occupied: u64) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn store_occ_sidecar(head_path: &Path, occupied: u64) -> Result<(), StoreError> {
     let p = occ_sidecar_path(head_path);
     let tmp = {
         let mut t = p.as_os_str().to_os_string();
@@ -112,7 +118,8 @@ fn store_occ_sidecar(head_path: &Path, occupied: u64) -> Result<(), StoreError> 
     Ok(())
 }
 
-fn scan_occupied(file: &TableFile, slots: u64) -> Result<u64, StoreError> {
+#[doc(hidden)]
+pub fn scan_occupied(file: &TableFile, slots: u64) -> Result<u64, StoreError> {
     let mut occupied = 0u64;
     let mut buf = vec![0u8; SH_HEAD_SLOT_SIZE * 1024];
     let mut slot = 0u64;
@@ -165,7 +172,8 @@ impl ScriptHashHead {
         Self::from_file(file)
     }
 
-    fn from_file(file: TableFile) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn from_file(file: TableFile) -> Result<Self, StoreError> {
         let body = file.logical_len().saturating_sub(FILE_HEADER_LEN as u64);
         if !body.is_multiple_of(SH_HEAD_SLOT_SIZE as u64) || body == 0 {
             return Err(StoreError::Corrupt("scripthash head size"));
@@ -204,11 +212,13 @@ impl ScriptHashHead {
         })
     }
 
-    fn persist_occ(&self, occupied: u64) {
+    #[doc(hidden)]
+    pub fn persist_occ(&self, occupied: u64) {
         let _ = store_occ_sidecar(self.file.path(), occupied);
     }
 
-    fn set_occupied_known(&self, occupied: u64) {
+    #[doc(hidden)]
+    pub fn set_occupied_known(&self, occupied: u64) {
         {
             let mut state = self.state.lock().unwrap();
             state.occupied = occupied;
@@ -217,15 +227,18 @@ impl ScriptHashHead {
         self.persist_occ(occupied);
     }
 
-    fn hash_slot(key: &ShHeadKey, slots: u64) -> u64 {
+    #[doc(hidden)]
+    pub fn hash_slot(key: &ShHeadKey, slots: u64) -> u64 {
         open_address::primary_slot(key, slots)
     }
 
-    fn slot_file_off(slot: u64) -> u64 {
+    #[doc(hidden)]
+    pub fn slot_file_off(slot: u64) -> u64 {
         FILE_HEADER_LEN as u64 + slot * SH_HEAD_SLOT_SIZE as u64
     }
 
-    fn to_key(full: &[u8; 32]) -> ShHeadKey {
+    #[doc(hidden)]
+    pub fn to_key(full: &[u8; 32]) -> ShHeadKey {
         head_key_from_full(full)
     }
 
@@ -234,7 +247,8 @@ impl ScriptHashHead {
     }
 
     /// Like [`Self::get`], also returns 4 KiB chunk `read_at` count (shared cache size = 1).
-    fn get_with_chunk_loads(
+    #[doc(hidden)]
+    pub fn get_with_chunk_loads(
         &self,
         full: &[u8; 32],
     ) -> Result<(Option<ShHeadValue>, u64), StoreError> {
@@ -264,7 +278,7 @@ impl ScriptHashHead {
     }
 
     /// Byte offset of the pack8 word for an occupied key.
-    pub(crate) fn value_word_offset(&self, full: &[u8; 32]) -> Result<Option<u64>, StoreError> {
+    pub fn value_word_offset(&self, full: &[u8; 32]) -> Result<Option<u64>, StoreError> {
         let key = Self::to_key(full);
         let slots = self.state.lock().unwrap().slots;
         let mut cache = SlotPageCache::new(self, slots);
@@ -286,13 +300,13 @@ impl ScriptHashHead {
         Ok(None)
     }
 
-    pub(crate) fn read_value_word(&self, off: u64) -> Result<[u8; 8], StoreError> {
+    pub fn read_value_word(&self, off: u64) -> Result<[u8; 8], StoreError> {
         let mut buf = [0u8; 8];
         self.file.read_at(off, &mut buf)?;
         Ok(buf)
     }
 
-    pub(crate) fn write_value_word(&self, off: u64, bytes: &[u8; 8]) -> Result<(), StoreError> {
+    pub fn write_value_word(&self, off: u64, bytes: &[u8; 8]) -> Result<(), StoreError> {
         self.file.write_at(off, bytes)
     }
 
@@ -417,7 +431,8 @@ impl ScriptHashHead {
         cap.saturating_sub(st.occupied)
     }
 
-    fn bulk_fill_empty(&self, entries: &[(ShHeadKey, ShHeadValue)]) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn bulk_fill_empty(&self, entries: &[(ShHeadKey, ShHeadValue)]) -> Result<(), StoreError> {
         debug_assert!(self.is_known_empty());
         let slots = self.state.lock().unwrap().slots;
         let nbytes = (slots as usize).saturating_mul(SH_HEAD_SLOT_SIZE);
@@ -511,11 +526,13 @@ impl ScriptHashHead {
     }
 }
 
-fn is_empty_slot(k: &ShHeadKey, v: &[u8; SH_HEAD_VALUE_LEN]) -> bool {
+#[doc(hidden)]
+pub fn is_empty_slot(k: &ShHeadKey, v: &[u8; SH_HEAD_VALUE_LEN]) -> bool {
     *k == [0u8; SH_HEAD_KEY_LEN] && *v == [0u8; SH_HEAD_VALUE_LEN]
 }
 
-enum InsertResult {
+#[doc(hidden)]
+pub enum InsertResult {
     /// Wrote the slot. `true` = filled a previously empty slot (new key).
     Done(bool),
     /// Key is not present and a new slot is required (or `allow_new` is false at
@@ -523,22 +540,25 @@ enum InsertResult {
     NeedSlot,
 }
 
-struct SlotPageCache<'a> {
-    head: &'a ScriptHashHead,
-    slots: u64,
-    chunks: BTreeMap<u64, CachedChunk>,
+#[doc(hidden)]
+pub struct SlotPageCache<'a> {
+    pub head: &'a ScriptHashHead,
+    pub slots: u64,
+    pub chunks: BTreeMap<u64, CachedChunk>,
     /// Number of `read_at` chunk faults (for microbenches / diagnostics).
-    chunk_loads: u64,
+    pub chunk_loads: u64,
 }
 
-struct CachedChunk {
-    base_slot: u64,
-    data: Vec<u8>,
-    dirty: bool,
+#[doc(hidden)]
+pub struct CachedChunk {
+    pub base_slot: u64,
+    pub data: Vec<u8>,
+    pub dirty: bool,
 }
 
 impl<'a> SlotPageCache<'a> {
-    fn new(head: &'a ScriptHashHead, slots: u64) -> Self {
+    #[doc(hidden)]
+    pub fn new(head: &'a ScriptHashHead, slots: u64) -> Self {
         Self {
             head,
             slots,
@@ -550,7 +570,8 @@ impl<'a> SlotPageCache<'a> {
     /// Probe-insert. When `allow_new` is false, only in-place updates of an
     /// existing key succeed; empty slot (key absent under open addressing) or a
     /// full probe without a match returns [`InsertResult::NeedSlot`].
-    fn try_insert(
+    #[doc(hidden)]
+    pub fn try_insert(
         &mut self,
         key: &ShHeadKey,
         value: &[u8; SH_HEAD_VALUE_LEN],
@@ -576,7 +597,11 @@ impl<'a> SlotPageCache<'a> {
         Ok(InsertResult::NeedSlot)
     }
 
-    fn read_slot(&mut self, slot: u64) -> Result<(ShHeadKey, [u8; SH_HEAD_VALUE_LEN]), StoreError> {
+    #[doc(hidden)]
+    pub fn read_slot(
+        &mut self,
+        slot: u64,
+    ) -> Result<(ShHeadKey, [u8; SH_HEAD_VALUE_LEN]), StoreError> {
         let chunk = self.ensure_chunk(slot)?;
         let rel = ((slot - chunk.base_slot) as usize) * SH_HEAD_SLOT_SIZE;
         let k: ShHeadKey = chunk.data[rel..rel + SH_HEAD_KEY_LEN].try_into().unwrap();
@@ -586,7 +611,8 @@ impl<'a> SlotPageCache<'a> {
         Ok((k, v))
     }
 
-    fn write_slot(
+    #[doc(hidden)]
+    pub fn write_slot(
         &mut self,
         slot: u64,
         key: &ShHeadKey,
@@ -600,7 +626,8 @@ impl<'a> SlotPageCache<'a> {
         Ok(())
     }
 
-    fn ensure_chunk(&mut self, slot: u64) -> Result<&mut CachedChunk, StoreError> {
+    #[doc(hidden)]
+    pub fn ensure_chunk(&mut self, slot: u64) -> Result<&mut CachedChunk, StoreError> {
         let chunk_idx = slot / SLOTS_PER_CHUNK;
         if !self.chunks.contains_key(&chunk_idx) {
             if self.chunks.len() >= CHUNK_CACHE_MAX {
@@ -625,7 +652,8 @@ impl<'a> SlotPageCache<'a> {
         Ok(self.chunks.get_mut(&chunk_idx).unwrap())
     }
 
-    fn flush(&mut self) -> Result<(), StoreError> {
+    #[doc(hidden)]
+    pub fn flush(&mut self) -> Result<(), StoreError> {
         for (_, chunk) in self.chunks.iter_mut() {
             if chunk.dirty {
                 let off = ScriptHashHead::slot_file_off(chunk.base_slot);
@@ -635,166 +663,5 @@ impl<'a> SlotPageCache<'a> {
         }
         self.chunks.clear();
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rbitcoin_primitives::Fk;
-
-    #[test]
-    fn prefix_shard_of_high_bits_contiguous() {
-        // 16 shards: first nibble of byte 0.
-        assert_eq!(prefix_shard_of(&[0x00; 32], 16), 0);
-        assert_eq!(prefix_shard_of(&[0x0f; 32], 16), 0);
-        let mut k = [0u8; 32];
-        k[0] = 0x10;
-        assert_eq!(prefix_shard_of(&k, 16), 1);
-        k[0] = 0x1f;
-        assert_eq!(prefix_shard_of(&k, 16), 1);
-        k[0] = 0xf0;
-        assert_eq!(prefix_shard_of(&k, 16), 15);
-        k[0] = 0xff;
-        assert_eq!(prefix_shard_of(&k, 16), 15);
-        // Lex order of first byte maps to non-decreasing shard ids.
-        let mut prev = 0usize;
-        for b in 0u16..=255 {
-            k[0] = b as u8;
-            let s = prefix_shard_of(&k, 16);
-            assert!(s >= prev, "b={b:#x} shard={s} prev={prev}");
-            prev = s;
-        }
-        assert_eq!(prefix_shard_of(&[0xab; 32], 1), 0);
-    }
-
-    #[test]
-    fn head_insert_get_clear() {
-        let path = std::env::temp_dir().join(format!(
-            "rbitcoin-shhead-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(occ_sidecar_path(&path));
-        let h = ScriptHashHead::create_with_slots(&path, 64).unwrap();
-        let mut key = [0u8; 32];
-        key[0] = 7;
-        let val = ShHeadValue::inline_one(Fk(42));
-        h.insert(&key, &val).unwrap();
-        assert_eq!(h.get(&key).unwrap().unwrap(), val);
-        assert!(h.clear_key(&key).unwrap());
-        assert!(h.get(&key).unwrap().is_none());
-        // Sidecar tracks occupied; reopen without full scan path for tiny files.
-        drop(h);
-        let h2 = ScriptHashHead::open(&path).unwrap();
-        assert!(h2.is_known_empty() || h2.occupied() >= 1); // soft-clear keeps slot
-        assert!(h2.get(&key).unwrap().is_none());
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(occ_sidecar_path(&path));
-    }
-
-    #[test]
-    fn open_large_without_occ_skips_scan_not_empty() {
-        // Body just over OCC_SCAN_BYTE_CAP → skip full scan when .occ missing.
-        let path = std::env::temp_dir().join(format!(
-            "rbitcoin-shhead-large-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(occ_sidecar_path(&path));
-        // body = slots * 32 B; need body > 16 MiB ⇒ slots > 16MiB/32 = 524_288.
-        let min_slots = (OCC_SCAN_BYTE_CAP / SH_HEAD_SLOT_SIZE as u64) + 1;
-        let slots = min_slots.next_power_of_two();
-        assert!(slots * SH_HEAD_SLOT_SIZE as u64 > OCC_SCAN_BYTE_CAP);
-        let h = ScriptHashHead::create_with_slots(&path, slots).unwrap();
-        assert!(h.is_known_empty());
-        let mut key = [0u8; 32];
-        key[0] = 0xab;
-        h.insert(&key, &ShHeadValue::inline_one(Fk(1))).unwrap();
-        assert_eq!(h.occupied(), 1);
-        drop(h);
-        // Drop sidecar only — reopen must not scan body and must not claim empty.
-        let _ = std::fs::remove_file(occ_sidecar_path(&path));
-        let t0 = Instant::now();
-        let h2 = ScriptHashHead::open(&path).unwrap();
-        let open_ms = t0.elapsed().as_millis();
-        assert!(
-            !h2.is_known_empty(),
-            "missing .occ on large head must not report empty"
-        );
-        assert!(
-            open_ms < 2_000,
-            "open without .occ must skip full scan (took {open_ms}ms)"
-        );
-        // Lookups still work (probe, not occupancy).
-        assert_eq!(h2.get(&key).unwrap().unwrap().inline_fks(), vec![Fk(1)]);
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(occ_sidecar_path(&path));
-    }
-
-    #[test]
-    fn scripthash_head_insert_many_full_without_rehash() {
-        let path = std::env::temp_dir().join(format!(
-            "rbitcoin-shhead-full-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = std::fs::remove_file(&path);
-        let h = ScriptHashHead::create_with_slots(&path, 8).unwrap();
-        h.insert_many(&[]).unwrap();
-        let mut k0 = [0u8; 32];
-        k0[0] = 1;
-        h.insert(&k0, &ShHeadValue::Empty).unwrap();
-        assert!(!h.clear_key(&k0).unwrap());
-
-        let mut n = 0u64;
-        loop {
-            let mut key = [0u8; 32];
-            key[0..8].copy_from_slice(&n.to_le_bytes());
-            match h.insert(&key, &ShHeadValue::inline_one(Fk(n + 1))) {
-                Ok(()) => n += 1,
-                Err(StoreError::Corrupt(SH_HEAD_FULL)) => break,
-                Err(e) => panic!("unexpected {e}"),
-            }
-            assert!(n < 16, "must not grow 8-slot ingest OA");
-        }
-        let mut seen = 0u64;
-        h.for_each_occupied(|_full, val| {
-            assert!(!val.is_empty());
-            seen += 1;
-            Ok(())
-        })
-        .unwrap();
-        assert!(seen >= 1);
-        h.flush().unwrap();
-        h.flush_async().unwrap();
-        drop(h);
-        let h2 = ScriptHashHead::open(&path).unwrap();
-        let mut key = [0u8; 32];
-        key[0..8].copy_from_slice(&5u64.to_le_bytes());
-        assert!(h2.get(&key).unwrap().is_some());
-        // corrupt size open
-        {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .unwrap()
-                .set_len((FILE_HEADER_LEN + 3) as u64)
-                .unwrap();
-        }
-        assert!(matches!(
-            ScriptHashHead::open(&path),
-            Err(StoreError::Corrupt(_))
-        ));
-        let _ = std::fs::remove_file(&path);
     }
 }

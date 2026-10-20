@@ -12,7 +12,7 @@ use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-pub(crate) fn require_regtest(ctx: &RpcContext, method: &str) -> Result<(), Value> {
+pub fn require_regtest(ctx: &RpcContext, method: &str) -> Result<(), Value> {
     if ctx.network != Network::Regtest {
         return Err(rpc_error(ERR_MISC, format!("{method} is regtest only")));
     }
@@ -20,7 +20,8 @@ pub(crate) fn require_regtest(ctx: &RpcContext, method: &str) -> Result<(), Valu
 }
 
 /// Regtest, or signet whose challenge is exactly `OP_TRUE` (mine-on-demand).
-fn allow_local_miner(ctx: &RpcContext) -> bool {
+#[doc(hidden)]
+pub fn allow_local_miner(ctx: &RpcContext) -> bool {
     if ctx.network == Network::Regtest {
         return true;
     }
@@ -33,7 +34,7 @@ fn allow_local_miner(ctx: &RpcContext) -> bool {
         })
 }
 
-pub(crate) fn require_regtest_miner<'a>(
+pub fn require_regtest_miner<'a>(
     ctx: &'a RpcContext,
     method: &str,
 ) -> Result<&'a dyn RpcRegtest, Value> {
@@ -45,7 +46,7 @@ pub(crate) fn require_regtest_miner<'a>(
         .ok_or_else(|| rpc_error(ERR_MISC, format!("{method} requires a live chain hub")))
 }
 
-pub(crate) fn rpc_btc_network(n: Network) -> BtcNetwork {
+pub fn rpc_btc_network(n: Network) -> BtcNetwork {
     match n {
         Network::Mainnet => BtcNetwork::Bitcoin,
         Network::Testnet => BtcNetwork::Testnet,
@@ -54,7 +55,7 @@ pub(crate) fn rpc_btc_network(n: Network) -> BtcNetwork {
     }
 }
 
-pub(crate) fn script_pubkey_json(script: &ScriptBuf, network: BtcNetwork) -> Value {
+pub fn script_pubkey_json(script: &ScriptBuf, network: BtcNetwork) -> Value {
     let mut obj = json!({
         "hex": rbitcoin_primitives::hex_encode(script.as_bytes() ),
         "asm": script.to_asm_string(),
@@ -69,7 +70,7 @@ pub(crate) fn script_pubkey_json(script: &ScriptBuf, network: BtcNetwork) -> Val
 }
 
 /// Core `decoderawtransaction` / `decodescript` `type` strings.
-pub(crate) fn script_core_type(script: &bitcoin::Script) -> &'static str {
+pub fn script_core_type(script: &bitcoin::Script) -> &'static str {
     if script.is_p2pkh() {
         "pubkeyhash"
     } else if script.is_p2sh() {
@@ -95,12 +96,13 @@ pub(crate) fn script_core_type(script: &bitcoin::Script) -> &'static str {
     }
 }
 
-fn is_p2anchor(script: &bitcoin::Script) -> bool {
+#[doc(hidden)]
+pub fn is_p2anchor(script: &bitcoin::Script) -> bool {
     let b = script.as_bytes();
     b.len() == 4 && b[0] == 0x51 && b[1] == 0x02 && b[2] == 0x4e && b[3] == 0x73
 }
 
-pub(crate) fn decode_output_script(ctx: &RpcContext, s: &str) -> Result<ScriptBuf, Value> {
+pub fn decode_output_script(ctx: &RpcContext, s: &str) -> Result<ScriptBuf, Value> {
     let btc_net = rpc_btc_network(ctx.network);
     if let Ok(a) = s.parse::<Address<_>>() {
         match a.require_network(btc_net) {
@@ -119,11 +121,11 @@ pub(crate) fn decode_output_script(ctx: &RpcContext, s: &str) -> Result<ScriptBu
     Ok(ScriptBuf::from_bytes(bytes))
 }
 
-pub(crate) fn hashes_json(hashes: &[BlockHash]) -> Value {
+pub fn hashes_json(hashes: &[BlockHash]) -> Value {
     json!(hashes.iter().map(|h| h.to_string()).collect::<Vec<_>>())
 }
 
-pub(crate) fn mempool_block_txs(ctx: &RpcContext) -> Vec<(Arc<Transaction>, Selected)> {
+pub fn mempool_block_txs(ctx: &RpcContext) -> Vec<(Arc<Transaction>, Selected)> {
     let min = ctx
         .chain
         .as_ref()
@@ -135,7 +137,7 @@ pub(crate) fn mempool_block_txs(ctx: &RpcContext) -> Vec<(Arc<Transaction>, Sele
         .unwrap_or_default()
 }
 
-pub(crate) fn drain_mempool(ctx: &RpcContext, txs: &[Transaction]) {
+pub fn drain_mempool(ctx: &RpcContext, txs: &[Transaction]) {
     let Some(mp) = ctx.mempool.as_ref() else {
         return;
     };
@@ -143,7 +145,7 @@ pub(crate) fn drain_mempool(ctx: &RpcContext, txs: &[Transaction]) {
     let _ = mp.remove_for_block(&ids);
 }
 
-pub(crate) fn generate_with_mempool(
+pub fn generate_with_mempool(
     ctx: &RpcContext,
     nblocks: u32,
     script: ScriptBuf,
@@ -163,7 +165,7 @@ pub(crate) fn generate_with_mempool(
     Ok(hashes_json(&hashes))
 }
 
-pub(crate) fn generatetoaddress(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn generatetoaddress(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["nblocks", "address", "maxtries"])?;
     let _miner = require_regtest_miner(ctx, "generatetoaddress")?;
     let nblocks = params.req_u64(0, "nblocks")? as u32;
@@ -173,7 +175,7 @@ pub(crate) fn generatetoaddress(ctx: &RpcContext, params: &RpcParams) -> Result<
     generate_with_mempool(ctx, nblocks, script)
 }
 
-pub(crate) fn generateblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn generateblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["output", "transactions", "submit"])?;
     let miner = require_regtest_miner(ctx, "generateblock")?;
     let output = params.req_str(0, "output")?;
@@ -247,7 +249,8 @@ pub(crate) fn generateblock(ctx: &RpcContext, params: &RpcParams) -> Result<Valu
 ///
 /// A single submitted transaction whose inputs are not coins includes Core's
 /// `CheckTxInputs` debug text (`feature_block.py`).
-fn generateblock_missing_input_error(e: &str, extra: &[Transaction]) -> Value {
+#[doc(hidden)]
+pub fn generateblock_missing_input_error(e: &str, extra: &[Transaction]) -> Value {
     let s = e.strip_prefix("consensus: ").unwrap_or(e);
     if extra.len() == 1 && s.contains("bad-txns-inputs-missingorspent") {
         let txid = extra[0].compute_txid();
@@ -262,7 +265,7 @@ fn generateblock_missing_input_error(e: &str, extra: &[Transaction]) -> Value {
 }
 
 /// Core `generateblock` after `TestBlockValidity`: `-25 TestBlockValidity failed: <reason>`.
-pub(crate) fn generateblock_validity_error(e: &str) -> Value {
+pub fn generateblock_validity_error(e: &str) -> Value {
     let s = e.strip_prefix("consensus: ").unwrap_or(e);
     let s = s.strip_prefix("protocol: ").unwrap_or(s);
     for needle in [
@@ -289,10 +292,7 @@ pub(crate) fn generateblock_validity_error(e: &str) -> Value {
 
 /// Core `generateblock` output: descriptor first, then address (not bare hex).
 /// Core `generateblock` output: descriptor first, then address (not bare hex).
-pub(crate) fn parse_generateblock_output(
-    ctx: &RpcContext,
-    output: &str,
-) -> Result<ScriptBuf, Value> {
+pub fn parse_generateblock_output(ctx: &RpcContext, output: &str) -> Result<ScriptBuf, Value> {
     let invalid = || {
         rpc_error(
             ERR_INVALID_ADDRESS_OR_KEY,
@@ -339,10 +339,11 @@ pub(crate) fn parse_generateblock_output(
     Err(invalid())
 }
 
-const GENERATE_REPLACED: &str =
+#[doc(hidden)]
+pub const GENERATE_REPLACED: &str =
     "generate\n\nhas been replaced by the -generate cli option. Refer to -help for more information.\n";
 
-pub(crate) fn generate(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn generate(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["nblocks", "maxtries"])?;
     if params.get(0, "nblocks").is_none() {
         return Err(rpc_error(ERR_METHOD_NOT_FOUND, GENERATE_REPLACED));
@@ -354,7 +355,7 @@ pub(crate) fn generate(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Va
     generate_with_mempool(ctx, nblocks, script)
 }
 
-pub(crate) fn generatetodescriptor(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn generatetodescriptor(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["num_blocks", "descriptor", "maxtries"])?;
     let _miner = require_regtest_miner(ctx, "generatetodescriptor")?;
     let nblocks = params.req_u64(0, "num_blocks")? as u32;
@@ -366,7 +367,7 @@ pub(crate) fn generatetodescriptor(ctx: &RpcContext, params: &RpcParams) -> Resu
 
 /// MiniWallet uses `raw(HEX)#checksum`. Not a full descriptor language.
 /// MiniWallet uses `raw(HEX)#checksum`. Not a full descriptor language.
-pub(crate) fn parse_raw_descriptor(desc: &str) -> Option<ScriptBuf> {
+pub fn parse_raw_descriptor(desc: &str) -> Option<ScriptBuf> {
     let bare = desc.split('#').next()?.trim();
     let inner = bare.strip_prefix("raw(")?.strip_suffix(")")?;
     let bytes = rbitcoin_primitives::hex_decode(inner).ok()?;
@@ -375,7 +376,7 @@ pub(crate) fn parse_raw_descriptor(desc: &str) -> Option<ScriptBuf> {
 
 /// `addr(bech32)#checksum` — same script as the bare address.
 /// `addr(bech32)#checksum` — same script as the bare address.
-pub(crate) fn parse_addr_descriptor(ctx: &RpcContext, desc: &str) -> Option<ScriptBuf> {
+pub fn parse_addr_descriptor(ctx: &RpcContext, desc: &str) -> Option<ScriptBuf> {
     let bare = desc.split('#').next()?.trim();
     let inner = bare.strip_prefix("addr(")?.strip_suffix(")")?;
     decode_output_script(ctx, inner).ok()
@@ -383,7 +384,7 @@ pub(crate) fn parse_addr_descriptor(ctx: &RpcContext, desc: &str) -> Option<Scri
 
 /// Core `combo(pubkey)` for `generateblock`: compressed → P2WPKH, else P2PKH.
 /// Core `combo(pubkey)` for `generateblock`: compressed → P2WPKH, else P2PKH.
-pub(crate) fn parse_combo_descriptor(ctx: &RpcContext, desc: &str) -> Option<ScriptBuf> {
+pub fn parse_combo_descriptor(ctx: &RpcContext, desc: &str) -> Option<ScriptBuf> {
     use bitcoin::key::CompressedPublicKey;
     let bare = desc.split('#').next()?.trim();
     let inner = bare.strip_prefix("combo(")?.strip_suffix(")")?;
@@ -400,7 +401,7 @@ pub(crate) fn parse_combo_descriptor(ctx: &RpcContext, desc: &str) -> Option<Scr
 
 /// `sh(multi(...))` / `wsh(multi(...))` / `sh(wsh(multi(...)))` → scriptPubKey.
 /// `sh(multi(...))` / `wsh(multi(...))` / `sh(wsh(multi(...)))` → scriptPubKey.
-pub(crate) fn parse_wrapped_multi(desc: &str) -> Option<ScriptBuf> {
+pub fn parse_wrapped_multi(desc: &str) -> Option<ScriptBuf> {
     let bare = desc.split('#').next()?.trim();
     let (wrap_sh, wrap_wsh, inner) = if let Some(rest) = bare.strip_prefix("sh(wsh(") {
         (true, true, rest.strip_suffix("))")?)
@@ -436,7 +437,7 @@ pub(crate) fn parse_wrapped_multi(desc: &str) -> Option<ScriptBuf> {
     Some(spk)
 }
 
-pub(crate) fn parse_output_descriptor(ctx: &RpcContext, desc: &str) -> Result<ScriptBuf, Value> {
+pub fn parse_output_descriptor(ctx: &RpcContext, desc: &str) -> Result<ScriptBuf, Value> {
     if let Some(s) = parse_raw_descriptor(desc) {
         return Ok(s);
     }
@@ -452,7 +453,7 @@ pub(crate) fn parse_output_descriptor(ctx: &RpcContext, desc: &str) -> Result<Sc
     decode_output_script(ctx, desc)
 }
 
-pub(crate) fn mockscheduler(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn mockscheduler(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["delta_seconds"])?;
     require_regtest(ctx, "mockscheduler")?;
     let delta = params.req_u64(0, "delta_seconds")?;
@@ -464,7 +465,7 @@ pub(crate) fn mockscheduler(ctx: &RpcContext, params: &RpcParams) -> Result<Valu
     Ok(Value::Null)
 }
 
-pub(crate) fn setmocktime(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn setmocktime(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["timestamp"])?;
     require_regtest(ctx, "setmocktime")?;
     let miner = require_regtest_miner(ctx, "setmocktime")?;
@@ -482,7 +483,7 @@ pub(crate) fn setmocktime(ctx: &RpcContext, params: &RpcParams) -> Result<Value,
     Ok(Value::Null)
 }
 
-pub(crate) fn mocktime_i64(v: &Value) -> Result<i64, Value> {
+pub fn mocktime_i64(v: &Value) -> Result<i64, Value> {
     let n = match v {
         Value::Number(n) => n,
         _ => {
@@ -511,9 +512,10 @@ pub(crate) fn mocktime_i64(v: &Value) -> Result<i64, Value> {
 }
 
 /// Core `VERSIONBITS_TOP_BITS`. No testdummy bit.
-const GBT_VERSION: i32 = 0x2000_0000;
+#[doc(hidden)]
+pub const GBT_VERSION: i32 = 0x2000_0000;
 
-pub(crate) fn gbt_rules(req: Option<&Value>) -> Result<Vec<String>, Value> {
+pub fn gbt_rules(req: Option<&Value>) -> Result<Vec<String>, Value> {
     let Some(obj) = req.and_then(Value::as_object) else {
         return Err(rpc_error(
             ERR_INVALID_PARAMETER,
@@ -539,7 +541,7 @@ pub(crate) fn gbt_rules(req: Option<&Value>) -> Result<Vec<String>, Value> {
     Ok(names)
 }
 
-pub(crate) fn getblocktemplate(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getblocktemplate(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["template_request"])?;
     let req = params.get(0, "template_request");
     let _rules = gbt_rules(req)?;
@@ -573,7 +575,7 @@ pub(crate) fn getblocktemplate(ctx: &RpcContext, params: &RpcParams) -> Result<V
 /// Core GBT longpoll: block while `longpollid` still matches the live tip +
 /// mempool update counter. Tip change (P2P / generate) wakes within one poll
 /// tick. A new mempool tx or `prioritisetransaction` does too.
-pub(crate) fn gbt_longpoll_wait(ctx: &RpcContext, want: &str) {
+pub fn gbt_longpoll_wait(ctx: &RpcContext, want: &str) {
     const TICK: std::time::Duration = std::time::Duration::from_millis(50);
     if super::http_wait_satisfied() {
         return;
@@ -589,7 +591,7 @@ pub(crate) fn gbt_longpoll_wait(ctx: &RpcContext, want: &str) {
     }
 }
 
-pub(crate) fn gbt_longpoll_id(ctx: &RpcContext) -> String {
+pub fn gbt_longpoll_id(ctx: &RpcContext) -> String {
     let tip = if let Some(h) = ctx.query.tip_height() {
         ctx.query
             .header_at_height(h)
@@ -714,7 +716,7 @@ pub fn gbt_template(ctx: &RpcContext) -> Result<Value, Value> {
     }))
 }
 
-pub(crate) fn gbt_proposal(ctx: &RpcContext, req: Option<&Value>) -> Result<Value, Value> {
+pub fn gbt_proposal(ctx: &RpcContext, req: Option<&Value>) -> Result<Value, Value> {
     let data = req
         .and_then(Value::as_object)
         .and_then(|o| o.get("data"))
@@ -731,7 +733,7 @@ pub(crate) fn gbt_proposal(ctx: &RpcContext, req: Option<&Value>) -> Result<Valu
 }
 
 /// Core `TestBlockValidity` for GBT proposal: no PoW, no UTXO write.
-pub(crate) fn gbt_check_proposal(ctx: &RpcContext, block: &Block) -> Result<(), String> {
+pub fn gbt_check_proposal(ctx: &RpcContext, block: &Block) -> Result<(), String> {
     let priced = match ctx.chain.as_ref() {
         Some(chain) => chain.check_block_proposal(block),
         None => {
@@ -752,7 +754,7 @@ pub(crate) fn gbt_check_proposal(ctx: &RpcContext, block: &Block) -> Result<(), 
 }
 
 /// Tip height, difficulty, pooledtx, and `blockmintxfee` (BTC/kvB, `sat_btc_json`).
-pub(crate) fn getmininginfo(ctx: &RpcContext) -> Result<Value, Value> {
+pub fn getmininginfo(ctx: &RpcContext) -> Result<Value, Value> {
     let tip = ctx.query.tip_height().map(|h| h.0).unwrap_or(0);
     let pooledtx = ctx
         .mempool
@@ -799,13 +801,13 @@ pub(crate) fn getmininginfo(ctx: &RpcContext) -> Result<Value, Value> {
     Ok(Value::Object(m))
 }
 
-pub(crate) fn tip_bits(ctx: &RpcContext) -> Option<u32> {
+pub fn tip_bits(ctx: &RpcContext) -> Option<u32> {
     let tip = ctx.query.tip_height()?;
     let (_, rec) = ctx.query.header_at_height(tip).ok().flatten()?;
     Some(rec.bits)
 }
 
-pub(crate) fn getnetworkhashps(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn getnetworkhashps(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["nblocks", "height"])?;
     let nblocks = params.opt_i64(0, "nblocks")?.unwrap_or(120);
     let height = match params.get(1, "height") {
@@ -817,13 +819,15 @@ pub(crate) fn getnetworkhashps(ctx: &RpcContext, params: &RpcParams) -> Result<V
     Ok(json!(network_hash_ps(ctx, nblocks, height)?))
 }
 
-fn work_to_f64(w: bitcoin::Work) -> f64 {
+#[doc(hidden)]
+pub fn work_to_f64(w: bitcoin::Work) -> f64 {
     w.to_be_bytes()
         .iter()
         .fold(0.0, |a, b| a * 256.0 + f64::from(*b))
 }
 
-fn work_through(ctx: &RpcContext, height: u32) -> bitcoin::Work {
+#[doc(hidden)]
+pub fn work_through(ctx: &RpcContext, height: u32) -> bitcoin::Work {
     if let Some(hub) = ctx.chain.as_ref() {
         if let Ok(w) = hub.work_through_height(height) {
             return w;
@@ -841,7 +845,7 @@ fn work_through(ctx: &RpcContext, height: u32) -> bitcoin::Work {
     rbitcoin_net::sum_work(works.into_iter()).unwrap_or(bitcoin::Work::from_be_bytes([0xff; 32]))
 }
 
-pub(crate) fn network_hash_ps(ctx: &RpcContext, nblocks: i64, height: i64) -> Result<f64, Value> {
+pub fn network_hash_ps(ctx: &RpcContext, nblocks: i64, height: i64) -> Result<f64, Value> {
     let tip = ctx.query.tip_height().map(|h| h.0).unwrap_or(0);
     if tip == 0 {
         return Ok(0.0);
@@ -892,7 +896,7 @@ pub(crate) fn network_hash_ps(ctx: &RpcContext, nblocks: i64, height: i64) -> Re
     Ok(work / dt)
 }
 
-pub(crate) fn header_time(ctx: &RpcContext, h: u32) -> Option<u32> {
+pub fn header_time(ctx: &RpcContext, h: u32) -> Option<u32> {
     let (_, rec) = ctx
         .query
         .header_at_height(rbitcoin_primitives::Height(h))
@@ -904,7 +908,8 @@ pub(crate) fn header_time(ctx: &RpcContext, h: u32) -> Option<u32> {
 /// Core `UpdateUncommittedBlockStructures`: a coinbase that commits to
 /// witnesses but carries no witness gets the 32 zero bytes, once segwit is
 /// active for this block. Mining software may leave it out.
-fn fill_witness_reserved_value(hub: &rbitcoin_net::ChainHub, block: &mut Block) {
+#[doc(hidden)]
+pub fn fill_witness_reserved_value(hub: &rbitcoin_net::ChainHub, block: &mut Block) {
     let segwit = hub
         .stored_header_height(&block.header.prev_blockhash)
         .is_some_and(|h| hub.params.segwit_active_at(h.saturating_add(1)));
@@ -993,7 +998,8 @@ pub fn submit_received_block(hub: &rbitcoin_net::ChainHub, mut block: Block) -> 
 
 /// True when `block`'s parent header is the active tip. A known ancestor that
 /// is not the tip is a competing block; tip spentness does not apply.
-fn parent_extends_tip(
+#[doc(hidden)]
+pub fn parent_extends_tip(
     query: &rbitcoin_query::Query,
     block: &Block,
 ) -> Result<bool, rbitcoin_store::StoreError> {
@@ -1009,7 +1015,8 @@ fn parent_extends_tip(
 
 /// Spend height of `block` when its parent is confirmed. The tip parent is a
 /// header-fk compare. Any other parent uses the best-chain hash index.
-fn cheap_spend_height(
+#[doc(hidden)]
+pub fn cheap_spend_height(
     query: &rbitcoin_query::Query,
     block: &Block,
 ) -> Result<Option<u32>, rbitcoin_store::StoreError> {
@@ -1028,7 +1035,8 @@ fn cheap_spend_height(
 
 /// Core `CheckTxInputs`: a coinbase spend inside the maturity window is
 /// `bad-txns-premature-spend-of-coinbase` before the value check.
-fn cheap_immature_coinbase(
+#[doc(hidden)]
+pub fn cheap_immature_coinbase(
     query: &rbitcoin_query::Query,
     create_fk: rbitcoin_primitives::Fk,
     spend_height: u32,
@@ -1053,7 +1061,8 @@ fn cheap_immature_coinbase(
 ///
 /// `vout` is peer-chosen. It is checked against the parent's output count
 /// before the spender read, which treats a slot past that count as corrupt.
-fn read_confirmed_prevout(
+#[doc(hidden)]
+pub fn read_confirmed_prevout(
     query: &rbitcoin_query::Query,
     op: bitcoin::OutPoint,
     at_tip: bool,
@@ -1096,14 +1105,16 @@ fn read_confirmed_prevout(
 
 /// Witness and merkle bytes are not the block hash. Caching them drops the
 /// honest body for the rest of the process.
-fn submit_reason_is_mutated(block: &Block, reason: &str) -> bool {
+#[doc(hidden)]
+pub fn submit_reason_is_mutated(block: &Block, reason: &str) -> bool {
     reason == "bad-txns-duplicate"
         || reason == "bad-txnmrklroot"
         || reason.contains("witness")
         || rbitcoin_consensus::block_mutated_without_coinbase(block)
 }
 
-fn cheap_submit_tx_reject(
+#[doc(hidden)]
+pub fn cheap_submit_tx_reject(
     query: &rbitcoin_query::Query,
     block: &Block,
     maturity: u32,
@@ -1203,7 +1214,8 @@ fn cheap_submit_tx_reject(
 
 /// Context-free CheckBlock for a known parent. A best-chain parent has a
 /// height, so BIP34 applies. A held-only parent has no height yet.
-fn submit_checkblock_reason(
+#[doc(hidden)]
+pub fn submit_checkblock_reason(
     block: &Block,
     spend_height: Option<u32>,
     params: &rbitcoin_consensus::ChainParams,
@@ -1219,7 +1231,8 @@ fn submit_checkblock_reason(
     }
 }
 
-fn submit_reject_reason(e: &rbitcoin_net::NetError) -> String {
+#[doc(hidden)]
+pub fn submit_reject_reason(e: &rbitcoin_net::NetError) -> String {
     if matches!(e, rbitcoin_net::NetError::UnknownParent) {
         return "prev-blk-not-found".into();
     }
@@ -1254,7 +1267,7 @@ fn submit_reject_reason(e: &rbitcoin_net::NetError) -> String {
     s.to_string()
 }
 
-pub(crate) fn submitblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
+pub fn submitblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Value> {
     params.reject_unknown(&["hexdata", "dummy"])?;
     let hex = params.req_str(0, "hexdata")?;
     let raw = rbitcoin_primitives::hex_decode(hex)
@@ -1277,13 +1290,13 @@ pub(crate) fn submitblock(ctx: &RpcContext, params: &RpcParams) -> Result<Value,
     }
 }
 
-pub(crate) fn decode_tx_hex(hex: &str) -> Result<Transaction, Value> {
+pub fn decode_tx_hex(hex: &str) -> Result<Transaction, Value> {
     let b = rbitcoin_primitives::hex_decode(hex)
         .map_err(|_| rpc_error(ERR_DESERIALIZATION, "TX decode failed:"))?;
     deserialize(&b).map_err(|_| rpc_error(ERR_DESERIALIZATION, "TX decode failed:"))
 }
 
-pub(crate) fn tx_to_json(tx: &Transaction, extra: Option<Value>, network: BtcNetwork) -> Value {
+pub fn tx_to_json(tx: &Transaction, extra: Option<Value>, network: BtcNetwork) -> Value {
     let txid = hash_hex_display(&tx.compute_txid().to_byte_array());
     let mut vin = Vec::new();
     for (i, inp) in tx.input.iter().enumerate() {

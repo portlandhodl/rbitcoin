@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 /// Core `NetPermissionFlags` bits (multiflags include their implied bits).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct NetPermissionFlags(u32);
+pub struct NetPermissionFlags(pub u32);
 
 impl NetPermissionFlags {
     pub const NONE: Self = Self(0);
@@ -95,7 +95,8 @@ impl Subnet {
     }
 }
 
-fn ipv4_mask(prefix: u8) -> u32 {
+#[doc(hidden)]
+pub fn ipv4_mask(prefix: u8) -> u32 {
     if prefix == 0 {
         0
     } else if prefix >= 32 {
@@ -105,7 +106,8 @@ fn ipv4_mask(prefix: u8) -> u32 {
     }
 }
 
-fn ipv6_mask(prefix: u8) -> u128 {
+#[doc(hidden)]
+pub fn ipv6_mask(prefix: u8) -> u128 {
     if prefix == 0 {
         0
     } else if prefix >= 128 {
@@ -154,14 +156,16 @@ pub fn apply_implicit(
     flags
 }
 
-struct ParsedFlags {
-    flags: NetPermissionFlags,
-    inbound: bool,
-    outbound: bool,
-    offset: usize,
+#[doc(hidden)]
+pub struct ParsedFlags {
+    pub flags: NetPermissionFlags,
+    pub inbound: bool,
+    pub outbound: bool,
+    pub offset: usize,
 }
 
-fn parse_permission_flags(s: &str, allow_out: bool) -> Result<ParsedFlags, String> {
+#[doc(hidden)]
+pub fn parse_permission_flags(s: &str, allow_out: bool) -> Result<ParsedFlags, String> {
     let Some(at) = s.find('@') else {
         return Ok(ParsedFlags {
             flags: NetPermissionFlags::IMPLICIT,
@@ -210,7 +214,8 @@ fn parse_permission_flags(s: &str, allow_out: bool) -> Result<ParsedFlags, Strin
     })
 }
 
-fn parse_subnet(net: &str) -> Result<Subnet, String> {
+#[doc(hidden)]
+pub fn parse_subnet(net: &str) -> Result<Subnet, String> {
     let err = || format!("Invalid netmask specified in --net-permission: '{net}'");
     let (host_raw, prefix_s) = match net.rsplit_once('/') {
         Some((h, p)) => (h, Some(p)),
@@ -333,282 +338,5 @@ impl NetPermTable {
             .into_iter()
             .map(str::to_string)
             .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::{Ipv4Addr, SocketAddrV4};
-
-    fn ip() -> IpAddr {
-        IpAddr::V4(Ipv4Addr::LOCALHOST)
-    }
-
-    fn bind() -> SocketAddr {
-        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 18444))
-    }
-
-    #[test]
-    fn loopback_grant_does_not_cover_onion_or_i2p() {
-        let mut t = NetPermTable::default();
-        t.whitelist
-            .push(parse_whitelist("noban@127.0.0.1").unwrap());
-        let onion = crate::NetAddr::Onion {
-            pk: [0x11; 32],
-            port: 8333,
-        };
-        let i2p = crate::NetAddr::I2p {
-            dest: [0x22; 32],
-            port: 0,
-        };
-        assert!(!t
-            .flags_for_net(onion, true, bind())
-            .has(NetPermissionFlags::NOBAN));
-        assert!(!t
-            .flags_for_net(i2p, true, bind())
-            .has(NetPermissionFlags::NOBAN));
-        let local = crate::NetAddr::Ip("127.0.0.1:8333".parse().unwrap());
-        assert!(t
-            .flags_for_net(local, true, bind())
-            .has(NetPermissionFlags::NOBAN));
-    }
-
-    #[test]
-    fn implicit_whitelist_defaults() {
-        let g = parse_whitelist("127.0.0.1").unwrap();
-        assert!(g.flags.has(NetPermissionFlags::IMPLICIT));
-        assert!(g.inbound);
-        assert!(!g.outbound);
-        let flags = apply_implicit(g.flags, true, false);
-        assert_eq!(
-            flags.to_strings(),
-            ["noban", "relay", "mempool", "download"]
-        );
-    }
-
-    #[test]
-    fn empty_explicit_is_none_even_with_forcerelay() {
-        let g = parse_whitelist("@127.0.0.1").unwrap();
-        assert!(!g.flags.has(NetPermissionFlags::IMPLICIT));
-        let flags = apply_implicit(g.flags, true, true);
-        assert!(flags.to_strings().is_empty());
-    }
-
-    #[test]
-    fn whitelistrelay_off_drops_relay() {
-        let g = parse_whitelist("127.0.0.1").unwrap();
-        let flags = apply_implicit(g.flags, false, false);
-        assert_eq!(flags.to_strings(), ["noban", "mempool", "download"]);
-    }
-
-    #[test]
-    fn whitelistforcerelay_adds_forcerelay() {
-        let g = parse_whitelist("127.0.0.1").unwrap();
-        let flags = apply_implicit(g.flags, true, true);
-        assert_eq!(
-            flags.to_strings(),
-            ["noban", "forcerelay", "relay", "mempool", "download"]
-        );
-    }
-
-    #[test]
-    fn explicit_noban_implies_download() {
-        let g = parse_whitelist("noban@127.0.0.1").unwrap();
-        assert_eq!(g.flags.to_strings(), ["noban", "download"]);
-    }
-
-    #[test]
-    fn all_lists_core_names() {
-        let g = parse_whitelist("all@127.0.0.1").unwrap();
-        assert_eq!(
-            g.flags.to_strings(),
-            [
-                "bloomfilter",
-                "noban",
-                "forcerelay",
-                "relay",
-                "mempool",
-                "download",
-                "addr"
-            ]
-        );
-    }
-
-    #[test]
-    fn direction_only_is_init_error() {
-        let err = parse_whitelist("in,out@127.0.0.1").unwrap_err();
-        assert!(
-            err.contains("Only direction was set, no permissions"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn unknown_perm_is_init_error() {
-        let err = parse_whitelist("oopsie@127.0.0.1").unwrap_err();
-        assert!(err.contains("Invalid P2P permission"), "{err}");
-    }
-
-    #[test]
-    fn whitelist_port_is_invalid_netmask() {
-        let err = parse_whitelist("noban@127.0.0.1:230").unwrap_err();
-        assert!(
-            err.contains("Invalid netmask specified in --net-permission"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn whitebind_cidr_cannot_resolve() {
-        let err = parse_whitebind("noban@127.0.0.1/10").unwrap_err();
-        assert!(
-            err.contains("Cannot resolve --net-permission-bind address"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn outbound_only_noban() {
-        let g = parse_whitelist("noban,out@127.0.0.1").unwrap();
-        let mut t = NetPermTable::default();
-        t.whitelist.push(WhitelistGrant {
-            subnet: g.subnet,
-            flags: apply_implicit(g.flags, true, false),
-            inbound: g.inbound,
-            outbound: g.outbound,
-        });
-        assert_eq!(t.strings_for(ip(), false, bind()), ["noban", "download"]);
-        assert!(t.strings_for(ip(), true, bind()).is_empty());
-    }
-
-    #[test]
-    fn inbound_default_misses_outbound() {
-        let g = parse_whitelist("noban@127.0.0.1").unwrap();
-        let mut t = NetPermTable::default();
-        t.whitelist.push(WhitelistGrant {
-            subnet: g.subnet,
-            flags: g.flags,
-            inbound: g.inbound,
-            outbound: g.outbound,
-        });
-        assert!(t.strings_for(ip(), false, bind()).is_empty());
-        assert_eq!(t.strings_for(ip(), true, bind()), ["noban", "download"]);
-    }
-
-    #[test]
-    fn whitebind_merges_with_whitelist() {
-        let wb = parse_whitebind("bloomfilter,forcerelay@127.0.0.1:18444").unwrap();
-        let wl = parse_whitelist("noban@127.0.0.1").unwrap();
-        let mut t = NetPermTable::default();
-        t.whitebind.push(wb);
-        t.whitelist.push(WhitelistGrant {
-            subnet: wl.subnet,
-            flags: wl.flags,
-            inbound: wl.inbound,
-            outbound: wl.outbound,
-        });
-        let s = t.strings_for(ip(), true, bind());
-        assert_eq!(
-            s,
-            ["bloomfilter", "noban", "forcerelay", "relay", "download"]
-        );
-    }
-
-    #[test]
-    fn whitebind_out_is_init_error() {
-        let err = parse_whitebind("noban,out@127.0.0.1:18444").unwrap_err();
-        assert!(
-            err.contains("--net-permission-bind may only be used for incoming connections"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn whitelist_prefix_and_ipv6() {
-        let g = parse_whitelist("noban@127.0.0.1/0").unwrap();
-        assert!(g.subnet.contains(IpAddr::V4(Ipv4Addr::UNSPECIFIED)));
-        assert!(!g.subnet.contains(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)));
-        let err = parse_whitelist("noban@127.0.0.1/33").unwrap_err();
-        assert!(err.contains("Invalid netmask specified in"), "{err}");
-        let err = parse_whitelist("noban@127.0.0.1/nope").unwrap_err();
-        assert!(err.contains("Invalid netmask specified in"), "{err}");
-    }
-
-    #[test]
-    fn ipv6_cidr_matches_only_v6() {
-        let g = parse_whitelist("noban@::1").unwrap();
-        assert!(g.subnet.contains(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)));
-        assert!(!g.subnet.contains(ip()));
-        let g = parse_whitelist("noban@2001:db8::/32").unwrap();
-        assert!(g
-            .subnet
-            .contains(IpAddr::V6("2001:db8::1".parse().unwrap())));
-        assert!(!g
-            .subnet
-            .contains(IpAddr::V6("2001:db9::1".parse().unwrap())));
-        let g = parse_whitelist("noban@[::1]/128").unwrap();
-        assert!(g.subnet.contains(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)));
-        let err = parse_whitelist("noban@::1/129").unwrap_err();
-        assert!(err.contains("Invalid netmask specified in"), "{err}");
-    }
-
-    #[test]
-    fn whitebind_port_zero_and_missing() {
-        let err = parse_whitebind("noban@127.0.0.1").unwrap_err();
-        assert!(
-            err.contains("Need to specify a port with --net-permission-bind"),
-            "{err}"
-        );
-        let err = parse_whitebind("noban@127.0.0.1:0").unwrap_err();
-        assert!(
-            err.contains("Need to specify a port with --net-permission-bind"),
-            "{err}"
-        );
-        let err = parse_whitebind("noban@not-an-addr:18444").unwrap_err();
-        assert!(
-            err.contains("Cannot resolve --net-permission-bind address"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn flags_bitor_and_unmatched_subnet() {
-        let a = NetPermissionFlags::NOBAN | NetPermissionFlags::RELAY;
-        assert!(a.has(NetPermissionFlags::NOBAN));
-        assert!(a.has(NetPermissionFlags::RELAY));
-        let mut b = NetPermissionFlags::BLOOM;
-        b |= NetPermissionFlags::ADDR;
-        assert_eq!(b.to_strings(), ["bloomfilter", "addr"]);
-        let g = parse_whitelist("noban@10.0.0.1/32").unwrap();
-        let mut t = NetPermTable::default();
-        t.whitelist.push(g);
-        assert!(t.strings_for(ip(), true, bind()).is_empty());
-    }
-
-    #[test]
-    fn permission_masks_keep_their_implied_bits() {
-        assert!(NetPermissionFlags::FORCE_RELAY.has(NetPermissionFlags::RELAY));
-        assert_ne!(NetPermissionFlags::FORCE_RELAY, NetPermissionFlags::RELAY);
-        assert!(NetPermissionFlags::NOBAN.has(NetPermissionFlags::DOWNLOAD));
-        assert_ne!(NetPermissionFlags::NOBAN, NetPermissionFlags::DOWNLOAD);
-        assert_eq!(NetPermissionFlags::NOBAN.0 & (1 << 4), 1 << 4);
-        for flag in [
-            NetPermissionFlags::BLOOM,
-            NetPermissionFlags::FORCE_RELAY,
-            NetPermissionFlags::RELAY,
-            NetPermissionFlags::NOBAN,
-            NetPermissionFlags::MEMPOOL,
-            NetPermissionFlags::DOWNLOAD,
-            NetPermissionFlags::ADDR,
-        ] {
-            assert!(NetPermissionFlags::ALL.has(flag), "{flag:?}");
-        }
-        let mut flagged = NetPermissionFlags::ALL;
-        flagged.add(NetPermissionFlags::IMPLICIT);
-        assert!(flagged.has(NetPermissionFlags::IMPLICIT));
-        flagged.clear_implicit();
-        assert!(!flagged.has(NetPermissionFlags::IMPLICIT));
-        assert!(flagged.has(NetPermissionFlags::MEMPOOL));
     }
 }

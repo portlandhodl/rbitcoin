@@ -35,7 +35,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
-const TDP_VERSION: u16 = 2;
+#[doc(hidden)]
+pub const TDP_VERSION: u16 = 2;
 
 /// RAM trade (docs/sv2-template-provider.md): each session keeps its
 /// templates, so `RequestTransactionData` and `SubmitSolution` do not depend
@@ -43,51 +44,56 @@ const TDP_VERSION: u16 = 2;
 /// on the same tip and a miner may still be on any of them, so the bound is
 /// a count, oldest (replaced tips first) dropped. Bodies are the mempool's
 /// `Arc`s: a template costs a pointer per tx until its txs leave the pool.
-const MAX_RETAINED: usize = 64;
+#[doc(hidden)]
+pub const MAX_RETAINED: usize = 64;
 
 /// Budgets that replace a still-queued one before it is built. A real client
 /// changes its budget minutes apart; past this many inside one cooldown the
 /// session is closed so the slot goes back to a real client.
-const MAX_SUPERSEDED_CONSTRAINTS: u32 = 8;
+#[doc(hidden)]
+pub const MAX_SUPERSEDED_CONSTRAINTS: u32 = 8;
 
 /// When a changed budget rebuilds. `None` means [`crate::CONSTRAINTS_COOLDOWN`]
 /// has elapsed and the budget publishes on this message.
-pub(crate) fn constraints_rebuild_at(built_at: Instant, now: Instant) -> Option<Instant> {
+pub fn constraints_rebuild_at(built_at: Instant, now: Instant) -> Option<Instant> {
     let at = built_at + crate::CONSTRAINTS_COOLDOWN;
     (at > now).then_some(at)
 }
 
 /// Fee-delta push settings (docs/sv2-template-provider.md C1).
 #[derive(Clone, Copy)]
-pub(crate) struct FeePush {
+pub struct FeePush {
     pub delta: u64,
     pub interval: Duration,
 }
 
 /// The templates one session was sent. Ids are strictly increasing.
 #[derive(Default)]
-struct Templates {
-    last_id: u64,
-    current_prev: Option<[u8; 32]>,
+#[doc(hidden)]
+pub struct Templates {
+    pub last_id: u64,
+    pub current_prev: Option<[u8; 32]>,
     /// `SetNewPrevHash.header_timestamp` sent for `current_prev`, and when.
-    prev_sent: Option<(u32, Instant)>,
+    pub prev_sent: Option<(u32, Instant)>,
     /// `SetNewPrevHash.n_bits` and `target` sent for `current_prev`.
-    sent_bits: Option<(u32, [u8; 32])>,
+    pub sent_bits: Option<(u32, [u8; 32])>,
     /// A template was built since the last tip event.
-    built_since_tip: bool,
-    retained: VecDeque<Retained>,
+    pub built_since_tip: bool,
+    pub retained: VecDeque<Retained>,
 }
 
-struct Retained {
-    id: u64,
-    t: template::Template,
-    prev_sent: (u32, Instant),
+#[doc(hidden)]
+pub struct Retained {
+    pub id: u64,
+    pub t: template::Template,
+    pub prev_sent: (u32, Instant),
     /// Set once the tip moves on.
-    retire_at: Option<Instant>,
+    pub retire_at: Option<Instant>,
 }
 
 impl Templates {
-    fn retain(&mut self, id: u64, t: template::Template, prev_sent: (u32, Instant)) {
+    #[doc(hidden)]
+    pub fn retain(&mut self, id: u64, t: template::Template, prev_sent: (u32, Instant)) {
         if self.retained.len() == MAX_RETAINED {
             self.retained.pop_front();
         }
@@ -101,36 +107,41 @@ impl Templates {
 
     /// Whether a tip event needs a rebuild: a new prev hash, or any build
     /// since the last event.
-    fn on_tip(&mut self, hash: [u8; 32]) -> bool {
+    #[doc(hidden)]
+    pub fn on_tip(&mut self, hash: [u8; 32]) -> bool {
         // ChainHub publishes the store tip (connect or rollback reconnect),
         // then strips the block's txs from the mempool, then sends the event:
         // a build in between can select txs the block confirmed.
         std::mem::take(&mut self.built_since_tip) || self.current_prev != Some(hash)
     }
 
-    fn get(&self, id: u64) -> Option<&Retained> {
+    #[doc(hidden)]
+    pub fn get(&self, id: u64) -> Option<&Retained> {
         self.retained.iter().find(|r| r.id == id)
     }
 
     /// Every retained template predates the new prev hash.
-    fn start_grace(&mut self, deadline: Instant) {
+    #[doc(hidden)]
+    pub fn start_grace(&mut self, deadline: Instant) {
         for r in &mut self.retained {
             r.retire_at.get_or_insert(deadline);
         }
     }
 
-    fn next_retire(&self) -> Option<Instant> {
+    #[doc(hidden)]
+    pub fn next_retire(&self) -> Option<Instant> {
         self.retained.iter().filter_map(|r| r.retire_at).min()
     }
 
-    fn retire(&mut self, now: Instant) {
+    #[doc(hidden)]
+    pub fn retire(&mut self, now: Instant) {
         self.retained
             .retain(|r| r.retire_at.is_none_or(|d| d > now));
     }
 }
 
 #[allow(clippy::too_many_arguments)] // call-site args stay unbundled
-pub(crate) async fn serve(
+pub async fn serve(
     stream: TcpStream,
     responder: Box<Responder>,
     chain: Arc<ChainHub>,
@@ -184,37 +195,40 @@ pub(crate) async fn serve(
     s.run(&mut frames, deadline, setup_timeout).await
 }
 
-fn micros(d: Duration) -> u64 {
+#[doc(hidden)]
+pub fn micros(d: Duration) -> u64 {
     u64::try_from(d.as_micros()).unwrap_or(u64::MAX)
 }
 
-fn missed_setup_deadline() -> io::Error {
+#[doc(hidden)]
+pub fn missed_setup_deadline() -> io::Error {
     io::Error::new(io::ErrorKind::TimedOut, "sv2: setup deadline")
 }
 
-struct Session {
-    conn: NoiseWriter,
-    chain: Arc<ChainHub>,
-    stale_grace: Duration,
-    fee_push: FeePush,
-    stats: Arc<Sv2TpStats>,
+#[doc(hidden)]
+pub struct Session {
+    pub conn: NoiseWriter,
+    pub chain: Arc<ChainHub>,
+    pub stale_grace: Duration,
+    pub fee_push: FeePush,
+    pub stats: Arc<Sv2TpStats>,
     /// Last `CoinbaseOutputConstraints`: `(max_additional_size, sigops)`.
-    constraints: Option<(u32, u16)>,
-    templates: Templates,
+    pub constraints: Option<(u32, u16)>,
+    pub templates: Templates,
     /// When `publish` last sent a template.
-    built_at: Option<Instant>,
+    pub built_at: Option<Instant>,
     /// Constraints-triggered rebuild deferred until [`crate::CONSTRAINTS_COOLDOWN`].
-    rebuild_at: Option<Instant>,
+    pub rebuild_at: Option<Instant>,
     /// Budgets that replaced a queued rebuild's since the last build.
-    superseded: u32,
+    pub superseded: u32,
     /// Last `publish` returned without a template because the node was in IBD.
     /// Cleared when a template is sent.
-    holding: bool,
-    held_logged: bool,
+    pub holding: bool,
+    pub held_logged: bool,
     /// Next fee check: one interval after the last push or check.
-    fee_check_at: Option<Instant>,
+    pub fee_check_at: Option<Instant>,
     /// `MempoolHub::template_updates` read before the last build.
-    seen_updates: u64,
+    pub seen_updates: u64,
 }
 
 impl Session {
@@ -222,7 +236,7 @@ impl Session {
     /// `CoinbaseOutputConstraints`. After that, `setup_timeout` is an idle
     /// deadline refreshed only when a frame is handled, so tip and fee-check
     /// wakes do not keep a silent client.
-    async fn run(
+    pub async fn run(
         &mut self,
         frames: &mut mpsc::Receiver<io::Result<Frame>>,
         setup_deadline: Instant,
@@ -275,7 +289,7 @@ impl Session {
     }
 
     /// `false`: close the session.
-    async fn on_frame(&mut self, mut frame: Frame) -> io::Result<bool> {
+    pub async fn on_frame(&mut self, mut frame: Frame) -> io::Result<bool> {
         match frame.msg_type {
             MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS => {
                 let Ok(c) = binary_sv2::from_bytes::<CoinbaseOutputConstraints>(&mut frame.payload)
@@ -324,7 +338,7 @@ impl Session {
     }
 
     /// Build on the current tip and send it.
-    async fn publish(&mut self) -> io::Result<()> {
+    pub async fn publish(&mut self) -> io::Result<()> {
         self.rebuild_at = None;
         self.superseded = 0;
         match self.build().await? {
@@ -337,7 +351,7 @@ impl Session {
     /// template's plus the delta. A rebuild on a new prev hash is dropped:
     /// its tip event publishes. A queued constraints rebuild publishes the
     /// latest mempool anyway, so the check leaves it alone.
-    async fn check_fees(&mut self) -> io::Result<()> {
+    pub async fn check_fees(&mut self) -> io::Result<()> {
         self.fee_check_at = Some(Instant::now() + self.fee_push.interval);
         self.stats.fee_checks.note(0);
         let updates = self.chain.mempool().map_or(0, |m| m.template_updates());
@@ -372,7 +386,7 @@ impl Session {
 
     /// Template for the session's constraints. `None` before constraints or
     /// while in IBD: leaving IBD always comes with a new tip, which publishes.
-    async fn build(&mut self) -> io::Result<Option<template::Template>> {
+    pub async fn build(&mut self) -> io::Result<Option<template::Template>> {
         let Some((size, sigops)) = self.constraints else {
             return Ok(None);
         };
@@ -405,7 +419,7 @@ impl Session {
         Ok(t)
     }
 
-    async fn send(&mut self, mut t: template::Template) -> io::Result<()> {
+    pub async fn send(&mut self, mut t: template::Template) -> io::Result<()> {
         self.holding = false;
         self.templates.last_id += 1;
         let template_id = self.templates.last_id;
@@ -446,7 +460,7 @@ impl Session {
 
     /// A bad solution is logged and dropped; a decodable one on a retained
     /// template that meets its target always goes to `ChainHub::accept_block`.
-    async fn on_submit_solution(&mut self, mut frame: Frame) -> io::Result<()> {
+    pub async fn on_submit_solution(&mut self, mut frame: Frame) -> io::Result<()> {
         let Ok(m) = binary_sv2::from_bytes::<SubmitSolution>(&mut frame.payload) else {
             rbitcoin_log::info!("sv2: undecodable SubmitSolution");
             return Ok(());
@@ -531,7 +545,8 @@ impl Session {
     }
 }
 
-fn setup_error(m: &SetupConnection) -> Option<(u32, &'static str)> {
+#[doc(hidden)]
+pub fn setup_error(m: &SetupConnection) -> Option<(u32, &'static str)> {
     if m.protocol != Protocol::TemplateDistributionProtocol {
         return Some((0, ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL));
     }
@@ -549,7 +564,7 @@ fn setup_error(m: &SetupConnection) -> Option<(u32, &'static str)> {
 }
 
 /// `false`: close the session.
-async fn on_setup(conn: &mut NoiseConn, mut frame: Frame) -> io::Result<bool> {
+pub async fn on_setup(conn: &mut NoiseConn, mut frame: Frame) -> io::Result<bool> {
     if frame.msg_type != MESSAGE_TYPE_SETUP_CONNECTION {
         rbitcoin_log::info!("sv2: message {:#x} before SetupConnection", frame.msg_type);
         return Ok(false);
@@ -577,7 +592,7 @@ async fn on_setup(conn: &mut NoiseConn, mut frame: Frame) -> io::Result<bool> {
 
 /// An id this session was sent but no longer retains is stale; any other
 /// unknown id was never sent.
-async fn on_request_transaction_data(
+pub async fn on_request_transaction_data(
     conn: &mut NoiseWriter,
     mut frame: Frame,
     templates: &Templates,
@@ -623,42 +638,4 @@ async fn on_request_transaction_data(
     };
     conn.send(MESSAGE_TYPE_REQUEST_TRANSACTION_DATA_SUCCESS, reply)
         .await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{constraints_rebuild_at, Templates};
-    use std::time::Duration;
-    use tokio::time::Instant;
-
-    #[test]
-    fn constraints_rebuild_at_uses_the_one_second_cooldown() {
-        let built_at = Instant::now();
-        let soon = built_at + Duration::from_millis(999);
-        assert_eq!(
-            constraints_rebuild_at(built_at, soon),
-            Some(built_at + Duration::from_secs(1))
-        );
-        let due = built_at + Duration::from_secs(1);
-        assert_eq!(constraints_rebuild_at(built_at, due), None);
-    }
-
-    #[test]
-    fn tip_event_rebuilds_a_template_built_before_it() {
-        let (old, new) = ([1; 32], [2; 32]);
-        let mut t = Templates::default();
-        assert!(t.on_tip(old), "first tip");
-        t.current_prev = Some(old);
-        assert!(!t.on_tip(old), "repeat event with no build since");
-        // A build between the store tip move and its event (constraints, or
-        // the previous event's rebuild) already sits on the new prev hash.
-        t.current_prev = Some(new);
-        t.built_since_tip = true;
-        assert!(t.on_tip(new), "template may hold the block's confirmed txs");
-        assert!(!t.on_tip(new), "no build since the event");
-        // A failed reorg disconnects `new` without an event, then its rollback
-        // reconnects `new`; a build in that window precedes the second event.
-        t.built_since_tip = true;
-        assert!(t.on_tip(new), "reconnect of the same hash after a build");
-    }
 }

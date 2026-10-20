@@ -4,7 +4,7 @@ use super::*;
 use rbitcoin_primitives::{read_compact_size, write_compact_size};
 
 /// Encode a per-tx output run (concat of compact outputs; count is loc `n_out`).
-pub(super) fn encode_output_run_secret(
+pub fn encode_output_run_secret(
     recs: &[OutputRecord],
     out: &mut Vec<u8>,
     secret: Option<&crate::store_secret::StoreSecret>,
@@ -346,7 +346,6 @@ impl InputRecord {
     }
 
     /// Exact on-wire length matching [`Self::encode_into`] (for denserels layout).
-    #[inline]
     pub fn encoded_len_exact(&self) -> usize {
         use rbitcoin_primitives::compact_size_len;
         let mut n = 1usize;
@@ -367,7 +366,8 @@ impl InputRecord {
 }
 
 /// Same flags and payload as [`InputRecord::encode_into`].
-fn encode_seqsigwit_input<'a>(
+#[doc(hidden)]
+pub fn encode_seqsigwit_input<'a>(
     sequence: u32,
     script_sig: &[u8],
     witness: impl ExactSizeIterator<Item = &'a [u8]>,
@@ -424,7 +424,7 @@ pub fn encode_wire_seqsigwit_input<'a>(
 }
 
 /// Encode a per-tx input run (concat of compact inputs; count lives on TxRecord).
-pub(super) fn encode_input_run_secret(
+pub fn encode_input_run_secret(
     recs: &[InputRecord],
     out: &mut Vec<u8>,
     secret: Option<&crate::store_secret::StoreSecret>,
@@ -439,7 +439,7 @@ pub(super) fn encode_input_run_secret(
 }
 
 /// XOR script_sig + witness item bytes inside an already-encoded input record.
-pub(super) fn xor_script_regions_in_input(
+pub fn xor_script_regions_in_input(
     buf: &mut [u8],
     start: usize,
     secret: &crate::store_secret::StoreSecret,
@@ -503,7 +503,7 @@ pub(super) fn xor_script_regions_in_input(
 }
 
 /// XOR scriptPubKey bytes inside an already-encoded `txout` output record.
-pub(super) fn xor_script_region_in_output(
+pub fn xor_script_region_in_output(
     buf: &mut [u8],
     start: usize,
     secret: &crate::store_secret::StoreSecret,
@@ -530,7 +530,7 @@ pub(super) fn xor_script_region_in_output(
 }
 
 /// XOR the at-rest v17 script payload (hash/data only; CompactSize stays plaintext).
-pub(super) fn xor_script_kind_v17_payload(
+pub fn xor_script_kind_v17_payload(
     kind: u8,
     disk: &mut [u8],
     secret: &crate::store_secret::StoreSecret,
@@ -665,31 +665,37 @@ pub fn spent_record_len(n_out: u32) -> u64 {
     u64::from(n_out).saturating_mul(OutputRecord::SPENT_SLOT_LEN as u64)
 }
 
-const SPENT_FK_U40_MAX: u64 = (1u64 << 40) - 1;
-const SPENT_VIN_U16_MAX: u32 = (1u32 << 16) - 1;
+#[doc(hidden)]
+pub const SPENT_FK_U40_MAX: u64 = (1u64 << 40) - 1;
+#[doc(hidden)]
+pub const SPENT_VIN_U16_MAX: u32 = (1u32 << 16) - 1;
 
 /// `n` bytes starting at `off` stay inside `buf_len` without wrapping the end.
-fn u64_span_fits(buf_len: usize, off: usize, n: u64) -> bool {
+#[doc(hidden)]
+pub fn u64_span_fits(buf_len: usize, off: usize, n: u64) -> bool {
     match buf_len.checked_sub(off) {
         Some(rest) => n <= rest as u64,
         None => false,
     }
 }
 
-fn check_seqsigwit_flags(flags: u8) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn check_seqsigwit_flags(flags: u8) -> Result<(), StoreError> {
     if flags & input_flags::RESERVED_HIGH != 0 {
         return Err(StoreError::Corrupt("seqsigwit reserved flags"));
     }
     Ok(())
 }
 
-fn skip_seq_script_witness(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn skip_seq_script_witness(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
     skip_sequence(buf, flags, off)?;
     skip_script(buf, flags, off)?;
     skip_witness(buf, flags, off)
 }
 
-fn skip_sequence(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn skip_sequence(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
     if flags & input_flags::SEQ_FINAL != 0 {
         return Ok(());
     }
@@ -700,7 +706,8 @@ fn skip_sequence(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreErro
     Ok(())
 }
 
-fn skip_script(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn skip_script(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
     if flags & input_flags::EMPTY_SCRIPT != 0 {
         return Ok(());
     }
@@ -713,7 +720,8 @@ fn skip_script(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError>
     Ok(())
 }
 
-fn skip_witness(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn skip_witness(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError> {
     if flags & input_flags::EMPTY_WITNESS != 0 {
         return Ok(());
     }
@@ -728,7 +736,8 @@ fn skip_witness(buf: &[u8], flags: u8, off: &mut usize) -> Result<(), StoreError
     Ok(())
 }
 
-fn skip_witness_item(buf: &[u8], off: &mut usize) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn skip_witness_item(buf: &[u8], off: &mut usize) -> Result<(), StoreError> {
     let (ilen, n) = read_compact_size(&buf[*off..])?;
     *off += n;
     if !u64_span_fits(buf.len(), *off, ilen) {
@@ -739,7 +748,8 @@ fn skip_witness_item(buf: &[u8], off: &mut usize) -> Result<(), StoreError> {
 }
 
 /// `Some` is a legacy inline prevout. `None` means [`input_flags::PREV_ON_INPUTS`].
-fn read_inline_prevout(
+#[doc(hidden)]
+pub fn read_inline_prevout(
     buf: &[u8],
     flags: u8,
     off: &mut usize,
@@ -801,7 +811,8 @@ pub fn prevouts_from_edges(edges: &[crate::input::InputEdge]) -> Vec<(Fk, u32)> 
         .collect()
 }
 
-fn check_spent_flags(flags: u8) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn check_spent_flags(flags: u8) -> Result<(), StoreError> {
     if flags & !output_flags::MULTI_SPENDER != 0 {
         return Err(StoreError::Corrupt("spent reserved flags"));
     }
@@ -881,7 +892,7 @@ pub fn decode_seqsigwit_secret(
     Ok(inputs)
 }
 
-pub(crate) fn decode_seqsigwit_secret_to_end(
+pub fn decode_seqsigwit_secret_to_end(
     raw: &[u8],
     secret: Option<&crate::store_secret::StoreSecret>,
 ) -> Result<Vec<InputRecord>, StoreError> {
@@ -911,7 +922,7 @@ pub(crate) fn decode_seqsigwit_secret_to_end(
 
 /// After walking a packed payload to `logical_end`, accept only zero pad to `raw.len()`.
 #[inline]
-pub(super) fn check_trailing_zero_pad(raw: &[u8], logical_end: usize) -> Result<(), StoreError> {
+pub fn check_trailing_zero_pad(raw: &[u8], logical_end: usize) -> Result<(), StoreError> {
     if logical_end > raw.len() {
         return Err(StoreError::Corrupt("packed Class A short payload"));
     }
@@ -1167,245 +1178,4 @@ pub struct HeadResizeSizeSnapshot {
     pub mphf_occ_bytes: u64,
     /// Class C L2 images (strong_tx + confirmed + header_txs).
     pub class_c_l2_bytes: u64,
-}
-
-#[cfg(test)]
-mod scan_p2tr_tests {
-    use super::*;
-    use crate::compact::{amount_exp_mantissa, SCRIPT_KIND_V17_P2TR};
-    use rbitcoin_primitives::write_uleb128;
-
-    fn packed_p2tr_body(value: u64) -> Vec<u8> {
-        let meta = TxRecord {
-            txid: [0u8; 32],
-            version: 2,
-            locktime: 0,
-            input_start_fk: Fk::NULL,
-            input_count: 0,
-            output_start_fk: Fk::NULL,
-            output_count: 1,
-        };
-        let mut raw = Vec::new();
-        meta.encode_body_meta_into(&mut raw);
-        if value > i64::MAX as u64 {
-            raw.push(SCRIPT_KIND_V17_P2TR);
-            write_uleb128(&mut raw, value);
-        } else {
-            let (exp, mantissa) = amount_exp_mantissa(value);
-            raw.push(SCRIPT_KIND_V17_P2TR | (exp << 4));
-            write_uleb128(&mut raw, mantissa);
-        }
-        raw.extend_from_slice(&[0u8; 32]);
-        raw
-    }
-
-    #[test]
-    fn scan_packed_p2tr_outs_ok_value() {
-        let raw = packed_p2tr_body(50_000);
-        let rows = scan_packed_p2tr_outs(&raw, 1, None).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, 0);
-        assert_eq!(rows[0].2, 50_000);
-        OutputRecord::decode_at_secret(&raw[TxRecord::decode_body_meta(&raw).unwrap().1..], None)
-            .unwrap();
-    }
-
-    #[test]
-    fn scan_packed_p2tr_outs_exp_mantissa_is_sats() {
-        let meta = TxRecord {
-            txid: [0u8; 32],
-            version: 2,
-            locktime: 0,
-            input_start_fk: Fk::NULL,
-            input_count: 0,
-            output_start_fk: Fk::NULL,
-            output_count: 1,
-        };
-        let mut raw = Vec::new();
-        meta.encode_body_meta_into(&mut raw);
-        raw.push(SCRIPT_KIND_V17_P2TR | (8 << 4));
-        raw.push(1);
-        raw.extend_from_slice(&[0u8; 32]);
-        let rows = scan_packed_p2tr_outs(&raw, 1, None).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].2, 100_000_000);
-    }
-
-    #[test]
-    fn scan_packed_p2tr_outs_overflow_is_corrupt() {
-        let raw = packed_p2tr_body(i64::MAX as u64 + 1);
-        let err = scan_packed_p2tr_outs(&raw, 1, None).unwrap_err();
-        assert!(format!("{err}").contains("output value too large"), "{err}");
-        let meta_n = TxRecord::decode_body_meta(&raw).unwrap().1;
-        let dec = OutputRecord::decode_at_secret(&raw[meta_n..], None).unwrap_err();
-        assert!(format!("{dec}").contains("output value too large"), "{dec}");
-        let skip = OutputRecord::skip_at(&raw[meta_n..]).unwrap_err();
-        assert!(
-            format!("{skip}").contains("output value too large"),
-            "{skip}"
-        );
-        let visit = visit_packed_script_hashes(&raw, 1, None, |_| Ok(())).unwrap_err();
-        assert!(
-            format!("{visit}").contains("output value too large"),
-            "{visit}"
-        );
-    }
-
-    #[test]
-    fn decode_seqsigwit_secret_zero_count_walks_payload() {
-        let ins = vec![InputRecord::coinbase(u32::MAX, vec![0x01, 0x02], vec![])];
-        let mut raw = Vec::new();
-        encode_seqsigwit_with_secret(&ins, &mut raw, None);
-        let got = decode_seqsigwit_secret(&raw, 0, None).unwrap();
-        assert_eq!(got.len(), 1);
-        assert_eq!(got[0].script_sig, vec![0x01, 0x02]);
-        assert!(!got[0].is_coinbase());
-    }
-
-    fn three_out_packed() -> (Vec<u8>, usize) {
-        let tx = TxRecord {
-            txid: [0x11u8; 32],
-            version: 1,
-            locktime: 0,
-            input_start_fk: Fk::NULL,
-            input_count: 1,
-            output_start_fk: Fk::NULL,
-            output_count: 3,
-        };
-        let inputs = vec![InputRecord::coinbase(u32::MAX, vec![0x01], vec![])];
-        let outputs = vec![
-            OutputRecord::unspent(1, vec![0x51]),
-            OutputRecord::unspent(2, vec![0x52; 80]),
-            OutputRecord::unspent(3, vec![0x53; 80]),
-        ];
-        let mut raw = Vec::new();
-        encode_packed_tx(&tx, &inputs, &outputs, &mut raw);
-        let (_, mut off) = TxRecord::decode_body_meta(&raw).unwrap();
-        off += OutputRecord::skip_at(&raw[off..]).unwrap();
-        (raw, off)
-    }
-
-    #[test]
-    fn decode_packed_tx_need_outs_truncated_after_last_need() {
-        let (raw, after_vout0) = three_out_packed();
-        let truncated = &raw[..after_vout0];
-        let (meta, live, sparse) =
-            decode_packed_tx_need_outs_with_spender_rels_secret(truncated, 3, &[0], None).unwrap();
-        assert_eq!(meta.output_count, 3);
-        assert_eq!(live.len(), 1);
-        assert_eq!(live[0].0, 0);
-        assert_eq!(live[0].1.script, vec![0x51]);
-        assert_eq!(sparse.len(), 1);
-        assert_eq!(sparse[0].0, 0);
-        let empty_need =
-            decode_packed_tx_need_outs_with_spender_rels_secret(truncated, 3, &[], None);
-        assert!(
-            empty_need.is_err(),
-            "empty need still requires a full outs walk"
-        );
-        assert!(txout_first_page_covers_need(truncated, 3, &[0]));
-        assert!(!txout_first_page_covers_need(truncated, 3, &[]));
-    }
-
-    #[test]
-    fn decode_packed_tx_need_outs_empty_need_still_pad_checks() {
-        let (mut raw, _) = three_out_packed();
-        raw.push(0x01);
-        let err =
-            decode_packed_tx_need_outs_with_spender_rels_secret(&raw, 3, &[], None).unwrap_err();
-        assert!(format!("{err}").contains("trailing non-zero"), "{err}");
-        let (meta, live, _) = decode_packed_tx_need_outs_with_spender_rels_secret(
-            &raw[..raw.len() - 1],
-            3,
-            &[0],
-            None,
-        )
-        .unwrap();
-        assert_eq!(meta.output_count, 3);
-        assert_eq!(live.len(), 1);
-        assert_eq!(live[0].0, 0);
-    }
-
-    #[test]
-    fn encode_unspent_into_matches_output_record() {
-        let rec = OutputRecord::unspent(50_0000_0000, vec![0x00, 0x14, 0xaa]);
-        let mut from_rec = Vec::new();
-        rec.encode_into(&mut from_rec);
-        let mut from_parts = Vec::new();
-        OutputRecord::encode_unspent_into(rec.value, &rec.script, &mut from_parts);
-        assert_eq!(from_rec, from_parts);
-        let mut via_secret = Vec::new();
-        encode_unspent_output_into_secret(rec.value, &rec.script, &mut via_secret, None);
-        assert_eq!(from_rec, via_secret);
-    }
-}
-
-#[cfg(test)]
-mod borrowed_input_encode_tests {
-    use super::*;
-
-    fn witness_refs(items: &[Vec<u8>]) -> Vec<&[u8]> {
-        items.iter().map(|i| i.as_slice()).collect()
-    }
-
-    fn assert_matches(rec: &InputRecord, secret: Option<&crate::store_secret::StoreSecret>) {
-        let wit = witness_refs(&rec.witness);
-        let mut owned = Vec::new();
-        encode_seqsigwit_with_secret(std::slice::from_ref(rec), &mut owned, secret);
-        let mut from_wire = Vec::new();
-        encode_wire_seqsigwit_input(
-            rec.sequence,
-            rec.script_sig.as_slice(),
-            wit.iter().copied(),
-            &mut from_wire,
-            secret,
-        );
-        assert_eq!(owned, from_wire);
-        let upper = seqsigwit_input_len_upper(rec.script_sig.len(), wit.iter().map(|i| i.len()));
-        assert!(upper >= rec.encoded_len_exact());
-        assert_eq!(upper, rec.encoded_len());
-    }
-
-    #[test]
-    fn borrowed_input_encode_matches_record() {
-        let secret = crate::store_secret::StoreSecret::from_bytes([0x5au8; 32]);
-        let cases = [
-            InputRecord::coinbase(u32::MAX, vec![0x01, 0x02], vec![]),
-            InputRecord::coinbase(1, vec![], vec![vec![0x00; 32]]),
-            InputRecord {
-                prev_txid: [0u8; 32],
-                parent: InputParent::Prevout {
-                    create_fk: Fk(9),
-                    vout: 3,
-                },
-                sequence: 0xffff_fffe,
-                script_sig: vec![0xab; 40],
-                witness: vec![],
-            },
-            InputRecord {
-                prev_txid: [0u8; 32],
-                parent: InputParent::Prevout {
-                    create_fk: Fk(9),
-                    vout: 1,
-                },
-                sequence: u32::MAX,
-                script_sig: vec![],
-                witness: vec![vec![0x30; 70], vec![0x21; 33]],
-            },
-            InputRecord {
-                prev_txid: [0u8; 32],
-                parent: InputParent::Prevout {
-                    create_fk: Fk(4),
-                    vout: 0,
-                },
-                sequence: 7,
-                script_sig: vec![0x16, 0x00, 0x14],
-                witness: vec![vec![0x30; 71], vec![0x21; 33], vec![0x51]],
-            },
-        ];
-        for rec in &cases {
-            assert_matches(rec, None);
-            assert_matches(rec, Some(&secret));
-        }
-    }
 }

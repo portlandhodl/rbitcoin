@@ -19,21 +19,24 @@ use std::sync::atomic::Ordering;
 use std::sync::{Condvar, Mutex};
 
 /// Core `getblockfilter` when the index has not reached this block.
-const FILTER_STILL_INDEXING: &str =
+#[doc(hidden)]
+pub const FILTER_STILL_INDEXING: &str =
     "Filter not found. Block filters are still in the process of being indexed.";
 
 /// BIP158 basic filter Golomb-Rice parameters (`M`, `P`).
-const BASIC_FILTER_M: u64 = 784_931;
-const BASIC_FILTER_P: u8 = 19;
-pub(crate) struct BlockFilterWriteBehind {
+#[doc(hidden)]
+pub const BASIC_FILTER_M: u64 = 784_931;
+#[doc(hidden)]
+pub const BASIC_FILTER_P: u8 = 19;
+pub struct BlockFilterWriteBehind {
     /// Serializes commits against disconnect truncate.
-    appender: Mutex<()>,
-    wake: Mutex<()>,
-    wake_cv: Condvar,
+    pub appender: Mutex<()>,
+    pub wake: Mutex<()>,
+    pub wake_cv: Condvar,
 }
 
 impl BlockFilterWriteBehind {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             appender: Mutex::new(()),
             wake: Mutex::new(()),
@@ -41,15 +44,16 @@ impl BlockFilterWriteBehind {
         }
     }
 
-    pub(crate) fn notify(&self) {
+    pub fn notify(&self) {
         self.wake_cv.notify_one();
     }
 
-    pub(crate) fn lock_appender(&self) -> std::sync::MutexGuard<'_, ()> {
+    pub fn lock_appender(&self) -> std::sync::MutexGuard<'_, ()> {
         self.appender.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn wait(&self, d: std::time::Duration) {
+    #[doc(hidden)]
+    pub fn wait(&self, d: std::time::Duration) {
         let g = self.wake.lock().unwrap_or_else(|e| e.into_inner());
         let _ = self.wake_cv.wait_timeout(g, d);
     }
@@ -94,7 +98,8 @@ pub fn basic_filter_from_scripts<'a>(
 }
 
 /// GCS-encode a basic filter keyed by `block_hash` (internal byte order).
-fn encode_basic_filter<'a>(
+#[doc(hidden)]
+pub fn encode_basic_filter<'a>(
     block_hash: &[u8; 32],
     elements: impl Iterator<Item = &'a [u8]>,
 ) -> Result<BlockFilter, QueryError> {
@@ -177,7 +182,11 @@ impl Query {
         Ok(())
     }
 
-    fn trim_block_filters_to_best_chain(&self, table: &BlockFilterTable) -> Result<(), QueryError> {
+    #[doc(hidden)]
+    pub fn trim_block_filters_to_best_chain(
+        &self,
+        table: &BlockFilterTable,
+    ) -> Result<(), QueryError> {
         table.truncate_through(self.tip_height())?;
         let was = table.next_height().0;
         let mut keep = was.checked_sub(1);
@@ -197,7 +206,8 @@ impl Query {
         Ok(())
     }
 
-    fn block_filter_table(&self) -> Option<&BlockFilterTable> {
+    #[doc(hidden)]
+    pub fn block_filter_table(&self) -> Option<&BlockFilterTable> {
         if self.block_filter_enabled() {
             self.block_filters.get()
         } else {
@@ -257,8 +267,9 @@ impl Query {
         )))
     }
 
-    #[cfg(test)]
-    fn basic_filter_from_wire_block(
+    #[cfg(debug_assertions)]
+    #[doc(hidden)]
+    pub fn basic_filter_from_wire_block(
         &self,
         block: &Block,
     ) -> Result<(Vec<u8>, FilterHeader), QueryError> {
@@ -269,7 +280,8 @@ impl Query {
         Ok((filter.content.clone(), header))
     }
 
-    fn basic_filter_content(
+    #[doc(hidden)]
+    pub fn basic_filter_content(
         &self,
         block: &Block,
         spent: &[Vec<u8>],
@@ -287,7 +299,11 @@ impl Query {
     /// Header of `prev_hash`. Zeros are the genesis prev-header. A sealed
     /// best-chain block is that row. A stale block is rebuilt back to the
     /// best-chain fork point, and only when that fork point is sealed.
-    fn parent_basic_filter_header(&self, prev_hash: &[u8; 32]) -> Result<FilterHeader, QueryError> {
+    #[doc(hidden)]
+    pub fn parent_basic_filter_header(
+        &self,
+        prev_hash: &[u8; 32],
+    ) -> Result<FilterHeader, QueryError> {
         if *prev_hash == [0u8; 32] {
             return Ok(FilterHeader::from_byte_array([0u8; 32]));
         }
@@ -324,7 +340,8 @@ impl Query {
         Ok(header)
     }
 
-    fn header_prev_hash(&self, hash: &[u8; 32]) -> Result<Option<[u8; 32]>, QueryError> {
+    #[doc(hidden)]
+    pub fn header_prev_hash(&self, hash: &[u8; 32]) -> Result<Option<[u8; 32]>, QueryError> {
         let Some((_, rec)) = self.get_header_by_hash(hash)? else {
             return Ok(None);
         };
@@ -334,20 +351,23 @@ impl Query {
         Ok(Some(self.get_header(rec.prev_fk)?.hash))
     }
 
-    fn prev_header_hash(&self, hash: &[u8; 32]) -> Result<[u8; 32], QueryError> {
+    #[doc(hidden)]
+    pub fn prev_header_hash(&self, hash: &[u8; 32]) -> Result<[u8; 32], QueryError> {
         self.header_prev_hash(hash)?.ok_or(StoreError::Corrupt(
             "invariant: blockfilter parent header missing",
         ))
     }
 
-    fn block_body_for_filter(&self, hash: &[u8; 32]) -> Result<Option<Block>, QueryError> {
+    #[doc(hidden)]
+    pub fn block_body_for_filter(&self, hash: &[u8; 32]) -> Result<Option<Block>, QueryError> {
         if let Some(h) = self.height_of_hash(hash)? {
             return Ok(Some(self.reconstruct_block_at_height(h)?));
         }
         self.reconstruct_archived_block(hash)
     }
 
-    fn spent_scripts(&self, block: &Block) -> Result<Vec<Vec<u8>>, QueryError> {
+    #[doc(hidden)]
+    pub fn spent_scripts(&self, block: &Block) -> Result<Vec<Vec<u8>>, QueryError> {
         let mut spent = Vec::new();
         for tx in &block.txdata {
             for inp in &tx.input {
@@ -419,7 +439,8 @@ impl Query {
         Some(self.index_released_through_height()?.min(tip))
     }
 
-    fn commit_basic_filters(
+    #[doc(hidden)]
+    pub fn commit_basic_filters(
         &self,
         table: &BlockFilterTable,
         start: u32,
@@ -501,54 +522,5 @@ impl Query {
             Some(t) => Ok(t.truncate_through(self.tip_height())?),
             None => Ok(()),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use bitcoin::absolute::LockTime;
-    use bitcoin::block::{Header, Version as BlockVersion};
-    use bitcoin::hashes::Hash;
-    use bitcoin::transaction::Version;
-    use bitcoin::{
-        Amount, Block, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, Witness,
-    };
-
-    #[test]
-    fn wire_filter_missing_prevout_is_corrupt() {
-        let (_dir, q) = crate::testutil::tiny_query_labeled("filter-missing-prevout");
-        let spend = Transaction {
-            version: Version::ONE,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint {
-                    txid: Txid::from_byte_array([0x7a; 32]),
-                    vout: 1,
-                },
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::new(),
-            }],
-            output: vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let block = Block {
-            header: Header {
-                version: BlockVersion::ONE,
-                prev_blockhash: bitcoin::BlockHash::from_byte_array([0; 32]),
-                merkle_root: bitcoin::TxMerkleNode::from_byte_array([0; 32]),
-                time: 2,
-                bits: bitcoin::CompactTarget::from_consensus(0x207fffff),
-                nonce: 0,
-            },
-            txdata: vec![spend],
-        };
-        let err = q.basic_filter_from_wire_block(&block).unwrap_err();
-        assert!(
-            err.to_string().contains("blockfilter prevout missing"),
-            "{err}"
-        );
     }
 }

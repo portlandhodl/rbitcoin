@@ -1,7 +1,8 @@
 # rbitcoin-net
 
-P2P and IBD. Depends on query, store, consensus, and mempool.
-`rbitcoin-node` owns the process; this crate owns the peer and confirm pipeline.
+P2P, tip follow, and transaction relay. Depends on query, store, consensus, and mempool.
+Initial block download lives in `rbitcoin-ibd`, which depends on this crate.
+`rbitcoin-node` owns the process.
 
 ## Read first
 
@@ -17,12 +18,12 @@ Open the row that matches the change. Leave the other owners closed.
 
 ## Where
 
-- IBD: `src/ibd/` (`assign`, `body`, `path`, `perf_log`)
+- IBD: `crates/rbitcoin-ibd` (`assign`, `body`, `path`, `perf_log`)
 - Tip: `src/chain.rs`, `src/tip_accept.rs`
 - Relay: `src/tx_relay.rs`, `src/peers.rs`
 
 ## Verify
 
-`cargo test -p rbitcoin-net --lib`
+`cargo test -p rbitcoin-net --test suite`
 
 Core functional (labeled job only): [`.agents/skills/core-functional/SKILL.md`](../../.agents/skills/core-functional/SKILL.md).

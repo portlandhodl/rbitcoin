@@ -12,24 +12,33 @@ use rbitcoin_store::{HeaderRecord, TxStatRow};
 use serde_json::{json, Map, Value};
 
 /// Weight percentiles reported by `getblockstats` (10 / 25 / 50 / 75 / 90).
-const PERCENTILES: [i64; 5] = [10, 25, 50, 75, 90];
+#[doc(hidden)]
+pub const PERCENTILES: [i64; 5] = [10, 25, 50, 75, 90];
 
-const HELP: &str = "getblockstats hash_or_height ( stats )";
+#[doc(hidden)]
+pub const HELP: &str = "getblockstats hash_or_height ( stats )";
 
 /// Core `CScript::IsUnspendable`: leading `OP_RETURN`, or over `MAX_SCRIPT_SIZE`.
 pub fn is_unspendable(script: &[u8]) -> bool {
     rbitcoin_consensus::policy::is_unspendable(script)
 }
 
-struct StampedExtras {
-    total_out: i64,
-    spendable_outs: i64,
-    n_ins: Vec<u32>,
+#[doc(hidden)]
+pub struct StampedExtras {
+    pub total_out: i64,
+    pub spendable_outs: i64,
+    pub n_ins: Vec<u32>,
 }
 
 /// Outputs Core counts in `utxo_increase_actual`: not height 0, not a
 /// BIP30-repeat coinbase, and not an unspendable script.
-fn output_enters_utxo_set(height: u32, hash: &[u8; 32], is_coinbase: bool, script: &[u8]) -> bool {
+#[doc(hidden)]
+pub fn output_enters_utxo_set(
+    height: u32,
+    hash: &[u8; 32],
+    is_coinbase: bool,
+    script: &[u8],
+) -> bool {
     if height == 0 {
         return false;
     }
@@ -124,7 +133,8 @@ impl BlockStats {
         Value::Object(self.to_map())
     }
 
-    fn to_map(&self) -> Map<String, Value> {
+    #[doc(hidden)]
+    pub fn to_map(&self) -> Map<String, Value> {
         let mut m = Map::new();
         m.insert("avgfee".into(), json!(self.avgfee));
         m.insert("avgfeerate".into(), json!(self.avgfeerate));
@@ -164,7 +174,8 @@ impl BlockStats {
         m
     }
 
-    fn select(&self, stats: &[String]) -> Result<Value, Value> {
+    #[doc(hidden)]
+    pub fn select(&self, stats: &[String]) -> Result<Value, Value> {
         if stats.is_empty() {
             return Ok(self.to_json());
         }
@@ -319,7 +330,8 @@ pub fn compute_block_stats(
     })
 }
 
-fn stats_from_txstat(
+#[doc(hidden)]
+pub fn stats_from_txstat(
     height: u32,
     rec: &HeaderRecord,
     mediantime: u32,
@@ -432,7 +444,8 @@ fn stats_from_txstat(
     }
 }
 
-fn spendable_output_count(
+#[doc(hidden)]
+pub fn spendable_output_count(
     query: &rbitcoin_query::Query,
     height: u32,
     block_hash: &[u8; 32],
@@ -450,11 +463,13 @@ fn spendable_output_count(
     Ok(n)
 }
 
-fn help_err() -> Value {
+#[doc(hidden)]
+pub fn help_err() -> Value {
     rpc_error(ERR_MISC, HELP)
 }
 
-fn parse_stats(params: &RpcParams) -> Result<Vec<String>, Value> {
+#[doc(hidden)]
+pub fn parse_stats(params: &RpcParams) -> Result<Vec<String>, Value> {
     match params.get(1, "stats") {
         None | Some(Value::Null) => Ok(Vec::new()),
         Some(Value::Array(a)) => {
@@ -474,12 +489,14 @@ fn parse_stats(params: &RpcParams) -> Result<Vec<String>, Value> {
     }
 }
 
-enum HashOrHeight {
+#[doc(hidden)]
+pub enum HashOrHeight {
     Height(i64),
     Hash([u8; 32]),
 }
 
-fn parse_hash_or_height(v: &Value) -> Result<HashOrHeight, Value> {
+#[doc(hidden)]
+pub fn parse_hash_or_height(v: &Value) -> Result<HashOrHeight, Value> {
     if let Some(n) = v.as_i64() {
         return Ok(HashOrHeight::Height(n));
     }
@@ -497,11 +514,13 @@ fn parse_hash_or_height(v: &Value) -> Result<HashOrHeight, Value> {
     ))
 }
 
-type PrevoutMap = std::collections::HashMap<OutPoint, TxOut>;
+#[doc(hidden)]
+pub type PrevoutMap = std::collections::HashMap<OutPoint, TxOut>;
 
 /// Every non-coinbase input of a connected block resolves: in-block parents
 /// from the block, the rest through the spender's `input.body` edges.
-fn prevout_map_for_block(
+#[doc(hidden)]
+pub fn prevout_map_for_block(
     ctx: &RpcContext,
     height: Height,
     block: &Block,
@@ -566,7 +585,8 @@ fn prevout_map_for_block(
     Ok(map)
 }
 
-fn stats_for_stamped(
+#[doc(hidden)]
+pub fn stats_for_stamped(
     ctx: &RpcContext,
     height: Height,
     stamped: &StampedTxstatBlock,
@@ -615,7 +635,8 @@ fn stats_for_stamped(
     ))
 }
 
-fn stats_for_connected(
+#[doc(hidden)]
+pub fn stats_for_connected(
     ctx: &RpcContext,
     height: Height,
     block: &Block,
@@ -704,52 +725,4 @@ pub fn getblockstats(ctx: &RpcContext, params: &RpcParams) -> Result<Value, Valu
     let _ = ctx.query.stamp_txstat_from_block(height, &block);
     let stats = stats_for_connected(ctx, height, &block, &parents)?;
     stats.select(&want)
-}
-
-#[cfg(test)]
-mod unit_tests {
-    use super::*;
-
-    #[test]
-    fn truncated_median_even_averages_two_middles() {
-        assert_eq!(truncated_median(vec![]), 0);
-        assert_eq!(truncated_median(vec![3]), 3);
-        assert_eq!(truncated_median(vec![1, 2, 3]), 2);
-        assert_eq!(truncated_median(vec![1, 2, 3, 4]), 2);
-        // rpc_getblockstats.py height 103: (2880 + 36600) / 2
-        assert_eq!(truncated_median(vec![2880, 2880, 36600, 43200]), 19740);
-    }
-
-    #[test]
-    fn percentiles_match_core_rpc_tests() {
-        let mut scores = Vec::new();
-        for _ in 0..100 {
-            scores.push((1, 1));
-        }
-        for _ in 0..100 {
-            scores.push((2, 1));
-        }
-        assert_eq!(percentiles_by_weight(scores, 200), [1, 1, 1, 2, 2]);
-
-        let scores = vec![(1, 9), (2, 16), (4, 50), (5, 10), (9, 15)];
-        assert_eq!(percentiles_by_weight(scores, 100), [2, 2, 4, 4, 9]);
-
-        let scores = vec![(1, 9), (2, 11), (2, 5), (4, 50), (5, 10), (9, 15)];
-        assert_eq!(percentiles_by_weight(scores, 100), [2, 2, 4, 4, 9]);
-
-        let scores = vec![(1, 100), (2, 1), (3, 1), (3, 1), (999999, 1)];
-        assert_eq!(percentiles_by_weight(scores, 104), [1, 1, 1, 1, 1]);
-    }
-
-    #[test]
-    fn op_return_is_unspendable() {
-        let script = ScriptBuf::from_bytes({
-            let mut s = vec![0x41];
-            s.extend_from_slice(&[0u8; 65]);
-            s.push(0xac);
-            s
-        });
-        assert!(!is_unspendable(script.as_bytes()));
-        assert!(is_unspendable(&[0x6a, 0x01, 0x21]));
-    }
 }

@@ -63,7 +63,8 @@ pub struct BinaryFuse8 {
 }
 
 #[inline]
-fn splitmix64(seed: &mut u64) -> u64 {
+#[doc(hidden)]
+pub fn splitmix64(seed: &mut u64) -> u64 {
     *seed = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
     let mut z = *seed;
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -72,7 +73,8 @@ fn splitmix64(seed: &mut u64) -> u64 {
 }
 
 #[inline]
-fn mix64(mut k: u64) -> u64 {
+#[doc(hidden)]
+pub fn mix64(mut k: u64) -> u64 {
     k ^= k >> 33;
     k = k.wrapping_mul(0xff51_afd7_ed55_8ccd);
     k ^= k >> 33;
@@ -82,17 +84,20 @@ fn mix64(mut k: u64) -> u64 {
 }
 
 #[inline]
-fn mix(key: u64, seed: u64) -> u64 {
+#[doc(hidden)]
+pub fn mix(key: u64, seed: u64) -> u64 {
     mix64(key.wrapping_add(seed))
 }
 
 #[inline]
-fn fingerprint(hash: u64) -> u64 {
+#[doc(hidden)]
+pub fn fingerprint(hash: u64) -> u64 {
     hash ^ (hash >> 32)
 }
 
 #[inline]
-fn segment_length(arity: u32, size: u32) -> u32 {
+#[doc(hidden)]
+pub fn segment_length(arity: u32, size: u32) -> u32 {
     if size == 0 {
         return 4;
     }
@@ -103,7 +108,8 @@ fn segment_length(arity: u32, size: u32) -> u32 {
 }
 
 #[inline]
-fn size_factor(arity: u32, size: u32) -> f64 {
+#[doc(hidden)]
+pub fn size_factor(arity: u32, size: u32) -> f64 {
     match arity {
         3 => (1.125_f64).max(0.875 + 0.25 * 1_000_000_f64.ln() / (size as f64).ln()),
         _ => 2.0,
@@ -111,7 +117,8 @@ fn size_factor(arity: u32, size: u32) -> f64 {
 }
 
 #[inline]
-const fn hash_of_hash(
+#[doc(hidden)]
+pub const fn hash_of_hash(
     hash: u64,
     segment_length: u32,
     segment_length_mask: u32,
@@ -127,7 +134,8 @@ const fn hash_of_hash(
 }
 
 #[inline]
-const fn mod3(x: u8) -> u8 {
+#[doc(hidden)]
+pub const fn mod3(x: u8) -> u8 {
     if x > 2 {
         x - 3
     } else {
@@ -135,15 +143,17 @@ const fn mod3(x: u8) -> u8 {
     }
 }
 
-struct Fuse8Geom {
-    segment_length: u32,
-    segment_length_mask: u32,
-    segment_count_length: u32,
-    fp_array_len: usize,
-    block_bits: u32,
+#[doc(hidden)]
+pub struct Fuse8Geom {
+    pub segment_length: u32,
+    pub segment_length_mask: u32,
+    pub segment_count_length: u32,
+    pub fp_array_len: usize,
+    pub block_bits: u32,
 }
 
-fn fuse8_geom(size: usize) -> Fuse8Geom {
+#[doc(hidden)]
+pub fn fuse8_geom(size: usize) -> Fuse8Geom {
     const ARITY: u32 = 3;
     let segment_length: u32 = segment_length(ARITY, size as u32).min(262_144);
     let segment_length_mask: u32 = segment_length - 1;
@@ -176,18 +186,20 @@ fn fuse8_geom(size: usize) -> Fuse8Geom {
     }
 }
 
-struct Fuse8Peel<'a> {
-    alone: &'a mut [u32],
-    t2count: &'a mut [u8],
-    t2hash: &'a mut [u64],
-    reverse_h: &'a mut [u8],
-    reverse_order: &'a mut [u64],
-    h012: &'a mut [u32; 6],
-    capacity: usize,
-    geom: &'a Fuse8Geom,
+#[doc(hidden)]
+pub struct Fuse8Peel<'a> {
+    pub alone: &'a mut [u32],
+    pub t2count: &'a mut [u8],
+    pub t2hash: &'a mut [u64],
+    pub reverse_h: &'a mut [u8],
+    pub reverse_order: &'a mut [u64],
+    pub h012: &'a mut [u32; 6],
+    pub capacity: usize,
+    pub geom: &'a Fuse8Geom,
 }
 
-fn fuse8_peel_stack(p: &mut Fuse8Peel<'_>) -> usize {
+#[doc(hidden)]
+pub fn fuse8_peel_stack(p: &mut Fuse8Peel<'_>) -> usize {
     let mut qsize = 0usize;
     for i in 0..p.capacity {
         p.alone[qsize] = i as u32;
@@ -415,43 +427,5 @@ impl BinaryFuse8 {
 
     pub fn fingerprint_heap_bytes(&self) -> usize {
         self.fingerprints.heap_bytes()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn single_key_and_small_set_no_false_negatives() {
-        let one = BinaryFuse8::try_from_keys(&[0x1122_3344_5566_7788]).unwrap();
-        assert!(one.contains(0x1122_3344_5566_7788));
-        assert!(one.len() > 0);
-
-        let keys: Vec<u64> = (0u64..50)
-            .map(|i| i.wrapping_mul(0x9e37_79b9_7f4a_7c15))
-            .collect();
-        let f = BinaryFuse8::try_from_keys(&keys).unwrap();
-        for &k in &keys {
-            assert!(f.contains(k), "FN on {k:#x}");
-        }
-        // Re-encode-style field invariants used by fuse8_filter decode.
-        assert_eq!(f.segment_length_mask, f.segment_length.saturating_sub(1));
-        assert!(f.segment_length >= 4);
-        assert!(f.segment_count_length >= f.segment_length);
-    }
-
-    #[test]
-    fn empty_keys_constructs_via_caller_dummy_only() {
-        // size==0 geometry: empty reverse_order / zero stack still builds.
-        assert!(BinaryFuse8::try_from_keys(&[]).is_ok());
-        let g0 = fuse8_geom(0);
-        assert_eq!(g0.segment_length, 4);
-        assert_eq!(g0.segment_length_mask, 3);
-        let g1 = fuse8_geom(1);
-        assert!(g1.fp_array_len > 0);
-        let g50 = fuse8_geom(50);
-        assert!(g50.fp_array_len > g1.fp_array_len);
-        assert!(g50.block_bits >= 1);
     }
 }

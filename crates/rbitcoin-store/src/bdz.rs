@@ -10,21 +10,34 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const MAGIC2: &[u8; 4] = b"BDZ2";
-const MAGIC3: &[u8; 4] = b"BDZ3";
-const VERSION: u32 = 1;
-const GAMMA_NUM: u64 = 123;
-const GAMMA_DEN: u64 = 100;
-const MAX_SEED: u32 = 256;
-const HEADER_LEN2: u64 = 32;
-const HEADER_LEN3: u64 = 32;
-const G_PAGE_BYTES: usize = 4096;
-const G_BITS_WORDS: u32 = 32;
-const COMPACT_G_BITS: u32 = 2;
-const RANK_SUPER_BITS: u32 = 512;
+#[doc(hidden)]
+pub const MAGIC2: &[u8; 4] = b"BDZ2";
+#[doc(hidden)]
+pub const MAGIC3: &[u8; 4] = b"BDZ3";
+#[doc(hidden)]
+pub const VERSION: u32 = 1;
+#[doc(hidden)]
+pub const GAMMA_NUM: u64 = 123;
+#[doc(hidden)]
+pub const GAMMA_DEN: u64 = 100;
+#[doc(hidden)]
+pub const MAX_SEED: u32 = 256;
+#[doc(hidden)]
+pub const HEADER_LEN2: u64 = 32;
+#[doc(hidden)]
+pub const HEADER_LEN3: u64 = 32;
+#[doc(hidden)]
+pub const G_PAGE_BYTES: usize = 4096;
+#[doc(hidden)]
+pub const G_BITS_WORDS: u32 = 32;
+#[doc(hidden)]
+pub const COMPACT_G_BITS: u32 = 2;
+#[doc(hidden)]
+pub const RANK_SUPER_BITS: u32 = 512;
 
 #[derive(Debug)]
-enum GStore {
+#[doc(hidden)]
+pub enum GStore {
     Ram(Box<[u32]>),
     Fd {
         file: File,
@@ -36,7 +49,8 @@ enum GStore {
     },
 }
 
-enum OccBits {
+#[doc(hidden)]
+pub enum OccBits {
     Words(Box<[u64]>),
     Map {
         map: ReadonlyMap,
@@ -59,24 +73,26 @@ impl std::fmt::Debug for OccBits {
 }
 
 #[derive(Debug)]
-struct CompactRank {
-    m: u32,
-    occ: OccBits,
-    supers: Box<[u32]>,
+#[doc(hidden)]
+pub struct CompactRank {
+    pub m: u32,
+    pub occ: OccBits,
+    pub supers: Box<[u32]>,
 }
 
 #[derive(Debug)]
 pub struct BdzMphf {
-    n: u32,
-    m: u32,
-    seed: u64,
-    modulus: u32,
-    g: GStore,
-    compact: Option<CompactRank>,
+    pub n: u32,
+    pub m: u32,
+    pub seed: u64,
+    pub modulus: u32,
+    pub g: GStore,
+    pub compact: Option<CompactRank>,
 }
 
 #[inline]
-fn splitmix64(seed: &mut u64) -> u64 {
+#[doc(hidden)]
+pub fn splitmix64(seed: &mut u64) -> u64 {
     *seed = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
     let mut z = *seed;
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -85,7 +101,8 @@ fn splitmix64(seed: &mut u64) -> u64 {
 }
 
 #[inline]
-fn mix64(mut k: u64) -> u64 {
+#[doc(hidden)]
+pub fn mix64(mut k: u64) -> u64 {
     k ^= k >> 33;
     k = k.wrapping_mul(0xff51_afd7_ed55_8ccd);
     k ^= k >> 33;
@@ -95,7 +112,8 @@ fn mix64(mut k: u64) -> u64 {
 }
 
 #[inline]
-fn hash3(key: u64, seed: u64, m: u32) -> [u32; 3] {
+#[doc(hidden)]
+pub fn hash3(key: u64, seed: u64, m: u32) -> [u32; 3] {
     let h = mix64(key.wrapping_add(seed));
     let m = m as u64;
     let a = ((h as u128 * m as u128) >> 64) as u32;
@@ -115,7 +133,8 @@ fn hash3(key: u64, seed: u64, m: u32) -> [u32; 3] {
 }
 
 #[inline]
-fn hash3_partite(key: u64, seed: u64, m: u32) -> [u32; 3] {
+#[doc(hidden)]
+pub fn hash3_partite(key: u64, seed: u64, m: u32) -> [u32; 3] {
     let part = m / 3;
     let h = mix64(key.wrapping_add(seed));
     let p = part as u64;
@@ -126,7 +145,8 @@ fn hash3_partite(key: u64, seed: u64, m: u32) -> [u32; 3] {
 }
 
 #[inline]
-fn hash_verts(key: u64, seed: u64, m: u32, partite: bool) -> [u32; 3] {
+#[doc(hidden)]
+pub fn hash_verts(key: u64, seed: u64, m: u32, partite: bool) -> [u32; 3] {
     if partite {
         hash3_partite(key, seed, m)
     } else {
@@ -139,7 +159,7 @@ impl BdzMphf {
         self.n
     }
 
-    #[cfg(test)]
+    #[cfg(debug_assertions)]
     pub fn modulus(&self) -> u32 {
         self.modulus
     }
@@ -162,7 +182,7 @@ impl BdzMphf {
         occ + rank.supers.len() * 4
     }
 
-    #[cfg(test)]
+    #[cfg(debug_assertions)]
     pub fn vertices(&self, key: u64) -> [u32; 3] {
         if self.n <= 1 {
             return [0, 0, 0];
@@ -174,7 +194,7 @@ impl BdzMphf {
         Ok(self.index_batch(&[key], &mut crate::IoCtx::none())?[0])
     }
 
-    #[cfg(test)]
+    #[cfg(debug_assertions)]
     pub fn take_g_page_preads(&self) -> u64 {
         match &self.g {
             GStore::Fd { page_preads, .. } => page_preads.swap(0, Ordering::Relaxed),
@@ -205,7 +225,8 @@ impl BdzMphf {
         }
     }
 
-    fn index_from_g(&self, g: &[u32], key: u64) -> u32 {
+    #[doc(hidden)]
+    pub fn index_from_g(&self, g: &[u32], key: u64) -> u32 {
         let partite = self.compact.is_some();
         let [a, b, c] = hash_verts(key, self.seed, self.m, partite);
         let ga = g[a as usize];
@@ -214,7 +235,8 @@ impl BdzMphf {
         self.finish_index(ga, gb, gc, [a, b, c])
     }
 
-    fn finish_index(&self, ga: u32, gb: u32, gc: u32, verts: [u32; 3]) -> u32 {
+    #[doc(hidden)]
+    pub fn finish_index(&self, ga: u32, gb: u32, gc: u32, verts: [u32; 3]) -> u32 {
         if let Some(rank) = self.compact.as_ref() {
             let i = (ga.wrapping_add(gb).wrapping_add(gc) % 3) as usize;
             let v = verts[i];
@@ -224,7 +246,8 @@ impl BdzMphf {
         }
     }
 
-    fn index_batch_fd(
+    #[doc(hidden)]
+    pub fn index_batch_fd(
         &self,
         keys: &[u64],
         ctx: &mut crate::IoCtx<'_>,
@@ -276,7 +299,8 @@ impl BdzMphf {
             .collect())
     }
 
-    fn one_key_index(&self) -> Result<u32, StoreError> {
+    #[doc(hidden)]
+    pub fn one_key_index(&self) -> Result<u32, StoreError> {
         if self.compact.is_some() {
             return Ok(0);
         }
@@ -302,7 +326,7 @@ impl BdzMphf {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(debug_assertions)]
     pub fn build(keys: &[u64]) -> Result<Self, StoreError> {
         let n = keys.len() as u32;
         let ranks: Vec<u32> = (0..n).collect();
@@ -332,7 +356,8 @@ impl BdzMphf {
         Self::build_from_ranks(keys, values, modulus)
     }
 
-    fn build_from_ranks(keys: &[u64], ranks: &[u32], modulus: u32) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn build_from_ranks(keys: &[u64], ranks: &[u32], modulus: u32) -> Result<Self, StoreError> {
         let n = keys.len() as u32;
         if n == 0 {
             return Ok(Self {
@@ -596,7 +621,13 @@ impl BdzMphf {
     }
 }
 
-fn pread_exact(file: &File, path: &Path, offset: u64, buf: &mut [u8]) -> Result<(), StoreError> {
+#[doc(hidden)]
+pub fn pread_exact(
+    file: &File,
+    path: &Path,
+    offset: u64,
+    buf: &mut [u8],
+) -> Result<(), StoreError> {
     let h = IoHandle::from_file(file);
     let mut done = 0usize;
     while done < buf.len() {
@@ -612,7 +643,8 @@ fn pread_exact(file: &File, path: &Path, offset: u64, buf: &mut [u8]) -> Result<
     Ok(())
 }
 
-fn g_page_need(n_bytes: u64, page: u32) -> usize {
+#[doc(hidden)]
+pub fn g_page_need(n_bytes: u64, page: u32) -> usize {
     let page_base = u64::from(page) * G_PAGE_BYTES as u64;
     if page_base >= n_bytes {
         return 0;
@@ -620,7 +652,8 @@ fn g_page_need(n_bytes: u64, page: u32) -> usize {
     ((n_bytes - page_base) as usize).min(G_PAGE_BYTES)
 }
 
-fn load_g_page(
+#[doc(hidden)]
+pub fn load_g_page(
     file: &File,
     path: &Path,
     g_off: u64,
@@ -642,7 +675,8 @@ fn load_g_page(
 }
 
 #[allow(clippy::too_many_arguments)] // IO/session args stay unbundled
-fn stream_or_load_pages(
+#[doc(hidden)]
+pub fn stream_or_load_pages(
     file: &File,
     path: &Path,
     off: u64,
@@ -676,7 +710,8 @@ fn stream_or_load_pages(
 }
 
 #[allow(clippy::too_many_arguments)] // IO/session args stay unbundled
-fn stream_g_pages(
+#[doc(hidden)]
+pub fn stream_g_pages(
     session: &mut crate::uring_session::UringSession,
     file: &File,
     path: &Path,
@@ -778,19 +813,22 @@ fn stream_g_pages(
     run
 }
 
-fn g_bits_for_modulus(modulus: u32) -> u32 {
+#[doc(hidden)]
+pub fn g_bits_for_modulus(modulus: u32) -> u32 {
     if modulus <= 1 {
         return 1;
     }
     32 - (modulus - 1).leading_zeros()
 }
 
-fn packed_g_bytes(n_verts: u32, g_bits: u32) -> u64 {
+#[doc(hidden)]
+pub fn packed_g_bytes(n_verts: u32, g_bits: u32) -> u64 {
     let bits = u64::from(n_verts) * u64::from(g_bits);
     bits.div_ceil(8)
 }
 
-fn pack_g_write<W: Write>(g: &[u32], g_bits: u32, w: &mut W) -> std::io::Result<()> {
+#[doc(hidden)]
+pub fn pack_g_write<W: Write>(g: &[u32], g_bits: u32, w: &mut W) -> std::io::Result<()> {
     const PAGE: usize = 4096;
     let mask = if g_bits == 32 {
         u32::MAX
@@ -825,14 +863,16 @@ fn pack_g_write<W: Write>(g: &[u32], g_bits: u32, w: &mut W) -> std::io::Result<
     Ok(())
 }
 
-#[cfg(test)]
-fn pack_g(g: &[u32], g_bits: u32) -> Vec<u8> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn pack_g(g: &[u32], g_bits: u32) -> Vec<u8> {
     let mut out = Vec::with_capacity(packed_g_bytes(g.len() as u32, g_bits) as usize);
     pack_g_write(g, g_bits, &mut out).unwrap();
     out
 }
 
-fn unpack_g_at(buf: &[u8], v: u32, g_bits: u32) -> u32 {
+#[doc(hidden)]
+pub fn unpack_g_at(buf: &[u8], v: u32, g_bits: u32) -> u32 {
     let start = u64::from(v) * u64::from(g_bits);
     let byte = (start / 8) as usize;
     if byte >= buf.len() {
@@ -841,8 +881,9 @@ fn unpack_g_at(buf: &[u8], v: u32, g_bits: u32) -> u32 {
     extract_g_window(&buf[byte..], None, 0, (start % 8) as u32, g_bits)
 }
 
-#[cfg(test)]
-fn unpack_g_bits_from_page_window(
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn unpack_g_bits_from_page_window(
     page: &[u8],
     next: Option<&[u8]>,
     page_id: u32,
@@ -864,7 +905,14 @@ fn unpack_g_bits_from_page_window(
     )
 }
 
-fn extract_g_window(page: &[u8], next: Option<&[u8]>, off: usize, rem: u32, g_bits: u32) -> u32 {
+#[doc(hidden)]
+pub fn extract_g_window(
+    page: &[u8],
+    next: Option<&[u8]>,
+    off: usize,
+    rem: u32,
+    g_bits: u32,
+) -> u32 {
     let last = rem.saturating_add(g_bits.saturating_sub(1)) / 8;
     let need = (last as usize + 1).min(8);
     let mut acc = 0u64;
@@ -889,15 +937,17 @@ fn extract_g_window(page: &[u8], next: Option<&[u8]>, off: usize, rem: u32, g_bi
 }
 
 #[derive(Clone, Copy)]
-struct GExtract {
-    ki: u32,
-    slot: u8,
-    off: u16,
-    rem: u8,
-    start_page: u32,
+#[doc(hidden)]
+pub struct GExtract {
+    pub ki: u32,
+    pub slot: u8,
+    pub off: u16,
+    pub rem: u8,
+    pub start_page: u32,
 }
 
-fn g_extract(ki: u32, slot: u8, vert: u32, g_bits: u32) -> (u32, GExtract) {
+#[doc(hidden)]
+pub fn g_extract(ki: u32, slot: u8, vert: u32, g_bits: u32) -> (u32, GExtract) {
     let start = u64::from(vert) * u64::from(g_bits);
     let start_byte = start / 8;
     let start_page = (start_byte / G_PAGE_BYTES as u64) as u32;
@@ -915,17 +965,19 @@ fn g_extract(ki: u32, slot: u8, vert: u32, g_bits: u32) -> (u32, GExtract) {
     )
 }
 
-struct GPageScatter {
-    g_bits: u32,
-    bucket_of: Vec<u32>,
-    buckets: Vec<Vec<GExtract>>,
-    tails: Vec<Option<(u16, [u8; 8])>>,
-    pending: Vec<Vec<(GExtract, [u8; 8])>>,
-    words: Vec<[u32; 3]>,
+#[doc(hidden)]
+pub struct GPageScatter {
+    pub g_bits: u32,
+    pub bucket_of: Vec<u32>,
+    pub buckets: Vec<Vec<GExtract>>,
+    pub tails: Vec<Option<(u16, [u8; 8])>>,
+    pub pending: Vec<Vec<(GExtract, [u8; 8])>>,
+    pub words: Vec<[u32; 3]>,
 }
 
 impl GPageScatter {
-    fn from_verts(g_bits: u32, verts: &[[u32; 3]], page_ids: &[u32]) -> Self {
+    #[doc(hidden)]
+    pub fn from_verts(g_bits: u32, verts: &[[u32; 3]], page_ids: &[u32]) -> Self {
         let max_p = page_ids.iter().copied().max().unwrap_or(0) as usize;
         let mut bucket_of = vec![u32::MAX; max_p + 1];
         for (i, &p) in page_ids.iter().enumerate() {
@@ -954,11 +1006,13 @@ impl GPageScatter {
         }
     }
 
-    fn put(&mut self, e: GExtract, val: u32) {
+    #[doc(hidden)]
+    pub fn put(&mut self, e: GExtract, val: u32) {
         self.words[e.ki as usize][e.slot as usize] = val;
     }
 
-    fn fill(&mut self, page: u32, buf: &[u8]) {
+    #[doc(hidden)]
+    pub fn fill(&mut self, page: u32, buf: &[u8]) {
         let Some(&bi32) = self.bucket_of.get(page as usize) else {
             return;
         };
@@ -1018,7 +1072,8 @@ impl GPageScatter {
     }
 }
 
-fn vertex_pages(v: u32, g_bits: u32) -> impl Iterator<Item = u32> {
+#[doc(hidden)]
+pub fn vertex_pages(v: u32, g_bits: u32) -> impl Iterator<Item = u32> {
     let start = u64::from(v) * u64::from(g_bits);
     let end = start + u64::from(g_bits.saturating_sub(1));
     let p0 = (start / 8 / G_PAGE_BYTES as u64) as u32;
@@ -1026,16 +1081,18 @@ fn vertex_pages(v: u32, g_bits: u32) -> impl Iterator<Item = u32> {
     p0..=p1
 }
 
-#[cfg(test)]
-fn vertex_straddles_page(v: u32, g_bits: u32) -> bool {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn vertex_straddles_page(v: u32, g_bits: u32) -> bool {
     let mut it = vertex_pages(v, g_bits);
     let a = it.next();
     let b = it.next();
     a.is_some() && b.is_some()
 }
 
-#[cfg(test)]
-fn scatter_g_words(g_bits: u32, verts: &[[u32; 3]], pages: &[(u32, &[u8])]) -> Vec<[u32; 3]> {
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn scatter_g_words(g_bits: u32, verts: &[[u32; 3]], pages: &[(u32, &[u8])]) -> Vec<[u32; 3]> {
     let mut page_ids: Vec<u32> = pages.iter().map(|&(p, _)| p).collect();
     page_ids.sort_unstable();
     page_ids.dedup();
@@ -1047,15 +1104,17 @@ fn scatter_g_words(g_bits: u32, verts: &[[u32; 3]], pages: &[(u32, &[u8])]) -> V
 }
 
 #[derive(Default)]
-struct PeelScratch {
-    deg: Vec<u8>,
-    xor_e: Vec<u32>,
-    q: Vec<u32>,
-    order: Vec<(u32, u32)>,
+#[doc(hidden)]
+pub struct PeelScratch {
+    pub deg: Vec<u8>,
+    pub xor_e: Vec<u32>,
+    pub q: Vec<u32>,
+    pub order: Vec<(u32, u32)>,
 }
 
 impl PeelScratch {
-    fn prepare(&mut self, m: usize, n: usize) {
+    #[doc(hidden)]
+    pub fn prepare(&mut self, m: usize, n: usize) {
         self.deg.clear();
         self.deg.resize(m, 0);
         self.xor_e.clear();
@@ -1066,7 +1125,14 @@ impl PeelScratch {
     }
 }
 
-fn peel_order(keys: &[u64], seed: u64, m: u32, scratch: &mut PeelScratch, partite: bool) -> bool {
+#[doc(hidden)]
+pub fn peel_order(
+    keys: &[u64],
+    seed: u64,
+    m: u32,
+    scratch: &mut PeelScratch,
+    partite: bool,
+) -> bool {
     let n = keys.len();
     for (i, &k) in keys.iter().enumerate() {
         let ei = i as u32;
@@ -1111,7 +1177,8 @@ fn peel_order(keys: &[u64], seed: u64, m: u32, scratch: &mut PeelScratch, partit
     scratch.order.len() == n
 }
 
-fn assign_g(
+#[doc(hidden)]
+pub fn assign_g(
     keys: &[u64],
     ranks: &[u32],
     seed: u64,
@@ -1136,7 +1203,8 @@ fn assign_g(
     g
 }
 
-fn compact_vertex_count(n: u32) -> u32 {
+#[doc(hidden)]
+pub fn compact_vertex_count(n: u32) -> u32 {
     let m = (u64::from(n) * GAMMA_NUM)
         .div_ceil(GAMMA_DEN)
         .max(u64::from(n) + 3)
@@ -1145,7 +1213,13 @@ fn compact_vertex_count(n: u32) -> u32 {
     m as u32
 }
 
-fn assign_compact(keys: &[u64], seed: u64, m: u32, order: &[(u32, u32)]) -> (Vec<u32>, Box<[u64]>) {
+#[doc(hidden)]
+pub fn assign_compact(
+    keys: &[u64],
+    seed: u64,
+    m: u32,
+    order: &[(u32, u32)],
+) -> (Vec<u32>, Box<[u64]>) {
     let mut g = vec![0u32; m as usize];
     let mut assigned = vec![false; m as usize];
     let mut occ = vec![0u64; (m as usize).div_ceil(64)];
@@ -1172,26 +1246,31 @@ fn assign_compact(keys: &[u64], seed: u64, m: u32, order: &[(u32, u32)]) -> (Vec
     (g, occ.into_boxed_slice())
 }
 
-fn occ_packed_bytes(m: u32) -> u64 {
+#[doc(hidden)]
+pub fn occ_packed_bytes(m: u32) -> u64 {
     u64::from(m).div_ceil(8)
 }
 
-fn occ_set(occ: &mut [u64], v: u32) {
+#[doc(hidden)]
+pub fn occ_set(occ: &mut [u64], v: u32) {
     occ[(v / 64) as usize] |= 1u64 << (v % 64);
 }
 
-fn write_occ(occ: &[u64], m: u32, w: &mut impl Write) -> std::io::Result<()> {
+#[doc(hidden)]
+pub fn write_occ(occ: &[u64], m: u32, w: &mut impl Write) -> std::io::Result<()> {
     let n = occ_packed_bytes(m) as usize;
     let bytes = u64_words_as_bytes(occ);
     w.write_all(&bytes[..n])
 }
 
-fn u64_words_as_bytes(occ: &[u64]) -> &[u8] {
+#[doc(hidden)]
+pub fn u64_words_as_bytes(occ: &[u64]) -> &[u8] {
     // SAFETY: occupancy bits are the LE byte image of the u64 words.
     unsafe { std::slice::from_raw_parts(occ.as_ptr().cast::<u8>(), occ.len() * 8) }
 }
 
-fn popcount_bits(occ: &[u8], lo: usize, hi: usize) -> u32 {
+#[doc(hidden)]
+pub fn popcount_bits(occ: &[u8], lo: usize, hi: usize) -> u32 {
     if lo >= hi {
         return 0;
     }
@@ -1213,7 +1292,8 @@ fn popcount_bits(occ: &[u8], lo: usize, hi: usize) -> u32 {
     n
 }
 
-fn supers_from_occ_bytes(occ: &[u8], m: u32) -> Box<[u32]> {
+#[doc(hidden)]
+pub fn supers_from_occ_bytes(occ: &[u8], m: u32) -> Box<[u32]> {
     let n_supers = (m as usize).div_ceil(RANK_SUPER_BITS as usize);
     let mut supers = vec![0u32; n_supers + 1];
     let mut acc = 0u32;
@@ -1228,7 +1308,8 @@ fn supers_from_occ_bytes(occ: &[u8], m: u32) -> Box<[u32]> {
 }
 
 impl CompactRank {
-    fn empty() -> Self {
+    #[doc(hidden)]
+    pub fn empty() -> Self {
         Self {
             m: 0,
             occ: OccBits::Words(Box::new([])),
@@ -1236,7 +1317,8 @@ impl CompactRank {
         }
     }
 
-    fn from_occ(occ: Box<[u64]>, m: u32) -> Self {
+    #[doc(hidden)]
+    pub fn from_occ(occ: Box<[u64]>, m: u32) -> Self {
         let supers = supers_from_occ_bytes(u64_words_as_bytes(&occ), m);
         Self {
             m,
@@ -1245,7 +1327,13 @@ impl CompactRank {
         }
     }
 
-    fn from_mapped(map: ReadonlyMap, off: usize, len: usize, m: u32) -> Result<Self, StoreError> {
+    #[doc(hidden)]
+    pub fn from_mapped(
+        map: ReadonlyMap,
+        off: usize,
+        len: usize,
+        m: u32,
+    ) -> Result<Self, StoreError> {
         let bytes = map.as_file_bytes();
         if off.saturating_add(len) > bytes.len() {
             return Err(StoreError::Corrupt("bdz mphf: occ truncated"));
@@ -1262,7 +1350,8 @@ impl CompactRank {
         })
     }
 
-    fn occ_bytes(&self) -> &[u8] {
+    #[doc(hidden)]
+    pub fn occ_bytes(&self) -> &[u8] {
         match &self.occ {
             OccBits::Words(w) => {
                 let n = occ_packed_bytes(self.m) as usize;
@@ -1273,504 +1362,11 @@ impl CompactRank {
         }
     }
 
-    fn rank1(&self, v: u32) -> u32 {
+    #[doc(hidden)]
+    pub fn rank1(&self, v: u32) -> u32 {
         let v = v.min(self.m);
         let si = (v / RANK_SUPER_BITS) as usize;
         let rem_lo = si * RANK_SUPER_BITS as usize;
         self.supers[si] + popcount_bits(self.occ_bytes(), rem_lo, v as usize)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn read_packed_zero_modulus_or_vertices_is_corrupt() {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-bdz-zero-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("z.bdz");
-        let mut hdr = vec![0u8; 32];
-        hdr[0..4].copy_from_slice(b"BDZ2");
-        hdr[4..8].copy_from_slice(&1u32.to_le_bytes());
-        hdr[8..12].copy_from_slice(&2u32.to_le_bytes());
-        hdr[12..16].copy_from_slice(&4u32.to_le_bytes());
-        hdr[16..24].copy_from_slice(&1u64.to_le_bytes());
-        hdr[24..28].copy_from_slice(&0u32.to_le_bytes());
-        hdr[28..32].copy_from_slice(&1u32.to_le_bytes());
-        hdr.extend_from_slice(&[0u8; 8]);
-        std::fs::write(&path, &hdr).unwrap();
-        match BdzMphf::read_packed_from(&path) {
-            Err(StoreError::Corrupt(m)) => assert!(m.contains("modulus"), "{m}"),
-            other => panic!("zero modulus must be Corrupt, got {other:?}"),
-        }
-        hdr[12..16].copy_from_slice(&0u32.to_le_bytes());
-        hdr[24..28].copy_from_slice(&1u32.to_le_bytes());
-        std::fs::write(&path, &hdr).unwrap();
-        match BdzMphf::read_packed_from(&path) {
-            Err(StoreError::Corrupt(m)) => assert!(m.contains("modulus"), "{m}"),
-            other => panic!("zero vertex count must be Corrupt, got {other:?}"),
-        }
-        // n == 1 does not use the modulus. A `>` → `>=` gate would reject it.
-        hdr[8..12].copy_from_slice(&1u32.to_le_bytes());
-        hdr[12..16].copy_from_slice(&0u32.to_le_bytes());
-        hdr[24..28].copy_from_slice(&0u32.to_le_bytes());
-        std::fs::write(&path, &hdr).unwrap();
-        let one = BdzMphf::read_packed_from(&path).expect("n=1 ignores a zero modulus");
-        assert_eq!(one.index(9).unwrap(), one.index(9).unwrap());
-        let zero_mod = BdzMphf {
-            n: 2,
-            m: 4,
-            seed: 1,
-            modulus: 0,
-            g: GStore::Ram(vec![0u32; 4].into_boxed_slice()),
-            compact: None,
-        };
-        match zero_mod.index_batch(&[1], &mut crate::IoCtx::none()) {
-            Err(StoreError::Corrupt(m)) => assert!(m.contains("modulus"), "{m}"),
-            other => panic!("index with modulus 0 must be Corrupt, got {other:?}"),
-        }
-        let zero_m = BdzMphf {
-            n: 2,
-            m: 0,
-            seed: 1,
-            modulus: 1,
-            g: GStore::Ram(vec![0u32; 1].into_boxed_slice()),
-            compact: None,
-        };
-        match zero_m.index_batch(&[1], &mut crate::IoCtx::none()) {
-            Err(StoreError::Corrupt(m)) => assert!(m.contains("modulus"), "{m}"),
-            other => panic!("index with m 0 must be Corrupt, got {other:?}"),
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn bdz_injective_10k() {
-        let keys: Vec<u64> = (0..10_000u64)
-            .map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(7))
-            .collect();
-        let f = BdzMphf::build(&keys).unwrap();
-        let mut seen = vec![false; keys.len()];
-        for &k in &keys {
-            let i = f.index(k).unwrap() as usize;
-            assert!(i < keys.len());
-            assert!(!seen[i], "collision at {i}");
-            seen[i] = true;
-        }
-        assert!(seen.iter().all(|&b| b));
-        let miss = f.index(0xDEAD_BEEF_u64).unwrap();
-        assert!(miss < keys.len() as u32);
-    }
-
-    #[test]
-    fn bdz_injective_2k() {
-        let keys: Vec<u64> = (0..2_000u64)
-            .map(|i| i.wrapping_mul(0xD1B5_4A32_D192_ED03).wrapping_add(11))
-            .collect();
-        let f = BdzMphf::build(&keys).unwrap();
-        let mut seen = vec![false; keys.len()];
-        for &k in &keys {
-            let i = f.index(k).unwrap() as usize;
-            assert!(i < keys.len());
-            assert!(!seen[i], "collision at {i}");
-            seen[i] = true;
-        }
-        assert!(seen.iter().all(|&b| b));
-    }
-
-    #[test]
-    fn bdz_empty_and_one() {
-        let z = BdzMphf::build(&[]).unwrap();
-        assert_eq!(z.n(), 0);
-        let one = BdzMphf::build(&[42]).unwrap();
-        assert_eq!(one.index(42).unwrap(), 0);
-        assert_eq!(one.index(99).unwrap(), 0);
-    }
-
-    #[test]
-    fn assigned_peel_index_is_rel_minus_one() {
-        let keys = [10u64, 20, 30, 40];
-        let rels = [3u32, 1, 4, 2];
-        let values: Vec<u32> = rels.iter().map(|r| r - 1).collect();
-        let f = BdzMphf::build_assigned(&keys, &values, 4).unwrap();
-        assert_eq!(f.modulus(), 4);
-        for (&k, &rel) in keys.iter().zip(rels.iter()) {
-            assert_eq!(f.index(k).unwrap(), rel - 1);
-        }
-        let miss = f.index(0xDEAD_BEEF_u64).unwrap();
-        assert!(miss < 4);
-    }
-
-    #[test]
-    fn assigned_peel_modulus_hole_and_bip30_newest() {
-        let keys = [1u64, 2, 3];
-        let values = [0u32, 2, 3];
-        let modulus = 4u32;
-        let f = BdzMphf::build_assigned(&keys, &values, modulus).unwrap();
-        assert_eq!(f.n(), 3);
-        assert_eq!(f.modulus(), modulus);
-        assert_eq!(f.index(1).unwrap(), 0);
-        assert_eq!(f.index(2).unwrap(), 2);
-        assert_eq!(f.index(3).unwrap(), 3);
-        let miss = f.index(99).unwrap();
-        assert!(miss < modulus);
-
-        let newest_key = 7u64;
-        let newest_rel = 5u32;
-        let f2 = BdzMphf::build_assigned(&[newest_key, 8], &[newest_rel - 1, 0], 5).unwrap();
-        assert_eq!(f2.index(newest_key).unwrap(), newest_rel - 1);
-        assert_eq!(f2.index(8).unwrap(), 0);
-        assert!(f2.index(123).unwrap() < 5);
-    }
-
-    #[test]
-    fn assigned_peel_2k_permutation() {
-        let n = 2_000u32;
-        let keys: Vec<u64> = (0..n as u64)
-            .map(|i| i.wrapping_mul(0xD1B5_4A32_D192_ED03).wrapping_add(11))
-            .collect();
-        let values: Vec<u32> = (0..n).map(|i| (i * 17 + 3) % n).collect();
-        let mut seen = vec![false; n as usize];
-        for &v in &values {
-            assert!(!seen[v as usize], "test permutation");
-            seen[v as usize] = true;
-        }
-        let f = BdzMphf::build_assigned(&keys, &values, n).unwrap();
-        for (&k, &want) in keys.iter().zip(values.iter()) {
-            assert_eq!(f.index(k).unwrap(), want);
-        }
-    }
-
-    #[test]
-    fn g_bits_for_modulus_width() {
-        assert_eq!(g_bits_for_modulus(1), 1);
-        assert_eq!(g_bits_for_modulus(2), 1);
-        assert_eq!(g_bits_for_modulus(1 << 24), 24);
-        assert_eq!(g_bits_for_modulus(1 << 25), 25);
-    }
-
-    #[test]
-    fn pack_g_roundtrip_bits() {
-        for g_bits in [1u32, 2, 24, 25, 26, 32] {
-            let g: Vec<u32> = (0..64).map(|i| i % (1u32 << (g_bits.min(5)))).collect();
-            let packed = pack_g(&g, g_bits);
-            for (v, &want) in g.iter().enumerate() {
-                assert_eq!(
-                    unpack_g_at(&packed, v as u32, g_bits),
-                    want,
-                    "g_bits={g_bits} v={v}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn unpack_g_bits_from_page_window_matches_unpack_g_at() {
-        let g_bits = 25u32;
-        let n = 1_400u32;
-        let g: Vec<u32> = (0..n).map(|i| i.wrapping_mul(17)).collect();
-        let packed = pack_g(&g, g_bits);
-        assert!(packed.len() > G_PAGE_BYTES);
-        let page0 = &packed[..G_PAGE_BYTES];
-        let page1 = &packed[G_PAGE_BYTES..];
-        let straddle = (0..n)
-            .find(|&v| vertex_straddles_page(v, g_bits))
-            .expect("25-bit field must cross a 4 KiB page");
-        assert_eq!(
-            unpack_g_bits_from_page_window(page0, Some(page1), 0, straddle, g_bits),
-            unpack_g_at(&packed, straddle, g_bits),
-        );
-        let on_p0 = 0u32;
-        assert!(!vertex_straddles_page(on_p0, g_bits));
-        assert_eq!(
-            unpack_g_bits_from_page_window(page0, None, 0, on_p0, g_bits),
-            unpack_g_at(&packed, on_p0, g_bits),
-        );
-        let on_p1 = (0..n)
-            .find(|&v| {
-                let start = u64::from(v) * u64::from(g_bits);
-                (start / 8 / G_PAGE_BYTES as u64) == 1 && !vertex_straddles_page(v, g_bits)
-            })
-            .expect("vertex contained in page 1");
-        assert_eq!(
-            unpack_g_bits_from_page_window(page1, None, 1, on_p1, g_bits),
-            unpack_g_at(&packed, on_p1, g_bits),
-        );
-    }
-
-    #[test]
-    fn assigned_packed_fd_matches_ram_and_straddles() {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-bdz2-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let n = 1_200u32;
-        let modulus = 1u32 << 25;
-        let keys: Vec<u64> = (0..n as u64)
-            .map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(13))
-            .collect();
-        let values: Vec<u32> = (0..n).map(|i| i * 17 + 3).collect();
-        let ram = BdzMphf::build_assigned(&keys, &values, modulus).unwrap();
-        let p = dir.join("t.mphf");
-        ram.write_packed_to(&p).unwrap();
-        let raw = std::fs::read(&p).unwrap();
-        assert_eq!(&raw[0..4], b"BDZ2");
-        let fd = BdzMphf::read_packed_from(&p).unwrap();
-        assert_eq!(fd.g_bytes_resident(), 0);
-        assert_eq!(fd.modulus(), modulus);
-        for &k in &keys {
-            assert_eq!(ram.index(k).unwrap(), fd.index(k).unwrap());
-        }
-        let miss = 0xDEAD_BEEF_u64;
-        assert_eq!(ram.index(miss).unwrap(), fd.index(miss).unwrap());
-        assert!(fd.index(miss).unwrap() < modulus);
-
-        let mut straddle_key = None;
-        for &k in &keys {
-            let verts = ram.vertices(k);
-            let g_bits = g_bits_for_modulus(modulus);
-            if verts.iter().any(|&v| vertex_straddles_page(v, g_bits)) {
-                straddle_key = Some(k);
-                break;
-            }
-        }
-        let k = straddle_key.expect("expected a page-straddling vertex at 25-bit width");
-        let verts = fd.vertices(k);
-        let g_bits = g_bits_for_modulus(modulus);
-        let mut pages: Vec<u32> = verts
-            .iter()
-            .copied()
-            .flat_map(|v| vertex_pages(v, g_bits))
-            .collect();
-        pages.sort_unstable();
-        pages.dedup();
-        let _ = fd.take_g_page_preads();
-        assert_eq!(fd.index(k).unwrap(), ram.index(k).unwrap());
-        assert_eq!(fd.take_g_page_preads(), pages.len() as u64);
-        assert!(
-            pages.len() >= 2,
-            "straddle vertex must include both page sides"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn assigned_packed_fd_index_batch_matches_ram() {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-bdz2-batch-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let n = 1_200u32;
-        let modulus = 1u32 << 25;
-        let keys: Vec<u64> = (0..n as u64)
-            .map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(13))
-            .collect();
-        let values: Vec<u32> = (0..n).map(|i| i * 17 + 3).collect();
-        let ram = BdzMphf::build_assigned(&keys, &values, modulus).unwrap();
-        let p = dir.join("t.mphf");
-        ram.write_packed_to(&p).unwrap();
-        let fd = BdzMphf::read_packed_from(&p).unwrap();
-        let g_bits = g_bits_for_modulus(modulus);
-        assert!(
-            keys.iter().any(|&k| ram
-                .vertices(k)
-                .iter()
-                .any(|&v| vertex_straddles_page(v, g_bits))),
-            "batch must include a page-straddling vertex"
-        );
-        let mut want: Vec<u32> = keys.iter().map(|&k| ram.index(k).unwrap()).collect();
-        let miss = 0xDEAD_BEEF_u64;
-        want.push(ram.index(miss).unwrap());
-        let mut batch_keys = keys.clone();
-        batch_keys.push(miss);
-        let got = fd
-            .index_batch(&batch_keys, &mut crate::IoCtx::none())
-            .unwrap();
-        assert_eq!(got, want);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn packed_g_scatter_reversed_pages_match_forward() {
-        let g_bits = 25u32;
-        let g: Vec<u32> = (0..3_000u32)
-            .map(|i| i.wrapping_mul(17).wrapping_add(3))
-            .collect();
-        let packed = pack_g(&g, g_bits);
-        assert!(
-            packed.len() > G_PAGE_BYTES * 2,
-            "need ≥3 g pages so fill order is not sequential-adjacent only"
-        );
-        assert!(
-            (0..g.len() as u32).any(|v| vertex_straddles_page(v, g_bits)),
-            "packed g must include a page-straddling vertex"
-        );
-        let pages: Vec<(u32, &[u8])> = packed
-            .chunks(G_PAGE_BYTES)
-            .enumerate()
-            .map(|(i, c)| (i as u32, c))
-            .collect();
-        let verts: Vec<[u32; 3]> = (0..g.len() as u32).map(|v| [v, v, v]).collect();
-        let want: Vec<[u32; 3]> = verts
-            .iter()
-            .map(|&[a, b, c]| {
-                [
-                    unpack_g_at(&packed, a, g_bits),
-                    unpack_g_at(&packed, b, g_bits),
-                    unpack_g_at(&packed, c, g_bits),
-                ]
-            })
-            .collect();
-        assert_eq!(scatter_g_words(g_bits, &verts, &pages), want);
-        let mut rev = pages.clone();
-        rev.reverse();
-        assert_eq!(scatter_g_words(g_bits, &verts, &rev), want);
-        let mut rot = pages.clone();
-        rot.rotate_left(1);
-        assert_eq!(scatter_g_words(g_bits, &verts, &rot), want);
-    }
-
-    #[test]
-    fn assigned_packed_fd_index_batch_held_matches_ram() {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-bdz2-held-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let n = 1_200u32;
-        let modulus = 1u32 << 25;
-        let keys: Vec<u64> = (0..n as u64)
-            .map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(13))
-            .collect();
-        let values: Vec<u32> = (0..n).map(|i| i * 17 + 3).collect();
-        let ram = BdzMphf::build_assigned(&keys, &values, modulus).unwrap();
-        let p = dir.join("t.mphf");
-        ram.write_packed_to(&p).unwrap();
-        let fd = BdzMphf::read_packed_from(&p).unwrap();
-        let mut want: Vec<u32> = keys.iter().map(|&k| ram.index(k).unwrap()).collect();
-        let miss = 0xDEAD_BEEF_u64;
-        want.push(ram.index(miss).unwrap());
-        let mut batch_keys = keys.clone();
-        batch_keys.push(miss);
-        let mut session = crate::uring_session::UringSession::try_open_kind(
-            crate::uring_session::SessionKind::Pool,
-            32,
-        )
-        .expect("pool");
-        let got = {
-            let mut ctx = crate::IoCtx::held(&mut session);
-            fd.index_batch(&batch_keys, &mut ctx).unwrap()
-        };
-        session.drain_all().unwrap();
-        assert_eq!(got, want);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn compact_injective_2k() {
-        let keys: Vec<u64> = (0..2_000u64)
-            .map(|i| i.wrapping_mul(0xD1B5_4A32_D192_ED03).wrapping_add(11))
-            .collect();
-        let f = BdzMphf::build_compact(&keys).unwrap();
-        let mut seen = vec![false; keys.len()];
-        for &k in &keys {
-            let i = f.index(k).unwrap() as usize;
-            assert!(i < keys.len());
-            assert!(!seen[i], "collision at {i}");
-            seen[i] = true;
-        }
-        assert!(seen.iter().all(|&b| b));
-        let miss = f.index(0xDEAD_BEEF_u64).unwrap();
-        assert!(miss < keys.len() as u32);
-    }
-
-    #[test]
-    fn compact_empty_and_one() {
-        let z = BdzMphf::build_compact(&[]).unwrap();
-        assert_eq!(z.n(), 0);
-        let one = BdzMphf::build_compact(&[42]).unwrap();
-        assert_eq!(one.index(42).unwrap(), 0);
-        assert_eq!(one.index(99).unwrap(), 0);
-    }
-
-    #[test]
-    fn compact_packed_fd_is_bdz3_and_matches_ram() {
-        let dir = std::env::temp_dir().join(format!(
-            "rbitcoin-bdz3-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let keys: Vec<u64> = (0..2_000u64)
-            .map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(13))
-            .collect();
-        let ram = BdzMphf::build_compact(&keys).unwrap();
-        let p = dir.join("t.mphf");
-        ram.write_compact_to(&p).unwrap();
-        let raw = std::fs::read(&p).unwrap();
-        assert_eq!(&raw[0..4], b"BDZ3");
-        assert_ne!(&raw[0..4], b"BDZ2");
-        let g_bits = u32::from_le_bytes(raw[28..32].try_into().unwrap());
-        assert_eq!(g_bits, 2);
-        let fd = BdzMphf::read_compact_from(&p).unwrap();
-        assert_eq!(fd.g_bytes_resident(), 0);
-        let m = compact_vertex_count(keys.len() as u32);
-        let occ_off = HEADER_LEN3 + packed_g_bytes(m, COMPACT_G_BITS);
-        assert_ne!(
-            occ_off % 8,
-            0,
-            "occ follows packed g; rank must popcount bytes, not &[u64]"
-        );
-        let n_supers = (m as usize).div_ceil(RANK_SUPER_BITS as usize);
-        let supers_heap = (n_supers + 1) * 4;
-        assert_eq!(
-            fd.occ_bytes_resident(),
-            supers_heap,
-            "open must map occ; heap is supers only"
-        );
-        assert!(occ_packed_bytes(m) as usize > supers_heap);
-        assert_eq!(raw.len() as u64, ram.trailer_off());
-        assert_eq!(fd.trailer_off(), ram.trailer_off());
-        for &k in &keys {
-            assert_eq!(ram.index(k).unwrap(), fd.index(k).unwrap());
-        }
-        let miss = 0xDEAD_BEEF_u64;
-        assert_eq!(ram.index(miss).unwrap(), fd.index(miss).unwrap());
-        assert!(fd.index(miss).unwrap() < keys.len() as u32);
-        let _ = fd.take_g_page_preads();
-        assert_eq!(fd.index(keys[0]).unwrap(), ram.index(keys[0]).unwrap());
-        let empty = dir.join("empty.mphf");
-        std::fs::File::create(&empty).unwrap();
-        match BdzMphf::read_compact_from(&empty) {
-            Err(StoreError::Corrupt(_)) => {}
-            other => panic!("empty mphf must be Corrupt, got {other:?}"),
-        }
-        assert!(fd.take_g_page_preads() >= 1);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -38,13 +38,15 @@ pub fn grind_regtest_pow(header: &mut Header) {
     debug_assert!(header.validate_pow(target).is_ok());
 }
 
-fn on_tip_accept_thread() -> bool {
+#[doc(hidden)]
+pub fn on_tip_accept_thread() -> bool {
     std::thread::current().name() == Some("tip-accept")
 }
 
 /// SHA256 midstate after the first 64 header bytes. Nonce is the last 4
 /// bytes. No heap per nonce.
-fn grind_header_midstate(header: &Header, target: Target, start: u32) -> u32 {
+#[doc(hidden)]
+pub fn grind_header_midstate(header: &Header, target: Target, start: u32) -> u32 {
     use bitcoin::consensus::Encodable;
 
     let mut raw = Vec::with_capacity(80);
@@ -96,7 +98,8 @@ fn grind_header_midstate(header: &Header, target: Target, start: u32) -> u32 {
 /// `stop` lets sibling cores abandon the search once any stride has a hit.
 /// Any nonce that meets `target` is a valid block; the caller keeps the
 /// smallest one that was stored.
-fn grind_header_midstate_one(
+#[doc(hidden)]
+pub fn grind_header_midstate_one(
     raw: &[u8],
     target: Target,
     start: u32,
@@ -224,7 +227,8 @@ pub fn mine_op_true_signet_paying(
 
 /// BIP325: second push in the witness-commitment script is header `ecc7daa2`
 /// plus an empty scriptSig and an empty witness (`0x00 0x00`).
-fn append_op_true_signet_push(block: &mut Block) {
+#[doc(hidden)]
+pub fn append_op_true_signet_push(block: &mut Block) {
     const SIGNET_HEADER: [u8; 4] = [0xec, 0xc7, 0xda, 0xa2];
     let mut payload = Vec::with_capacity(6);
     payload.extend_from_slice(&SIGNET_HEADER);
@@ -243,11 +247,13 @@ fn append_op_true_signet_push(block: &mut Block) {
     }
 }
 
-fn coinbase_paying(height: u32, script_pubkey: ScriptBuf) -> Transaction {
+#[doc(hidden)]
+pub fn coinbase_paying(height: u32, script_pubkey: ScriptBuf) -> Transaction {
     coinbase_paying_params(height, script_pubkey, &ChainParams::regtest())
 }
 
-fn coinbase_paying_params(
+#[doc(hidden)]
+pub fn coinbase_paying_params(
     height: u32,
     script_pubkey: ScriptBuf,
     params: &ChainParams,
@@ -282,140 +288,5 @@ pub fn regtest_coinbase(height: u32, value: Amount, script_pubkey: ScriptBuf) ->
             value,
             script_pubkey,
         }],
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mine_regtest_paying_sets_coinbase_script() {
-        let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest);
-        let script =
-            ScriptBuf::from_bytes(vec![0x00, 0x14].into_iter().chain([0x11u8; 20]).collect());
-        let b = mine_regtest_paying(
-            genesis.block_hash(),
-            genesis.header.time + 1,
-            1,
-            script.clone(),
-            vec![],
-        );
-        assert_eq!(b.txdata[0].output[0].script_pubkey, script);
-        assert_eq!(b.header.prev_blockhash, genesis.block_hash());
-        let target = Target::from_compact(b.header.bits);
-        assert!(b.header.validate_pow(target).is_ok());
-    }
-
-    #[test]
-    fn op_true_signet_block_meets_pow_and_challenge() {
-        use bitcoin::script::Script;
-        let params =
-            ChainParams::custom_signet(ScriptBuf::from_bytes(vec![0x51]), 10 * 60).unwrap();
-        let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Signet);
-        let block = mine_op_true_signet_paying(
-            &params,
-            genesis.block_hash(),
-            genesis.header.time.saturating_add(1),
-            1,
-            genesis.header.bits,
-            ScriptBuf::from_bytes(vec![0x51]),
-            vec![],
-        );
-        let target = Target::from_compact(block.header.bits);
-        assert!(block.header.validate_pow(target).is_ok());
-        crate::signet::validate_signet_block_solution(&block, Script::from_bytes(&[0x51])).unwrap();
-    }
-
-    #[test]
-    fn mine_empty_regtest_uses_regtest_halving_subsidy() {
-        let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest);
-        let prev = genesis.block_hash();
-        let t = genesis.header.time + 1;
-        let b149 = mine_empty_regtest(prev, t, 149);
-        let b150 = mine_empty_regtest(prev, t, 150);
-        assert_eq!(
-            b149.txdata[0].output[0].value,
-            Amount::from_sat(50_0000_0000)
-        );
-        assert_eq!(
-            b150.txdata[0].output[0].value,
-            Amount::from_sat(25_0000_0000)
-        );
-    }
-
-    #[test]
-    fn grind_regtest_pow_changes_nonce_only() {
-        let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest);
-        let mut header = genesis.header;
-        header.bits = CompactTarget::from_consensus(REGTEST_POW_BITS);
-        header.nonce = 0;
-        let version = header.version;
-        let prev = header.prev_blockhash;
-        let merkle = header.merkle_root;
-        let time = header.time;
-        let bits = header.bits;
-        grind_regtest_pow(&mut header);
-        assert_eq!(header.version, version);
-        assert_eq!(header.prev_blockhash, prev);
-        assert_eq!(header.merkle_root, merkle);
-        assert_eq!(header.time, time);
-        assert_eq!(header.bits, bits);
-        let target = Target::from_compact(header.bits);
-        assert!(header.validate_pow(target).is_ok());
-    }
-
-    #[test]
-    fn prepare_regtest_candidate_keeps_version_and_txids() {
-        let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest);
-        let mut block = mine_empty_regtest(genesis.block_hash(), genesis.header.time + 1, 1);
-        block.header.version = Version::from_consensus(5);
-        let txids: Vec<_> = block.txdata.iter().map(|t| t.compute_txid()).collect();
-        let version = block.header.version;
-        prepare_regtest_candidate(
-            &mut block,
-            genesis.block_hash(),
-            genesis.header.time + REGTEST_BLOCK_SPACING,
-        );
-        assert_eq!(block.header.version, version);
-        let after: Vec<_> = block.txdata.iter().map(|t| t.compute_txid()).collect();
-        assert_eq!(after, txids);
-        assert_eq!(block.header.prev_blockhash, genesis.block_hash());
-        assert_eq!(
-            block.header.bits,
-            CompactTarget::from_consensus(REGTEST_POW_BITS)
-        );
-        assert_eq!(
-            block.header.merkle_root,
-            block.compute_merkle_root().unwrap()
-        );
-        let target = Target::from_compact(block.header.bits);
-        assert!(block.header.validate_pow(target).is_ok());
-    }
-
-    #[test]
-    fn regtest_height1_fixture_matches_mine_empty() {
-        let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Regtest);
-        let b = mine_empty_regtest(
-            genesis.block_hash(),
-            genesis.header.time + REGTEST_BLOCK_SPACING,
-            1,
-        );
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/regtest_height1.bin");
-        let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        let got: Block = bitcoin::consensus::encode::deserialize(&raw).expect("fixture block");
-        assert_eq!(got.header.prev_blockhash, genesis.block_hash());
-        assert_eq!(
-            got.header.bits,
-            CompactTarget::from_consensus(REGTEST_POW_BITS)
-        );
-        let target = Target::from_compact(got.header.bits);
-        assert!(got.header.validate_pow(target).is_ok());
-        assert_eq!(
-            bitcoin::consensus::encode::serialize(&b),
-            raw,
-            "regtest_height1.bin must match mine_empty_regtest(genesis, t+600, 1)"
-        );
     }
 }

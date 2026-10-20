@@ -1,35 +1,63 @@
 //! Bitcoin P2P: BIP324 v2 transport, headers/blocks, tip follow, tip-mode **tx relay**.
 
-mod asmap;
-mod cache;
-mod chain;
-mod codec;
-mod compact;
-mod ephemeral;
-mod error;
-mod eviction;
-mod fee_history;
-mod fee_history_file;
-mod i2p_sam;
-mod ibd;
-mod most_work;
-mod msg_decode;
-mod net_permissions;
-mod netaddr;
-mod netgroup;
-mod peer;
-mod peer_dos;
-mod peers;
-mod perf_meter;
-mod reactor;
-mod seeds;
-mod serve_perf;
-mod service;
-mod socks;
-mod tip_accept;
-mod tx_relay;
-mod v2;
-mod versionbits_warn;
+#[doc(hidden)]
+pub mod asmap;
+#[doc(hidden)]
+pub mod cache;
+#[doc(hidden)]
+pub mod chain;
+#[doc(hidden)]
+pub mod codec;
+#[doc(hidden)]
+pub mod compact;
+#[doc(hidden)]
+pub mod ephemeral;
+#[doc(hidden)]
+pub mod error;
+#[doc(hidden)]
+pub mod eviction;
+#[doc(hidden)]
+pub mod fee_history;
+#[doc(hidden)]
+pub mod fee_history_file;
+#[doc(hidden)]
+pub mod i2p_sam;
+#[doc(hidden)]
+pub mod most_work;
+#[doc(hidden)]
+pub mod msg_decode;
+#[doc(hidden)]
+pub mod net_permissions;
+#[doc(hidden)]
+pub mod netaddr;
+#[doc(hidden)]
+pub mod netgroup;
+#[doc(hidden)]
+pub mod peer;
+#[doc(hidden)]
+pub mod peer_dos;
+#[doc(hidden)]
+pub mod peers;
+#[doc(hidden)]
+pub mod perf_meter;
+#[doc(hidden)]
+pub mod reactor;
+#[doc(hidden)]
+pub mod seeds;
+#[doc(hidden)]
+pub mod serve_perf;
+#[doc(hidden)]
+pub mod service;
+#[doc(hidden)]
+pub mod socks;
+#[doc(hidden)]
+pub mod tip_accept;
+#[doc(hidden)]
+pub mod tx_relay;
+#[doc(hidden)]
+pub mod v2;
+#[doc(hidden)]
+pub mod versionbits_warn;
 
 pub use asmap::{
     AsMap, ASMAP_EIGHT_TRAILING_ZEROS, ASMAP_JUMP_OFF_END, ASMAP_JUMP_PAST_FILE,
@@ -46,16 +74,12 @@ pub use ephemeral::spawn_isolated_broadcast_loop;
 pub use error::NetError;
 pub use eviction::{select_inbound_eviction, InboundEvictCandidate};
 pub use i2p_sam::{i2p_addr_from_sam_b64, I2pSam};
-pub use ibd::{
-    connect_timeout_for, read_platform_rss, rehydrate_block_queue_residue, tip_perf_json,
-    IbdConfig, ProcessRss, TipPerfLog, DEFAULT_BLOCKS_IN_TRANSIT_PER_PEER, DEFAULT_IBD_WINDOW,
-};
 pub use most_work::{sum_work, WorkOverflow};
 pub use net_permissions::{
     apply_implicit, parse_whitebind, parse_whitelist, NetPermTable, NetPermissionFlags,
     WhitebindGrant, WhitelistGrant, DEFAULT_WHITELISTFORCERELAY, DEFAULT_WHITELISTRELAY,
 };
-pub use netaddr::{is_cjdns_ip, NetAddr, OnlyNet};
+pub use netaddr::{connect_timeout_for, is_cjdns_ip, NetAddr, OnlyNet};
 pub use netgroup::netgroup;
 pub use peer::{
     drain_pending_now, flush_tx_invs, force_announce_txid, local_service_flags,
@@ -69,7 +93,7 @@ pub use peers::{
     PeerHub, PeerInfo, PeerOut, PingAction,
 };
 pub use perf_meter::RequestMeter;
-pub(crate) use rbitcoin_mempool::MempoolGraphStats;
+pub use rbitcoin_mempool::MempoolGraphStats;
 pub use rbitcoin_mempool::{AcceptError, SelectBudget, Selected};
 pub use reactor::BlockingRegion;
 pub use seeds::{
@@ -89,20 +113,10 @@ pub use tx_relay::{
 pub use v2::{encode_v2_contents, parse_v2_regtest, parse_v2_regtest_named, WireBytes};
 pub use versionbits_warn::warning_strings;
 
-/// Default number of **live download peers** during IBD (`IbdConfig::target_peers`
-/// and node `--max-outbound` default).
+/// Default number of **live download peers** during IBD
+/// (`rbitcoin_ibd::IbdConfig::target_peers` and node `--max-outbound` default).
 ///
 /// This is **not** the seed candidate pool size. The node dials a larger sample
 /// of seed addresses (typically `2 × target`, clamped) so failed connects still
 /// leave enough live peers.
 pub const DEFAULT_IBD_TARGET_PEERS: u32 = 16;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn outbound_defaults() {
-        assert_eq!(DEFAULT_IBD_TARGET_PEERS, 16);
-    }
-}

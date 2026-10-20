@@ -4,30 +4,23 @@
 //! Prevouts are resolved by connect (wave / light UTXO create_fk /
 //! same-block) — not a full coins cache.
 
-mod classify;
-pub(crate) mod interpreter;
-mod nested;
-mod p2pkh;
-mod p2tr;
-mod p2wpkh;
-mod p2wsh;
+#[doc(hidden)]
+pub mod classify;
+#[doc(hidden)]
+pub mod interpreter;
+#[doc(hidden)]
+pub mod nested;
+#[doc(hidden)]
+pub mod p2pkh;
+#[doc(hidden)]
+pub mod p2tr;
+#[doc(hidden)]
+pub mod p2wpkh;
+#[doc(hidden)]
+pub mod p2wsh;
 
-#[cfg(test)]
-mod core_bip341;
-#[cfg(test)]
-mod core_fixture;
-#[cfg(any(test, feature = "corpus"))]
+#[cfg(feature = "corpus")]
 pub mod core_script;
-#[cfg(test)]
-mod core_sighash;
-#[cfg(test)]
-mod core_tx_vectors;
-#[cfg(test)]
-mod core_vectors;
-#[cfg(test)]
-mod tests_flag_parity;
-#[cfg(test)]
-mod tests_verify;
 
 use bitcoin::hashes::Hash;
 use bitcoin::Transaction;
@@ -36,7 +29,7 @@ use crate::block::ScriptCheckJob;
 use crate::error::ConsensusError;
 use classify::ScriptKind;
 
-pub(crate) use classify::is_anyone_can_spend;
+pub use classify::is_anyone_can_spend;
 
 /// Verify every non-anyone-can-spend input of a script job.
 ///
@@ -47,7 +40,7 @@ pub(crate) use classify::is_anyone_can_spend;
 ///
 /// On failure, [`ConsensusError::Script`] messages are annotated with `txid=` and
 /// `vin=` so IBD logs name the failing spend (batch-first height alone is not enough).
-pub(crate) fn verify_job_all_inputs(job: &ScriptCheckJob) -> Result<(), ConsensusError> {
+pub fn verify_job_all_inputs(job: &ScriptCheckJob) -> Result<(), ConsensusError> {
     // JobTx may be shared wire Arc — always take &Transaction (not &JobTx).
     let tx: &Transaction = &job.tx;
     let n = job.prevouts.len();
@@ -72,7 +65,8 @@ pub(crate) fn verify_job_all_inputs(job: &ScriptCheckJob) -> Result<(), Consensu
 }
 
 /// Append `txid=… vin=…` to script errors for operator diagnosis.
-fn annotate_script_err(
+#[doc(hidden)]
+pub fn annotate_script_err(
     err: ConsensusError,
     job: &ScriptCheckJob,
     input_index: usize,
@@ -98,14 +92,15 @@ fn annotate_script_err(
 /// 2. Else classify once → P2PKH / P2SH / bare. Pre-segwit (`!witness_active`),
 ///    v0/v1 program templates fall through to the bare interpreter.
 #[inline]
-fn sighash_cache<'a, 't>(
+#[doc(hidden)]
+pub fn sighash_cache<'a, 't>(
     cache: &'a mut Option<bitcoin::sighash::SighashCache<&'t Transaction>>,
     tx: &'t Transaction,
 ) -> &'a mut bitcoin::sighash::SighashCache<&'t Transaction> {
     cache.get_or_insert_with(|| bitcoin::sighash::SighashCache::new(tx))
 }
 
-pub(crate) fn verify_input<'a>(
+pub fn verify_input<'a>(
     job: &ScriptCheckJob,
     input_index: usize,
     tx: &'a Transaction,
@@ -177,14 +172,16 @@ pub(crate) fn verify_input<'a>(
 }
 
 /// Core `IsPayToAnchor`: witness v1 program `0x4e73`.
-const PAY_TO_ANCHOR_PROGRAM: [u8; 2] = [0x4e, 0x73];
+#[doc(hidden)]
+pub const PAY_TO_ANCHOR_PROGRAM: [u8; 2] = [0x4e, 0x73];
 
 /// BIP141 native witness program (any version). `scriptSig` must be empty.
 ///
 /// Policy: a v1 32-byte program before Taproot and pay-to-anchor succeed
 /// without DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, as in Core.
 #[inline]
-fn verify_native_witness(
+#[doc(hidden)]
+pub fn verify_native_witness(
     job: &ScriptCheckJob,
     input_index: usize,
     tx: &Transaction,
@@ -226,13 +223,15 @@ fn verify_native_witness(
 
 /// LOW_S / STRICTENC / NULLFAIL are interpreter policy. The typed P2PKH and
 /// P2WPKH paths do not apply them, so those jobs use the interpreter.
-fn needs_interpreted_ecdsa(job: &ScriptCheckJob) -> bool {
+#[doc(hidden)]
+pub fn needs_interpreted_ecdsa(job: &ScriptCheckJob) -> bool {
     job.low_s || job.strictenc || job.nullfail
 }
 
 /// True when the P2PKH fast path failed because scriptSig is not exactly two
 /// data pushes (still may be valid under the full interpreter).
-fn p2pkh_scriptsig_shape_error(err: &ConsensusError) -> bool {
+#[doc(hidden)]
+pub fn p2pkh_scriptsig_shape_error(err: &ConsensusError) -> bool {
     match err {
         ConsensusError::Script(msg) => {
             msg == "p2pkh scriptSig len"
@@ -244,7 +243,8 @@ fn p2pkh_scriptsig_shape_error(err: &ConsensusError) -> bool {
     }
 }
 
-fn verify_bare(
+#[doc(hidden)]
+pub fn verify_bare(
     job: &ScriptCheckJob,
     input_index: usize,
     tx: &Transaction,
@@ -287,7 +287,8 @@ fn verify_bare(
 }
 
 /// Shared ECDSA / secp helpers for typed paths.
-pub(crate) mod crypto {
+#[doc(hidden)]
+pub mod crypto {
     use bitcoin::hashes::Hash;
     use bitcoin::secp256k1::{ecdsa, Message, PublicKey, Secp256k1, VerifyOnly};
 
@@ -791,892 +792,5 @@ pub(crate) mod crypto {
     pub fn sha1(data: &[u8]) -> [u8; 20] {
         use bitcoin_hashes::Hash as _;
         *bitcoin_hashes::sha1::Hash::hash(data).as_byte_array()
-    }
-
-    #[cfg(test)]
-    mod der_tests {
-        use super::*;
-
-        fn valid_der_sig() -> Vec<u8> {
-            // Minimal valid-shaped DER + SIGHASH_ALL
-            // 30 06 02 01 01 02 01 01 01
-            vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, 0x01]
-        }
-
-        #[test]
-        fn strictenc_pubkey_and_hashtype_helpers() {
-            // Compressed / uncompressed only — hybrid 06/07 rejected.
-            assert!(is_compressed_or_uncompressed_pubkey(&[0x02; 33]));
-            assert!(is_compressed_or_uncompressed_pubkey(&[0x03; 33]));
-            let mut uncomp = vec![0x04];
-            uncomp.extend_from_slice(&[0x11; 64]);
-            assert!(is_compressed_or_uncompressed_pubkey(&uncomp));
-            let mut hybrid = vec![0x06];
-            hybrid.extend_from_slice(&[0x11; 64]);
-            assert!(!is_compressed_or_uncompressed_pubkey(&hybrid));
-            assert!(!is_compressed_or_uncompressed_pubkey(&[]));
-            assert!(!is_compressed_or_uncompressed_pubkey(&[0x02; 32]));
-            // `0x04` is uncompressed only at 65 bytes. A shorter key is not
-            // accepted by dropping the length guard.
-            assert!(!is_compressed_or_uncompressed_pubkey(&[0x04; 64]));
-            assert!(!is_compressed_or_uncompressed_pubkey(&[0x04; 66]));
-            assert!(is_compressed_pubkey(&[0x02; 33]));
-            assert!(!is_compressed_pubkey(&[0x02; 32]));
-            assert!(!is_compressed_pubkey(&[0x04; 33]));
-
-            assert!(is_defined_hashtype(&[0x30, 0x01])); // ALL
-            assert!(is_defined_hashtype(&[0x30, 0x02])); // NONE
-            assert!(is_defined_hashtype(&[0x30, 0x03])); // SINGLE
-            assert!(is_defined_hashtype(&[0x30, 0x81])); // ALL|ACP
-            assert!(!is_defined_hashtype(&[0x30, 0x00]));
-            assert!(!is_defined_hashtype(&[0x30, 0x04]));
-            assert!(!is_defined_hashtype(&[]));
-        }
-
-        #[test]
-        fn bip66_encoding_edge_cases() {
-            assert!(!is_valid_signature_encoding(&[]));
-            assert!(!is_valid_signature_encoding(&[0x30; 8])); // too short
-            assert!(!is_valid_signature_encoding(&[0x30; 74])); // too long
-            let mut bad = valid_der_sig();
-            bad[0] = 0x31;
-            assert!(!is_valid_signature_encoding(&bad));
-            // wrong total length byte
-            let mut bad = valid_der_sig();
-            bad[1] = 0x05;
-            assert!(!is_valid_signature_encoding(&bad));
-            // R not INT
-            let mut bad = valid_der_sig();
-            bad[2] = 0x03;
-            assert!(!is_valid_signature_encoding(&bad));
-            // zero-length R
-            assert!(!is_valid_signature_encoding(&[
-                0x30, 0x06, 0x02, 0x00, 0x02, 0x01, 0x01, 0x01
-            ]));
-            // R high bit set (negative)
-            let neg = vec![0x30, 0x07, 0x02, 0x01, 0x80, 0x02, 0x01, 0x01, 0x01];
-            assert!(!is_valid_signature_encoding(&neg));
-            // excess leading zero on R
-            let pad = vec![0x30, 0x08, 0x02, 0x02, 0x00, 0x01, 0x02, 0x01, 0x01, 0x01];
-            assert!(!is_valid_signature_encoding(&pad));
-            // S high bit
-            let sneg = vec![0x30, 0x07, 0x02, 0x01, 0x01, 0x02, 0x01, 0x80, 0x01];
-            assert!(!is_valid_signature_encoding(&sneg));
-            // excess leading zero on S
-            let spad = vec![0x30, 0x08, 0x02, 0x01, 0x01, 0x02, 0x02, 0x00, 0x01, 0x01];
-            assert!(!is_valid_signature_encoding(&spad));
-            // zero-length S
-            assert!(!is_valid_signature_encoding(&[
-                0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x00, 0x01
-            ]));
-            // S marker wrong
-            let mut sm = valid_der_sig();
-            sm[4] = 0x03; // after R len=1 at [3]=1, S tag at index 4
-                          // structure: [0]=30 [1]=06 [2]=02 [3]=01 [4]=R [5]=02 [6]=01 [7]=S [8]=ht
-                          // Actually valid_der is 30 06 02 01 01 02 01 01 01 so S tag at [5]
-            let mut sm = valid_der_sig();
-            sm[5] = 0x03;
-            assert!(!is_valid_signature_encoding(&sm));
-
-            assert!(is_valid_signature_encoding(&valid_der_sig()));
-            // BIP66 does not range-check the hashtype byte. STRICTENC does,
-            // via `is_defined_hashtype`. `0x00`, `0x04`, `0x80`, and `0x85`
-            // stay valid DER.
-            for ht in [0x00u8, 0x04, 0x80, 0x85] {
-                let mut sig = valid_der_sig();
-                let last = sig.len() - 1;
-                sig[last] = ht;
-                assert!(
-                    is_valid_signature_encoding(&sig),
-                    "BIP66 keeps hashtype {ht:#x}"
-                );
-                assert!(
-                    !is_defined_hashtype(&sig),
-                    "STRICTENC rejects hashtype {ht:#x}"
-                );
-            }
-            // A one-byte zero integer is minimal. `len > 1` must not become `>=`.
-            assert!(is_valid_signature_encoding(&[
-                0x30, 0x06, 0x02, 0x01, 0x00, 0x02, 0x01, 0x01, 0x01
-            ]));
-            assert!(is_valid_signature_encoding(&[
-                0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x00, 0x01
-            ]));
-            let _ = (neg, pad, sneg, spad);
-        }
-
-        #[test]
-        fn parse_der_empty_and_strict() {
-            assert!(parse_der_sig(&[], true).is_err());
-            // non-BIP66 but lax may still fail parse — just exercise strict reject
-            let bad = vec![0x30, 0x01, 0x00];
-            assert!(parse_der_sig(&bad, true).is_err());
-        }
-
-        #[test]
-        fn spent_hashes_report_a_missing_wire_prevout() {
-            use bitcoin::absolute::LockTime;
-            use bitcoin::script::ScriptBuf;
-            use bitcoin::{Amount, OutPoint, Sequence, Transaction, TxIn, TxOut, Witness};
-
-            let tx = Transaction {
-                version: bitcoin::transaction::Version::TWO,
-                lock_time: LockTime::ZERO,
-                input: vec![TxIn {
-                    previous_output: OutPoint::null(),
-                    script_sig: ScriptBuf::new(),
-                    sequence: Sequence::MAX,
-                    witness: Witness::new(),
-                }],
-                output: vec![TxOut {
-                    value: Amount::ZERO,
-                    script_pubkey: ScriptBuf::new(),
-                }],
-            };
-            let job = crate::block::ScriptCheckJob::from_parts(
-                [0u8; 32],
-                crate::block::JobPrevouts::Shared(vec![crate::block::SharedPrevout::Wire {
-                    tx_index: 0,
-                    vout: 0,
-                }]),
-                crate::block::JobTx::owned(tx),
-                crate::block::ScriptVerifyFlags::buried(false, false, false, true, true),
-            );
-            let err = TapSpentHashes::default().get(&job).unwrap_err();
-            assert!(
-                format!("{err}").contains("invariant") || format!("{err}").contains("Corrupt"),
-                "{err}"
-            );
-        }
-    }
-}
-
-#[cfg(test)]
-mod verify_routing_tests {
-    use super::*;
-    use crate::block::ScriptCheckJob;
-    use bitcoin::absolute::LockTime;
-    use bitcoin::hashes::Hash;
-    use bitcoin::{Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness};
-
-    fn witness_job(spk: Vec<u8>, script_sig: Vec<u8>, witness: Vec<Vec<u8>>) -> ScriptCheckJob {
-        let refs: Vec<&[u8]> = witness.iter().map(|v| v.as_slice()).collect();
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint::null(),
-                script_sig: ScriptBuf::from_bytes(script_sig),
-                sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
-                witness: Witness::from_slice(&refs),
-            }],
-            output: vec![],
-        };
-        ScriptCheckJob {
-            txid: [0u8; 32],
-            prevouts: crate::block::JobPrevouts::owned(vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(spk),
-            }]),
-            tx: crate::block::JobTx::owned(tx),
-            flags: crate::block::ScriptVerifyFlags {
-                bip65_active: true,
-                bip112_active: true,
-                bip66_active: true,
-                bip16_active: true,
-                taproot_active: true,
-                minimal_if: false,
-                nullfail: false,
-                low_s: false,
-                strictenc: false,
-                null_dummy: false,
-                minimal_data: false,
-                witness_pubkeytype: false,
-                witness_active: true,
-                discourage_upgradable_witness: false,
-                const_scriptcode: false,
-                cleanstack: false,
-            },
-            pre: std::sync::OnceLock::new(),
-        }
-    }
-
-    #[test]
-    fn false_witness_program_is_eval_false() {
-        let native = witness_job(vec![0x52, 0x02, 0x00, 0x00], vec![], vec![]);
-        let err = verify_job_all_inputs(&native).expect_err("zero program");
-        assert!(format!("{err}").contains("EVAL_FALSE"), "{err}");
-
-        let neg = witness_job(vec![0x60, 0x03, 0x00, 0x00, 0x80], vec![], vec![]);
-        let err = verify_job_all_inputs(&neg).expect_err("negative zero");
-        assert!(format!("{err}").contains("EVAL_FALSE"), "{err}");
-
-        let live = witness_job(vec![0x52, 0x02, 0x00, 0x01], vec![], vec![]);
-        verify_job_all_inputs(&live).expect("nonzero unknown version");
-
-        let redeem = vec![0x52, 0x02, 0x00, 0x00];
-        let hash = super::crypto::hash160(&redeem);
-        let mut spk = vec![0xa9, 0x14];
-        spk.extend_from_slice(hash.as_slice());
-        spk.push(0x87);
-        let mut script_sig = vec![redeem.len() as u8];
-        script_sig.extend_from_slice(&redeem);
-        let nested = witness_job(spk, script_sig, vec![]);
-        let err = verify_job_all_inputs(&nested).expect_err("p2sh zero program");
-        assert!(format!("{err}").contains("EVAL_FALSE"), "{err}");
-    }
-
-    #[test]
-    fn prevout_count_must_match_inputs() {
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint::null(),
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::new(),
-            }],
-            output: vec![],
-        };
-        let job = ScriptCheckJob {
-            txid: [0u8; 32],
-            prevouts: crate::block::JobPrevouts::owned(vec![]),
-            tx: crate::block::JobTx::owned(tx),
-            flags: crate::block::ScriptVerifyFlags::buried(true, true, true, true, true),
-            pre: std::sync::OnceLock::new(),
-        };
-        let err = verify_job_all_inputs(&job).expect_err("empty prevouts");
-        assert!(format!("{err}").contains("prevout count"), "{err}");
-    }
-
-    #[test]
-    fn empty_prevouts_and_index_errors() {
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![],
-            output: vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let job = ScriptCheckJob {
-            txid: [0u8; 32],
-            prevouts: crate::block::JobPrevouts::owned(vec![]),
-            tx: crate::block::JobTx::owned(tx.clone()),
-            flags: crate::block::ScriptVerifyFlags {
-                bip65_active: true,
-                bip112_active: true,
-                bip66_active: true,
-                bip16_active: true,
-                taproot_active: true,
-                minimal_if: false,
-                nullfail: false,
-                low_s: false,
-                strictenc: false,
-                null_dummy: false,
-                minimal_data: false,
-                witness_pubkeytype: false,
-                witness_active: true,
-                discourage_upgradable_witness: false,
-                const_scriptcode: false,
-                cleanstack: false,
-            },
-            pre: std::sync::OnceLock::new(),
-        };
-        assert!(verify_job_all_inputs(&job).is_ok());
-
-        let job2 = ScriptCheckJob {
-            txid: [0u8; 32],
-            prevouts: crate::block::JobPrevouts::owned(vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }]),
-            tx: crate::block::JobTx::owned(Transaction {
-                version: bitcoin::transaction::Version::TWO,
-                lock_time: LockTime::ZERO,
-                input: vec![],
-                output: vec![],
-            }),
-            flags: crate::block::ScriptVerifyFlags {
-                bip65_active: true,
-                bip112_active: true,
-                bip66_active: true,
-                bip16_active: true,
-                taproot_active: true,
-                minimal_if: false,
-                nullfail: false,
-                low_s: false,
-                strictenc: false,
-                null_dummy: false,
-                minimal_data: false,
-                witness_pubkeytype: false,
-                witness_active: true,
-                discourage_upgradable_witness: false,
-                const_scriptcode: false,
-                cleanstack: false,
-            },
-            pre: std::sync::OnceLock::new(),
-        };
-        let cache = bitcoin::sighash::SighashCache::new(&*job2.tx);
-        let pre = crate::TxPrecompute::from_tx(&job2.tx);
-        let mut cache_slot = Some(cache);
-        let tap_spent = crypto::TapSpentHashes::default();
-        assert!(verify_input(&job2, 0, &job2.tx, &mut cache_slot, &pre, &tap_spent).is_err());
-    }
-
-    #[test]
-    fn verify_job_uses_stashed_pre_for_bip143() {
-        use bitcoin::sighash::{EcdsaSighashType, SighashCache};
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint {
-                    txid: bitcoin::Txid::from_byte_array([0x11; 32]),
-                    vout: 0,
-                },
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::from_slice(&[vec![0x30; 71], vec![0x51]]),
-            }],
-            output: vec![TxOut {
-                value: Amount::from_sat(50_000),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let pre = std::sync::Arc::new(crate::TxPrecompute::from_tx(&tx));
-        let wscript = bitcoin::script::Script::from_bytes(&[0x51]);
-        let ours = crypto::bip143_p2wsh_signature_hash(
-            &tx,
-            0,
-            wscript,
-            Amount::from_sat(50_000),
-            0x01,
-            pre.as_ref(),
-        )
-        .unwrap();
-        let mut cache = SighashCache::new(&tx);
-        let theirs = cache
-            .p2wsh_signature_hash(0, wscript, Amount::from_sat(50_000), EcdsaSighashType::All)
-            .unwrap()
-            .to_byte_array();
-        assert_eq!(ours, theirs);
-        let pres: std::sync::Arc<[crate::TxPrecompute]> = std::sync::Arc::from([(*pre).clone()]);
-        let job = ScriptCheckJob::with_txid(
-            pre.txid,
-            vec![TxOut {
-                value: Amount::from_sat(50_000),
-                script_pubkey: ScriptBuf::from_bytes(
-                    vec![0x00, 0x20].into_iter().chain([0; 32]).collect(),
-                ),
-            }],
-            tx,
-            crate::block::ScriptVerifyFlags::buried(true, true, true, true, true),
-        )
-        .with_pre_slice(pres, 0);
-        assert_eq!(job.pre().txid, job.txid);
-    }
-
-    #[test]
-    fn from_tx_connect_bip143_fails_closed_without_midstate() {
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::ONE,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint {
-                    txid: bitcoin::Txid::from_byte_array([0x11; 32]),
-                    vout: 0,
-                },
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::from_slice(&[vec![0x30; 71], vec![0x02; 33]]),
-            }],
-            output: vec![TxOut {
-                value: Amount::from_sat(50_000),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let pre = crate::TxPrecompute::from_tx_connect(&tx);
-        let wscript = bitcoin::script::Script::from_bytes(&[0x51]);
-        let amt = Amount::from_sat(50_000);
-        let err = crypto::bip143_p2wsh_signature_hash(&tx, 0, wscript, amt, 0x01, &pre)
-            .expect_err("connect-only precompute must not sighash");
-        let msg = err.to_string();
-        assert!(
-            msg.contains("invariant: sighash midstate missing"),
-            "got: {msg}"
-        );
-    }
-
-    #[test]
-    fn annotate_preserves_non_script_and_existing_txid() {
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint {
-                    txid: bitcoin::Txid::from_byte_array([2; 32]),
-                    vout: 0,
-                },
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::new(),
-            }],
-            output: vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let job = ScriptCheckJob::new(
-            vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }],
-            tx,
-            crate::block::ScriptVerifyFlags::buried(true, true, true, true, true),
-        );
-        let e = annotate_script_err(ConsensusError::MissingPrevout, &job, 0);
-        assert!(matches!(e, ConsensusError::MissingPrevout));
-        let e2 = annotate_script_err(
-            ConsensusError::Script("already txid=abc vin=0".into()),
-            &job,
-            3,
-        );
-        match e2 {
-            ConsensusError::Script(m) => assert_eq!(m, "already txid=abc vin=0"),
-            other => panic!("{other:?}"),
-        }
-    }
-
-    #[test]
-    fn taproot_inactive_is_anyone_can_spend() {
-        let mut spk = vec![0x51, 0x20];
-        spk.extend([0u8; 31]);
-        spk.push(1);
-        let job = ScriptCheckJob {
-            txid: [0u8; 32],
-            prevouts: crate::block::JobPrevouts::owned(vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(spk),
-            }]),
-            tx: crate::block::JobTx::owned(Transaction {
-                version: bitcoin::transaction::Version::TWO,
-                lock_time: LockTime::ZERO,
-                input: vec![TxIn {
-                    previous_output: OutPoint {
-                        txid: bitcoin::Txid::from_byte_array([3; 32]),
-                        vout: 0,
-                    },
-                    script_sig: ScriptBuf::new(),
-                    sequence: Sequence::MAX,
-                    witness: Witness::new(),
-                }],
-                output: vec![TxOut {
-                    value: Amount::from_sat(1),
-                    script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-                }],
-            }),
-            flags: crate::block::ScriptVerifyFlags {
-                bip65_active: true,
-                bip112_active: true,
-                bip66_active: true,
-                bip16_active: true,
-                taproot_active: false,
-                minimal_if: false,
-                nullfail: false,
-                low_s: false,
-                strictenc: false,
-                null_dummy: false,
-                minimal_data: false,
-                witness_pubkeytype: false,
-                witness_active: true,
-                discourage_upgradable_witness: false,
-                const_scriptcode: false,
-                cleanstack: false,
-            },
-            pre: std::sync::OnceLock::new(),
-        };
-        verify_job_all_inputs(&job).expect("pre-taproot v1 ACS");
-    }
-
-    #[test]
-    fn p2pkh_shape_error_detection() {
-        assert!(p2pkh_scriptsig_shape_error(&ConsensusError::Script(
-            "p2pkh scriptSig len".into()
-        )));
-        assert!(p2pkh_scriptsig_shape_error(&ConsensusError::Script(
-            "p2pkh scriptSig".into()
-        )));
-        assert!(p2pkh_scriptsig_shape_error(&ConsensusError::Script(
-            "p2pkh scriptSig op".into()
-        )));
-        assert!(p2pkh_scriptsig_shape_error(&ConsensusError::Script(
-            "p2pkh scriptSig unexpected op".into()
-        )));
-        assert!(!p2pkh_scriptsig_shape_error(&ConsensusError::Script(
-            "p2pkh ecdsa".into()
-        )));
-        assert!(!p2pkh_scriptsig_shape_error(
-            &ConsensusError::MissingPrevout
-        ));
-    }
-
-    #[test]
-    fn bip143_sighash_arms_single_acp_and_p2wsh() {
-        use bitcoin::script::Script;
-        use bitcoin::Amount;
-
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![
-                TxIn {
-                    previous_output: OutPoint {
-                        txid: bitcoin::Txid::from_byte_array([1; 32]),
-                        vout: 0,
-                    },
-                    script_sig: ScriptBuf::new(),
-                    sequence: Sequence::MAX,
-                    witness: Witness::new(),
-                },
-                TxIn {
-                    previous_output: OutPoint {
-                        txid: bitcoin::Txid::from_byte_array([2; 32]),
-                        vout: 1,
-                    },
-                    script_sig: ScriptBuf::new(),
-                    sequence: Sequence::from_consensus(1),
-                    witness: Witness::new(),
-                },
-            ],
-            output: vec![
-                TxOut {
-                    value: Amount::from_sat(1000),
-                    script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-                },
-                TxOut {
-                    value: Amount::from_sat(2000),
-                    script_pubkey: ScriptBuf::from_bytes(vec![0x52]),
-                },
-            ],
-        };
-        let sc = Script::from_bytes(&[0x51]);
-        let amt = Amount::from_sat(50_000);
-
-        // Bad index.
-        let pre = crate::TxPrecompute::from_tx(&tx);
-        assert!(crypto::bip143_signature_hash(&tx, 9, sc, amt, 0x01, &pre).is_err());
-
-        // All / Single / None + AnyoneCanPay variants.
-        for ty in [0x01u32, 0x02, 0x03, 0x81, 0x82, 0x83] {
-            let h = crypto::bip143_signature_hash(&tx, 0, sc, amt, ty, &pre).expect("sighash");
-            assert_ne!(h, [0u8; 32]);
-        }
-        // Single at index with matching output (input 1 → output 1).
-        let h_single = crypto::bip143_signature_hash(&tx, 1, sc, amt, 0x03, &pre).unwrap();
-        // Single with no matching output (only 2 outs; index 1 ok; use 1-input for zero outputs arm).
-        let tx1 = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![tx.input[0].clone()],
-            output: vec![],
-        };
-        let pre1 = crate::TxPrecompute::from_tx(&tx1);
-        let h_none_out = crypto::bip143_signature_hash(&tx1, 0, sc, amt, 0x03, &pre1).unwrap();
-        assert_ne!(h_single, h_none_out);
-
-        // Non-standard raw type 0x65 uses the same midstates + raw nHashType.
-        let wscript = Script::from_bytes(&[0x51]);
-        let h_fast = crypto::bip143_p2wsh_signature_hash(&tx, 0, wscript, amt, 0x01, &pre).unwrap();
-        let h_slow = crypto::bip143_p2wsh_signature_hash(&tx, 0, wscript, amt, 0x65, &pre).unwrap();
-        assert_ne!(h_fast, [0u8; 32]);
-        assert_ne!(h_slow, [0u8; 32]);
-        // Standard and non-standard types must differ (raw_ty in digest).
-        assert_ne!(h_fast, h_slow);
-    }
-
-    /// Tapscript and key-path sighash from borrowed prevout scripts matches
-    /// rust-bitcoin's `taproot_signature_hash` on every BIP341 hash type.
-    #[test]
-    fn tapscript_sighash_matches_rust_bitcoin_on_every_hash_type() {
-        use bitcoin::sighash::{Annex, Prevouts, SighashCache, TapSighashType};
-        use bitcoin::taproot::LeafVersion;
-        use bitcoin::TapLeafHash;
-
-        let outpoint = |n: u8| OutPoint {
-            txid: bitcoin::Txid::from_byte_array([n; 32]),
-            vout: u32::from(n),
-        };
-        let input = |n: u8| TxIn {
-            previous_output: outpoint(n),
-            script_sig: ScriptBuf::new(),
-            sequence: Sequence(0xffff_fff0 - u32::from(n)),
-            witness: Witness::new(),
-        };
-        let output = |n: u8| TxOut {
-            value: Amount::from_sat(1_000 * u64::from(n)),
-            script_pubkey: ScriptBuf::from_bytes(vec![0x51; usize::from(n)]),
-        };
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::from_consensus(500),
-            input: vec![input(1), input(2), input(3)],
-            output: vec![output(4), output(5)],
-        };
-        let prevouts = vec![output(6), output(7), output(8)];
-        let leaf = ScriptBuf::from_bytes(vec![0x51, 0x75, 0x51]);
-        let leaf_hash = TapLeafHash::from_script(&leaf, LeafVersion::TapScript);
-        let annex_bytes = [0x50, 0x01, 0x02];
-        let types = [
-            TapSighashType::Default,
-            TapSighashType::All,
-            TapSighashType::None,
-            TapSighashType::Single,
-            TapSighashType::AllPlusAnyoneCanPay,
-            TapSighashType::NonePlusAnyoneCanPay,
-            TapSighashType::SinglePlusAnyoneCanPay,
-        ];
-        let flags = crate::block::ScriptVerifyFlags::buried(true, true, true, true, true);
-        let job = crate::block::ScriptCheckJob::new(prevouts.clone(), tx.clone(), flags);
-
-        let tap_spent = crypto::TapSpentHashes::default();
-        for annex in [None, Some(&annex_bytes[..])] {
-            for input_index in 0..tx.input.len() {
-                let exec =
-                    crypto::TapscriptExecData::new(&job, input_index, &tap_spent, leaf_hash, annex);
-                let annex_oracle = annex.map(|a| Annex::new(a).unwrap());
-                let annex_hash = annex.map(crypto::annex_hash);
-                for ty in types {
-                    let single = std::cell::OnceCell::new();
-                    let key_ours = crypto::tap_signature_hash(
-                        &job,
-                        input_index,
-                        ty,
-                        &tap_spent,
-                        annex_hash,
-                        None,
-                        &single,
-                    );
-                    let key_oracle = SighashCache::new(&tx).taproot_signature_hash(
-                        input_index,
-                        &Prevouts::All(&prevouts),
-                        annex_oracle.clone(),
-                        None,
-                        ty,
-                    );
-                    match key_oracle {
-                        Ok(h) => assert_eq!(
-                            key_ours.expect("key path"),
-                            h.to_byte_array(),
-                            "key vin={input_index} {ty:?} annex={annex:?}"
-                        ),
-                        Err(_) => assert!(
-                            key_ours.is_err(),
-                            "key vin={input_index} {ty:?}: rust-bitcoin rejects, ours accepts"
-                        ),
-                    }
-                    for codesep in [0xFFFF_FFFF, 0, 7] {
-                        let ours = exec.signature_hash(ty, codesep);
-                        let oracle = SighashCache::new(&tx).taproot_signature_hash(
-                            input_index,
-                            &Prevouts::All(&prevouts),
-                            annex_oracle.clone(),
-                            Some((leaf_hash, codesep)),
-                            ty,
-                        );
-                        match oracle {
-                            Ok(h) => assert_eq!(
-                                ours.expect("ours"),
-                                h.to_byte_array(),
-                                "vin={input_index} {ty:?} codesep={codesep} annex={annex:?}"
-                            ),
-                            Err(_) => assert!(
-                                ours.is_err(),
-                                "vin={input_index} {ty:?}: rust-bitcoin rejects, ours accepts"
-                            ),
-                        }
-                    }
-                }
-            }
-        }
-
-        let short_job =
-            crate::block::ScriptCheckJob::new(prevouts[..2].to_vec(), tx.clone(), flags);
-        let tap_spent = crypto::TapSpentHashes::default();
-        let exec = crypto::TapscriptExecData::new(&short_job, 0, &tap_spent, leaf_hash, None);
-        assert!(exec.signature_hash(TapSighashType::Default, 0).is_err());
-    }
-
-    #[test]
-    fn bip16_inactive_treats_p2sh_as_bare() {
-        // P2SH template spent as bare HASH160/EQUAL when bip16 off.
-        let mut p2sh = vec![0xa9, 0x14];
-        p2sh.extend([0u8; 20]);
-        p2sh.push(0x87);
-        // scriptSig that just pushes 20 zero bytes (equal fails — but exercises bare path)
-        let mut ss = vec![0x14];
-        ss.extend([0u8; 20]);
-        let job = ScriptCheckJob {
-            txid: [0u8; 32],
-            prevouts: crate::block::JobPrevouts::owned(vec![TxOut {
-                value: Amount::from_sat(1),
-                script_pubkey: ScriptBuf::from_bytes(p2sh),
-            }]),
-            tx: crate::block::JobTx::owned(Transaction {
-                version: bitcoin::transaction::Version::ONE,
-                lock_time: LockTime::ZERO,
-                input: vec![TxIn {
-                    previous_output: OutPoint {
-                        txid: bitcoin::Txid::from_byte_array([4; 32]),
-                        vout: 0,
-                    },
-                    script_sig: ScriptBuf::from_bytes(ss),
-                    sequence: Sequence::MAX,
-                    witness: Witness::new(),
-                }],
-                output: vec![TxOut {
-                    value: Amount::from_sat(1),
-                    script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-                }],
-            }),
-            flags: crate::block::ScriptVerifyFlags {
-                bip65_active: false,
-                bip112_active: false,
-                bip66_active: false,
-                bip16_active: false,
-                taproot_active: false,
-                minimal_if: false,
-                nullfail: false,
-                low_s: false,
-                strictenc: false,
-                null_dummy: false,
-                minimal_data: false,
-                witness_pubkeytype: false,
-                witness_active: true,
-                discourage_upgradable_witness: false,
-                const_scriptcode: false,
-                cleanstack: false,
-            },
-            pre: std::sync::OnceLock::new(),
-        };
-        // Bare HASH160 equal of zeros vs hash160([]) — should fail script, not p2sh redeem.
-        let err = verify_job_all_inputs(&job).unwrap_err();
-        assert!(matches!(err, ConsensusError::Script(_)));
-    }
-
-    /// Fast path and interpreter agree on a real P2PKH signature, and both
-    /// reject the only push that `FindAndDelete` could remove from the
-    /// 25-byte template (the 20-byte pubkey hash). That stack item is not a
-    /// verifying signature, so the different sighash is not a chain split.
-    #[test]
-    fn p2pkh_fast_path_matches_interpreter_including_hash_collision() {
-        use bitcoin::secp256k1::{Message, Secp256k1, SecretKey};
-        use bitcoin::sighash::{EcdsaSighashType, SighashCache};
-
-        let secp = Secp256k1::new();
-        let sk = SecretKey::from_slice(&[9u8; 32]).unwrap();
-        let pk = bitcoin::PublicKey::new(sk.public_key(&secp));
-        let spk = ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::hash(&pk.to_bytes()));
-        let prevout = TxOut {
-            value: Amount::from_sat(50_000),
-            script_pubkey: spk.clone(),
-        };
-        let shell = Transaction {
-            version: bitcoin::transaction::Version::ONE,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint::null(),
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::new(),
-            }],
-            output: vec![TxOut {
-                value: Amount::from_sat(49_000),
-                script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-            }],
-        };
-        let sighash = SighashCache::new(&shell)
-            .legacy_signature_hash(0, spk.as_script(), EcdsaSighashType::All as u32)
-            .unwrap();
-        let mut sig = secp
-            .sign_ecdsa(&Message::from_digest(sighash.to_byte_array()), &sk)
-            .serialize_der()
-            .to_vec();
-        sig.push(EcdsaSighashType::All as u8);
-        let mut script_sig = Vec::new();
-        script_sig.push(sig.len() as u8);
-        script_sig.extend_from_slice(&sig);
-        script_sig.push(pk.to_bytes().len() as u8);
-        script_sig.extend_from_slice(&pk.to_bytes());
-        let mut good = shell.clone();
-        good.input[0].script_sig = ScriptBuf::from_bytes(script_sig);
-        let flags = crate::block::ScriptVerifyFlags::buried(false, false, true, true, false);
-        let job = ScriptCheckJob::new(vec![prevout.clone()], good, flags);
-        assert!(verify_job_all_inputs(&job).is_ok());
-        assert!(verify_bare(&job, 0, &job.tx).is_ok());
-
-        let keyhash = bitcoin::PubkeyHash::hash(&pk.to_bytes());
-        let mut bad_sig = Vec::new();
-        bad_sig.push(20);
-        bad_sig.extend_from_slice(keyhash.as_byte_array());
-        bad_sig.push(pk.to_bytes().len() as u8);
-        bad_sig.extend_from_slice(&pk.to_bytes());
-        let mut bad = shell;
-        bad.input[0].script_sig = ScriptBuf::from_bytes(bad_sig);
-        let job = ScriptCheckJob::new(vec![prevout], bad, flags);
-        assert!(verify_job_all_inputs(&job).is_err());
-        assert!(verify_bare(&job, 0, &job.tx).is_err());
-    }
-
-    #[test]
-    fn tap_sighash_rejects_a_bad_index_and_a_prevout_count_mismatch() {
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: OutPoint::null(),
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::new(),
-            }],
-            output: vec![TxOut {
-                value: Amount::ZERO,
-                script_pubkey: ScriptBuf::new(),
-            }],
-        };
-        let prevout = TxOut {
-            value: Amount::ZERO,
-            script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
-        };
-        let flags = crate::block::ScriptVerifyFlags::buried(false, false, false, true, true);
-        let job = ScriptCheckJob::new(vec![prevout.clone()], tx.clone(), flags);
-        let spent = crypto::TapSpentHashes::default();
-        let single = std::cell::OnceCell::new();
-        let err = crypto::tap_signature_hash(
-            &job,
-            3,
-            bitcoin::sighash::TapSighashType::Default,
-            &spent,
-            None,
-            None,
-            &single,
-        )
-        .unwrap_err();
-        assert!(format!("{err}").contains("sighash input"), "{err}");
-
-        let mismatch = ScriptCheckJob::new(vec![prevout.clone(), prevout], tx, flags);
-        let err = crypto::tap_signature_hash(
-            &mismatch,
-            0,
-            bitcoin::sighash::TapSighashType::Default,
-            &spent,
-            None,
-            None,
-            &single,
-        )
-        .unwrap_err();
-        assert!(format!("{err}").contains("sighash prevouts"), "{err}");
     }
 }

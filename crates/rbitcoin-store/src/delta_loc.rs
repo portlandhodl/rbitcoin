@@ -16,10 +16,13 @@ use std::sync::RwLock;
 pub const IDX_STRIDE: u64 = 8;
 /// Creates per loc window / checkpoint grain.
 pub const LOC_WINDOW: u64 = 1024;
-const CREATE_OVF_MISSING: &str = "invariant: create.loc overflow missing";
-const SEQSIGWIT_OVF_MISSING: &str = "invariant: seqsigwit.loc overflow missing";
-pub(crate) const CREATE_OVF_SLOT: u64 = 16;
-const CREATE_OVF_SLOT_V22: u64 = 12;
+#[doc(hidden)]
+pub const CREATE_OVF_MISSING: &str = "invariant: create.loc overflow missing";
+#[doc(hidden)]
+pub const SEQSIGWIT_OVF_MISSING: &str = "invariant: seqsigwit.loc overflow missing";
+pub const CREATE_OVF_SLOT: u64 = 16;
+#[doc(hidden)]
+pub const CREATE_OVF_SLOT_V22: u64 = 12;
 
 #[inline]
 pub fn loc_window(id: u64) -> u64 {
@@ -47,7 +50,8 @@ pub fn strides_from_aligned_len(len: u64) -> Result<u32, StoreError> {
     Ok(s as u32)
 }
 
-fn ovf_lookup_pair(
+#[doc(hidden)]
+pub fn ovf_lookup_pair(
     rows: &[(u64, u32, u32)],
     fk: u64,
     missing: &'static str,
@@ -58,7 +62,8 @@ fn ovf_lookup_pair(
     }
 }
 
-fn ovf_lookup_strides(
+#[doc(hidden)]
+pub fn ovf_lookup_strides(
     rows: &[(u64, u32)],
     fk: u64,
     missing: &'static str,
@@ -69,13 +74,15 @@ fn ovf_lookup_strides(
     }
 }
 
-fn open_loc_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
+#[doc(hidden)]
+pub fn open_loc_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
     let f = TableFile::open(path, kind)?;
     f.set_grow_policy(GrowPolicy::Tight1MiB);
     Ok(f)
 }
 
-fn create_loc_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
+#[doc(hidden)]
+pub fn create_loc_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
     let f = TableFile::create(path, kind)?;
     f.set_grow_policy(GrowPolicy::Tight1MiB);
     Ok(f)
@@ -83,13 +90,13 @@ fn create_loc_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError
 
 /// Single-plane u16 delta locator (`seqsigwit.loc`: strides, `0` = overflow).
 pub struct DeltaLoc {
-    loc: TableFile,
-    ovf: TableFile,
-    off: TableFile,
-    checkpoints: RwLock<Vec<u64>>,
-    ovf_rows: RwLock<Vec<(u64, u32)>>,
-    count: AtomicU64,
-    missing: &'static str,
+    pub loc: TableFile,
+    pub ovf: TableFile,
+    pub off: TableFile,
+    pub checkpoints: RwLock<Vec<u64>>,
+    pub ovf_rows: RwLock<Vec<(u64, u32)>>,
+    pub count: AtomicU64,
+    pub missing: &'static str,
 }
 
 impl DeltaLoc {
@@ -274,7 +281,7 @@ impl DeltaLoc {
     }
 
     /// Window reads that resolve `fks` (offsets from RAM checkpoints; no IO).
-    pub(crate) fn plan_range_batch(&self, fks: &[Fk]) -> Result<DeltaLocPlan, StoreError> {
+    pub fn plan_range_batch(&self, fks: &[Fk]) -> Result<DeltaLocPlan, StoreError> {
         let count = self.count.load(Ordering::Acquire);
         let mut jobs: Vec<(usize, u64)> = Vec::new();
         for (i, fk) in fks.iter().enumerate() {
@@ -323,7 +330,7 @@ impl DeltaLoc {
     }
 
     /// Decode the window buffers of a filled [`DeltaLocPlan`].
-    pub(crate) fn finish_range_batch(
+    pub fn finish_range_batch(
         &self,
         plan: &DeltaLocPlan,
     ) -> Result<Vec<Option<(u64, u64)>>, StoreError> {
@@ -360,37 +367,39 @@ impl DeltaLoc {
     }
 
     /// Locator handle and path for a machine's reads.
-    pub(crate) fn loc_file(&self) -> (crate::io_handle::IoHandle, &Path) {
+    pub fn loc_file(&self) -> (crate::io_handle::IoHandle, &Path) {
         (self.loc.read_fd(), self.loc.path())
     }
 }
 
 /// Window reads for one [`DeltaLoc::plan_range_batch`].
-pub(crate) struct DeltaLocPlan {
-    out_len: usize,
-    jobs: Vec<(usize, u64)>,
-    windows: Vec<DeltaWin>,
+pub struct DeltaLocPlan {
+    pub out_len: usize,
+    pub jobs: Vec<(usize, u64)>,
+    pub windows: Vec<DeltaWin>,
 }
 
-struct DeltaWin {
-    job_lo: usize,
-    job_hi: usize,
-    win_first: u64,
-    n: usize,
-    win_start: u64,
-    buf: Vec<u8>,
+#[doc(hidden)]
+pub struct DeltaWin {
+    pub job_lo: usize,
+    pub job_hi: usize,
+    pub win_first: u64,
+    pub n: usize,
+    pub win_start: u64,
+    pub buf: Vec<u8>,
 }
 
 impl DeltaLocPlan {
     /// `(file offset, buffer)` for each window read, in plan order.
-    pub(crate) fn reads(&mut self) -> impl Iterator<Item = (u64, &mut Vec<u8>)> {
+    pub fn reads(&mut self) -> impl Iterator<Item = (u64, &mut Vec<u8>)> {
         self.windows
             .iter_mut()
             .map(|w| (loc_file_off(w.win_first, 2), &mut w.buf))
     }
 }
 
-fn pack_u16_strides_seqsigwit(strides: u32) -> Result<(u16, Option<u32>), StoreError> {
+#[doc(hidden)]
+pub fn pack_u16_strides_seqsigwit(strides: u32) -> Result<(u16, Option<u32>), StoreError> {
     if strides == 0 {
         return Err(StoreError::Corrupt("invariant: loc strides"));
     }
@@ -400,7 +409,8 @@ fn pack_u16_strides_seqsigwit(strides: u32) -> Result<(u16, Option<u32>), StoreE
     Ok((strides as u16, None))
 }
 
-fn load_u16_ovf(ovf: &TableFile) -> Result<Vec<(u64, u32)>, StoreError> {
+#[doc(hidden)]
+pub fn load_u16_ovf(ovf: &TableFile) -> Result<Vec<(u64, u32)>, StoreError> {
     let data = ovf.data_len();
     if !data.is_multiple_of(12) {
         return Err(StoreError::Corrupt("invariant: loc ovf size"));
@@ -425,12 +435,10 @@ fn load_u16_ovf(ovf: &TableFile) -> Result<Vec<(u64, u32)>, StoreError> {
     Ok(rows)
 }
 
-type PackedCreateSlot = (u8, u8, Option<(u32, u32)>);
+#[doc(hidden)]
+pub type PackedCreateSlot = (u8, u8, Option<(u32, u32)>);
 
-pub(crate) fn pack_create_pair(
-    txout_strides: u32,
-    n_out: u32,
-) -> Result<PackedCreateSlot, StoreError> {
+pub fn pack_create_pair(txout_strides: u32, n_out: u32) -> Result<PackedCreateSlot, StoreError> {
     if n_out == 0 {
         return Err(StoreError::Corrupt("invariant: create n_out"));
     }
@@ -451,7 +459,7 @@ pub(crate) fn pack_create_pair(
     Ok((s8, n8, ovf))
 }
 
-pub(crate) fn decode_create_pair(
+pub fn decode_create_pair(
     strides_b: u8,
     n_out_b: u8,
     fk: u64,
@@ -464,7 +472,7 @@ pub(crate) fn decode_create_pair(
     }
 }
 
-pub(crate) fn encode_create_ovf_row(fk: u64, strides: u32, n_out: u32) -> [u8; 16] {
+pub fn encode_create_ovf_row(fk: u64, strides: u32, n_out: u32) -> [u8; 16] {
     let mut row = [0u8; CREATE_OVF_SLOT as usize];
     row[0..8].copy_from_slice(&fk.to_le_bytes());
     row[8..12].copy_from_slice(&strides.to_le_bytes());
@@ -472,7 +480,7 @@ pub(crate) fn encode_create_ovf_row(fk: u64, strides: u32, n_out: u32) -> [u8; 1
     row
 }
 
-pub(crate) fn load_create_ovf(ovf: &TableFile) -> Result<Vec<(u64, u32, u32)>, StoreError> {
+pub fn load_create_ovf(ovf: &TableFile) -> Result<Vec<(u64, u32, u32)>, StoreError> {
     let data = ovf.data_len();
     if !data.is_multiple_of(CREATE_OVF_SLOT) {
         return Err(StoreError::Corrupt("invariant: create.loc ovf size"));
@@ -498,7 +506,8 @@ pub(crate) fn load_create_ovf(ovf: &TableFile) -> Result<Vec<(u64, u32, u32)>, S
     Ok(rows)
 }
 
-fn create_ovf_header_ver(ovf: &TableFile) -> Result<u16, StoreError> {
+#[doc(hidden)]
+pub fn create_ovf_header_ver(ovf: &TableFile) -> Result<u16, StoreError> {
     let mut hdr = [0u8; FILE_HEADER_LEN];
     ovf.pread_at(0, &mut hdr)?;
     Ok(u16::from_le_bytes([hdr[4], hdr[5]]))
@@ -506,7 +515,7 @@ fn create_ovf_header_ver(ovf: &TableFile) -> Result<u16, StoreError> {
 
 /// Schema 22 `create.loc.ovf` is 12 B (`fk:u64` + two u16). Schema 23 is 16 B
 /// (`fk:u64` + two u32). Rewrite on open so occupied 22 Class A can resume IBD.
-pub(crate) fn migrate_create_ovf_v22_if_needed(path: &Path) -> Result<(), StoreError> {
+pub fn migrate_create_ovf_v22_if_needed(path: &Path) -> Result<(), StoreError> {
     if !path.exists() {
         return Ok(());
     }
@@ -562,116 +571,10 @@ pub(crate) fn migrate_create_ovf_v22_if_needed(path: &Path) -> Result<(), StoreE
     Ok(())
 }
 
-pub(crate) fn create_table_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
+pub fn create_table_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
     create_loc_file(path, kind)
 }
 
-pub(crate) fn open_table_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
+pub fn open_table_file(path: &Path, kind: TableKind) -> Result<TableFile, StoreError> {
     open_loc_file(path, kind)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::testutil::TempDir;
-
-    #[test]
-    fn window_and_within() {
-        assert_eq!(loc_window(1), 0);
-        assert_eq!(loc_within(1), 0);
-        assert_eq!(loc_window(1024), 0);
-        assert_eq!(loc_within(1024), 1023);
-        assert_eq!(loc_window(1025), 1);
-        assert_eq!(loc_within(1025), 0);
-    }
-
-    #[test]
-    fn pack_create_n_out_zero_is_corrupt() {
-        match pack_create_pair(1, 0) {
-            Err(StoreError::Corrupt(m)) => assert!(m.contains("create n_out"), "{m}"),
-            other => panic!("{other:?}"),
-        }
-    }
-
-    #[test]
-    fn pack_create_sentinels() {
-        let (s, n, ovf) = pack_create_pair(1, 1).unwrap();
-        assert_eq!((s, n, ovf), (1, 1, None));
-        let (s, n, ovf) = pack_create_pair(255, 255).unwrap();
-        assert_eq!((s, n, ovf), (255, 255, None));
-        let (s, n, ovf) = pack_create_pair(256, 1).unwrap();
-        assert_eq!((s, n), (0, 1));
-        assert_eq!(ovf, Some((256, 1)));
-        let (s, n, ovf) = pack_create_pair(1, 256).unwrap();
-        assert_eq!((s, n), (1, 0));
-        assert_eq!(ovf, Some((1, 256)));
-    }
-
-    #[test]
-    fn pack_create_pair_past_u16_is_ok() {
-        let (s, n, ovf) = pack_create_pair(65536, 1).expect("strides 65536");
-        assert_eq!((s, n), (0, 1));
-        let (st, no) = ovf.expect("ovf");
-        assert_eq!(st, 65536);
-        assert_eq!(no, 1);
-        let (s, n, ovf) = pack_create_pair(1, 65536).expect("n_out 65536");
-        assert_eq!((s, n), (1, 0));
-        let (st, no) = ovf.expect("ovf");
-        assert_eq!(st, 1);
-        assert_eq!(no, 65536);
-        let (s, n, ovf) = pack_create_pair(65536, 65536).expect("both");
-        assert_eq!((s, n), (0, 0));
-        let (st, no) = ovf.expect("ovf");
-        assert_eq!(st, 65536);
-        assert_eq!(no, 65536);
-        let (s, n, ovf) = pack_create_pair(65535, 65535).unwrap();
-        assert_eq!((s, n), (0, 0));
-        let (st, no) = ovf.expect("ovf");
-        assert_eq!(st, 65535);
-        assert_eq!(no, 65535);
-    }
-
-    #[test]
-    fn delta_loc_append_and_batch_order() {
-        let dir = TempDir::labeled("delta-loc").unwrap();
-        let loc = DeltaLoc::create(dir.path(), "seqsigwit").unwrap();
-        let starts: Vec<u64> = (0..4).map(|i| FILE_HEADER_LEN as u64 + i * 16).collect();
-        loc.append(&starts, &[16, 16, 16, 16]).unwrap();
-        assert_eq!(loc.count(), 4);
-        let fks = [Fk(3), Fk(1), Fk(4), Fk::NULL, Fk(99)];
-        let got = loc.range_batch(&fks).unwrap();
-        assert_eq!(got[0], Some((FILE_HEADER_LEN as u64 + 32, 16)));
-        assert_eq!(got[1], Some((FILE_HEADER_LEN as u64, 16)));
-        assert_eq!(got[2], Some((FILE_HEADER_LEN as u64 + 48, 16)));
-        assert_eq!(got[3], None);
-        assert_eq!(got[4], None);
-    }
-
-    #[test]
-    fn delta_loc_u16_overflow_and_missing() {
-        let dir = TempDir::labeled("delta-ovf").unwrap();
-        let loc = DeltaLoc::create(dir.path(), "seqsigwit").unwrap();
-        let fat = 65536 * IDX_STRIDE;
-        loc.append(&[FILE_HEADER_LEN as u64], &[fat]).unwrap();
-        let got = loc.range_batch(&[Fk(1)]).unwrap();
-        assert_eq!(got[0], Some((FILE_HEADER_LEN as u64, fat)));
-        drop(loc);
-        std::fs::remove_file(dir.path().join("seqsigwit.loc.ovf")).unwrap();
-        let loc = DeltaLoc::open(dir.path(), "seqsigwit").unwrap();
-        match loc.range_batch(&[Fk(1)]) {
-            Err(StoreError::Corrupt(m)) => assert!(m.contains("overflow missing"), "{m}"),
-            other => panic!("{other:?}"),
-        }
-    }
-
-    #[test]
-    fn pack_u16_seqsigwit_overflow_at_512kib() {
-        let (d, ovf) = pack_u16_strides_seqsigwit(1).unwrap();
-        assert_eq!((d, ovf), (1, None));
-        let (d, ovf) = pack_u16_strides_seqsigwit(65535).unwrap();
-        assert_eq!((d, ovf), (65535, None));
-        let (d, ovf) = pack_u16_strides_seqsigwit(65536).unwrap();
-        assert_eq!(d, 0);
-        assert_eq!(ovf, Some(65536));
-    }
 }

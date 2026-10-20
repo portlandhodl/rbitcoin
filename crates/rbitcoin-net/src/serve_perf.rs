@@ -2,11 +2,16 @@
 
 use crate::perf_meter::{PerfCounter, PerfMax};
 
-static SERVE_N: PerfCounter = PerfCounter::new();
-static SERVE_BYTES: PerfCounter = PerfCounter::new();
-static SERVE_TX: PerfCounter = PerfCounter::new();
-static SERVE_WALL_NS: PerfCounter = PerfCounter::new();
-static SERVE_MAX_NS: PerfMax = PerfMax::new();
+#[doc(hidden)]
+pub static SERVE_N: PerfCounter = PerfCounter::new();
+#[doc(hidden)]
+pub static SERVE_BYTES: PerfCounter = PerfCounter::new();
+#[doc(hidden)]
+pub static SERVE_TX: PerfCounter = PerfCounter::new();
+#[doc(hidden)]
+pub static SERVE_WALL_NS: PerfCounter = PerfCounter::new();
+#[doc(hidden)]
+pub static SERVE_MAX_NS: PerfMax = PerfMax::new();
 
 /// One 5s window of historical block-serve reconstruct+encode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -18,7 +23,7 @@ pub struct ServePerfSample {
     pub max_ns: u64,
 }
 
-pub(crate) fn note_serve(tx_count: u32, bytes: usize, wall_ns: u128) {
+pub fn note_serve(tx_count: u32, bytes: usize, wall_ns: u128) {
     let ns = wall_ns.min(u128::from(u64::MAX)) as u64;
     SERVE_N.add(1);
     SERVE_BYTES.add(bytes as u64);
