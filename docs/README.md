@@ -61,6 +61,7 @@ into `AGENTS.md`.
 | [`peer-clients.md`](./peer-clients.md) | Hornet Node and satd: what to steal (tests/ideas) and what not to copy. Ranked items stay here; do not copy into quality.md. |
 | [`lightning.md`](./lightning.md) | CLN, ldk-node, and LND as Bitcoin backends: `bcli` calls, Esplora/Electrum chain sync, LND `rpcpolling`, `--sh-index` API matrix. | 
 | [`wallets.md`](./wallets.md) | Which on-chain wallets connect, and the server string or RPC cookie for each. Lightning stays in `lightning.md`. |
+| [`esplora-openapi.yaml`](./esplora-openapi.yaml) | OpenAPI 3.1 shapes for the Esplora REST surface, including `?asof=`. Behavior stays owned by COMPAT.md. |
 | [`external_findings/`](./external_findings/) | Numbered audit reports + regression pointers. Do not flatten into CHANGELOG. |
 
 ## Root (stay at root)

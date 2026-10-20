@@ -219,6 +219,8 @@ without the dialect is an error. `server.features.protocol_max` stays
 
 ## Esplora REST surface
 
+Request and response shapes: [`docs/esplora-openapi.yaml`](./docs/esplora-openapi.yaml) (OpenAPI 3.1).
+
 Plain HTTP via `--esplora-listen` / conf `esplora_listen` (default **off**). TLS
 via reverse proxy for **clearnet**; onion is plain TCP (`ADD_ONION` to loopback).
 App `ServeLimits` always on (same model as Electrum).

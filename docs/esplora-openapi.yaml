@@ -1,0 +1,1091 @@
+openapi: 3.1.0
+info:
+  title: rbitcoin Esplora-compatible REST
+  version: "0.x"
+  summary: Blockstream Esplora / electrs HTTP API as served by rbitcoin, plus the `?asof=` dialect.
+  description: |
+    Plain HTTP on `--esplora-listen` (default off). TLS is a reverse proxy's job.
+    Behavior and intentional differences are owned by
+    [`COMPAT.md`](../COMPAT.md#esplora-rest-surface); this file describes the
+    request and response shapes. If the two disagree, COMPAT.md and the router
+    in `crates/rbitcoin-esplora/src/server.rs` win.
+
+    ## Hashes
+    Every txid and block hash is 64 hex characters in display order (the
+    order Core and Esplora print). A malformed hash in a path or in `?asof=`
+    returns **404** `Not Found`.
+
+    ## Chain-view headers
+    Pinned responses carry `X-Bitcoin-Chain-Tip` (block hash) and
+    `X-Bitcoin-Chain-Tip-Height`. Both are CORS-exposed. Block, tx, and header
+    routes stamp the live tip. `/address/*`, `/scripthash/*`, `/addresses/*`, and
+    `/scripthashes/*` stamp the scripthash-index watermark, so the JSON matches
+    the join that produced it. With `?asof=`, the stamp is the as-of block.
+    Mempool, fee, broadcast, and package routes are not stamped. If two
+    sequential fetches disagree on the hash, drop the batch and restart. If
+    the pin leaves the best chain mid-request, the response is **503**
+    `chain view moved`.
+
+    ## As-of (`?asof=<blockhash>`)
+    Answers "what did this wallet look like at this block", for a block that is
+    still on the best chain. The confirmed join is pinned at that ancestor:
+    later confirmations are invisible and the **mempool is never included**.
+    The response headers carry the as-of hash and height.
+
+    - Accepted only on the routes that declare the `asof` parameter below:
+      `/tx/{txid}/status`, `/tx/{txid}/outspend/{vout}`, `/tx/{txid}/outspends`,
+      and address/scripthash `/`, `/utxo`, `/txs`, `/txs/chain[/{last}]`,
+      `/txs/summary[/{last}]`.
+    - On any other route, `?asof=` is **404** (for example `/tx/{txid}`,
+      `/mempool`, `/address/{addr}/txs/mempool`, and the POST multi-script routes).
+    - An empty value, bad hex, an unknown hash, a hash that is not on the best
+      chain, or (for address/scripthash routes) a block ahead of the visible
+      scripthash index is **404**. The server does not retry onto a sibling
+      block at the same height, and it never serves a disconnected fork.
+    - If the as-of block is reorged out while the request runs, the response
+      is **404** rather than 503.
+
+    The Electrum counterpart is a trailing `asof:<blockhash>` argument after
+    negotiating `server.version(name, "1.4.2-asof")`; see COMPAT.md.
+
+    ## Scripthash index
+    Address and scripthash routes need `--sh-index`. Without it they return
+    **503** `scripthash index disabled`. Unpaged stats and `/utxo` above
+    `--max-sh-creates` are **503**; paged history is still served.
+
+    ## Errors
+    Error bodies are `text/plain`. Unknown paths are **404** `Not Found`.
+  license:
+    name: MIT OR Apache-2.0
+servers:
+  - url: http://127.0.0.1:3000
+    description: "`--esplora-listen 127.0.0.1:3000`"
+tags:
+  - name: blocks
+  - name: transactions
+  - name: addresses
+    description: Address and scripthash history. Needs `--sh-index`.
+  - name: mempool
+  - name: broadcast
+  - name: internal
+    description: electrs `/internal/*`. Mounted only on a unix-socket listener; on TCP these are 404.
+
+paths:
+  /blocks/tip/height:
+    get:
+      tags: [blocks]
+      summary: Best-chain tip height
+      responses:
+        "200": { $ref: "#/components/responses/PlainInt" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /blocks/tip/hash:
+    get:
+      tags: [blocks]
+      summary: Best-chain tip hash
+      responses:
+        "200": { $ref: "#/components/responses/PlainHash" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /blocks:
+    get:
+      tags: [blocks]
+      summary: Ten newest block summaries, newest first
+      responses:
+        "200":
+          description: Block summaries
+          headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Block" } }
+  /blocks/{start_height}:
+    get:
+      tags: [blocks]
+      summary: Ten block summaries ending at `start_height`, newest first
+      parameters:
+        - { name: start_height, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200":
+          description: Block summaries
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Block" } }
+  /block-height/{height}:
+    get:
+      tags: [blocks]
+      summary: Best-chain block hash at a height
+      parameters:
+        - { name: height, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200": { $ref: "#/components/responses/PlainHash" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block/{hash}:
+    get:
+      tags: [blocks]
+      summary: Block summary (best chain only)
+      parameters: [{ $ref: "#/components/parameters/BlockHash" }]
+      responses:
+        "200":
+          description: Block summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Block" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block/{hash}/header:
+    get:
+      tags: [blocks]
+      summary: 80-byte block header as hex
+      parameters: [{ $ref: "#/components/parameters/BlockHash" }]
+      responses:
+        "200": { $ref: "#/components/responses/PlainHex" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block/{hash}/status:
+    get:
+      tags: [blocks]
+      summary: Whether the block is on the best chain
+      parameters: [{ $ref: "#/components/parameters/BlockHash" }]
+      responses:
+        "200":
+          description: Block status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlockStatus" }
+  /block/{hash}/raw:
+    get:
+      tags: [blocks]
+      summary: Raw serialized block
+      parameters: [{ $ref: "#/components/parameters/BlockHash" }]
+      responses:
+        "200":
+          description: Consensus-serialized block
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block/{hash}/txids:
+    get:
+      tags: [blocks]
+      summary: All txids in block order
+      parameters: [{ $ref: "#/components/parameters/BlockHash" }]
+      responses:
+        "200":
+          description: Txids
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Hash" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block/{hash}/txid/{index}:
+    get:
+      tags: [blocks]
+      summary: Txid at a position in the block
+      parameters:
+        - { $ref: "#/components/parameters/BlockHash" }
+        - { name: index, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200": { $ref: "#/components/responses/PlainHash" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block/{hash}/txs:
+    get:
+      tags: [blocks]
+      summary: First 25 transactions in the block
+      parameters: [{ $ref: "#/components/parameters/BlockHash" }]
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block/{hash}/txs/{start_index}:
+    get:
+      tags: [blocks]
+      summary: 25 transactions starting at `start_index`
+      description: "`start_index` must be a multiple of 25 (400 otherwise); past the end is 404 `start index out of range`."
+      parameters:
+        - { $ref: "#/components/parameters/BlockHash" }
+        - { name: start_index, in: path, required: true, schema: { type: integer, minimum: 0, multipleOf: 25 } }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /block-template:
+    get:
+      tags: [blocks]
+      summary: getblocktemplate JSON (opt-in)
+      description: Only with `--esplora-block-template`; otherwise 404. Same JSON as RPC `getblocktemplate {"rules":["segwit"]}`. `Cache-Control no-store`; cached for 15 s.
+      responses:
+        "200":
+          description: Block template
+          content:
+            application/json:
+              schema: { type: object }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /tx/{txid}:
+    get:
+      tags: [transactions]
+      summary: Transaction JSON
+      description: |
+        Falls back to the mempool. Below the seqsigwit prune point the body is a
+        partial 200 with `pruned: true`, `vout` and `status`, and an empty `vin`.
+        Does **not** accept `?asof=` (404).
+      parameters: [{ $ref: "#/components/parameters/Txid" }]
+      responses:
+        "200":
+          description: Transaction
+          headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tx/{txid}/hex:
+    get:
+      tags: [transactions]
+      summary: Raw transaction as hex
+      parameters: [{ $ref: "#/components/parameters/Txid" }]
+      responses:
+        "200": { $ref: "#/components/responses/PlainHex" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tx/{txid}/raw:
+    get:
+      tags: [transactions]
+      summary: Raw transaction bytes
+      parameters: [{ $ref: "#/components/parameters/Txid" }]
+      responses:
+        "200":
+          description: Consensus-serialized transaction
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tx/{txid}/status:
+    get:
+      tags: [transactions]
+      summary: Confirmation status
+      description: |
+        Live: confirmed status at the tip, or `{"confirmed": false}` for a mempool tx.
+        With `?asof=`: confirmed only if the tx is in a block at or below the
+        as-of block; a tx confirmed later reads `{"confirmed": false}`.
+      parameters:
+        - { $ref: "#/components/parameters/Txid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200":
+          description: Status
+          headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TxStatus" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /tx/{txid}/merkle-proof:
+    get:
+      tags: [transactions]
+      summary: Electrum-style merkle proof
+      parameters: [{ $ref: "#/components/parameters/Txid" }]
+      responses:
+        "200":
+          description: Merkle proof
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MerkleProof" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tx/{txid}/merkleblock-proof:
+    get:
+      tags: [transactions]
+      summary: BIP37 merkleblock as hex
+      parameters: [{ $ref: "#/components/parameters/Txid" }]
+      responses:
+        "200": { $ref: "#/components/responses/PlainHex" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tx/{txid}/outspend/{vout}:
+    get:
+      tags: [transactions]
+      summary: Spend status of one output
+      description: |
+        Live: includes mempool spends of confirmed outputs.
+        With `?asof=`: only spends confirmed at or below the as-of block; the mempool is ignored.
+      parameters:
+        - { $ref: "#/components/parameters/Txid" }
+        - { name: vout, in: path, required: true, schema: { type: integer, minimum: 0 } }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200":
+          description: Outspend
+          headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Outspend" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+  /tx/{txid}/outspends:
+    get:
+      tags: [transactions]
+      summary: Spend status of every output
+      description: Same `?asof=` semantics as `/tx/{txid}/outspend/{vout}`.
+      parameters:
+        - { $ref: "#/components/parameters/Txid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200":
+          description: One entry per output, in vout order
+          headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Outspend" } }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+  /txs/outspends:
+    get:
+      tags: [transactions]
+      summary: Outspends for several txids (live only)
+      parameters:
+        - name: txids
+          in: query
+          required: true
+          description: Comma-separated txids, at most 50.
+          schema: { type: string }
+      responses:
+        "200":
+          description: One outspend array per txid, same order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: array, items: { $ref: "#/components/schemas/Outspend" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /address/{address}:
+    get:
+      tags: [addresses]
+      summary: Address chain and mempool stats
+      description: With `?asof=`, `chain_stats` are as of that block and `mempool_stats` are all zero.
+      parameters:
+        - { $ref: "#/components/parameters/Address" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/AddressStats" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}:
+    get:
+      tags: [addresses]
+      summary: Scripthash chain and mempool stats
+      description: With `?asof=`, `chain_stats` are as of that block and `mempool_stats` are all zero.
+      parameters:
+        - { $ref: "#/components/parameters/Scripthash" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/AddressStats" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /address/{address}/utxo:
+    get:
+      tags: [addresses]
+      summary: Unspent outputs
+      description: |
+        Live: matches Electrum `listunspent` (adds mempool funding and drops
+        confirmed outputs spent in the mempool).
+        With `?asof=`: the UTXO set for this script as of that block, with no mempool.
+      parameters:
+        - { $ref: "#/components/parameters/Address" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/UtxoList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}/utxo:
+    get:
+      tags: [addresses]
+      summary: Unspent outputs
+      description: Same as `/address/{address}/utxo`.
+      parameters:
+        - { $ref: "#/components/parameters/Scripthash" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/UtxoList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /address/{address}/txs:
+    get:
+      tags: [addresses]
+      summary: Mempool txs (up to 50) then the first 25 confirmed, newest first
+      description: With `?asof=`, only the confirmed page as of that block (no mempool rows).
+      parameters:
+        - { $ref: "#/components/parameters/Address" }
+        - { $ref: "#/components/parameters/AfterTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}/txs:
+    get:
+      tags: [addresses]
+      summary: Mempool txs (up to 50) then the first 25 confirmed, newest first
+      description: With `?asof=`, only the confirmed page as of that block (no mempool rows).
+      parameters:
+        - { $ref: "#/components/parameters/Scripthash" }
+        - { $ref: "#/components/parameters/AfterTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /address/{address}/txs/chain:
+    get:
+      tags: [addresses]
+      summary: 25 confirmed txs, newest first
+      parameters:
+        - { $ref: "#/components/parameters/Address" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /address/{address}/txs/chain/{last_seen_txid}:
+    get:
+      tags: [addresses]
+      summary: Next 25 confirmed txs after `last_seen_txid`
+      parameters:
+        - { $ref: "#/components/parameters/Address" }
+        - { $ref: "#/components/parameters/LastSeenTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}/txs/chain:
+    get:
+      tags: [addresses]
+      summary: 25 confirmed txs, newest first
+      parameters:
+        - { $ref: "#/components/parameters/Scripthash" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}/txs/chain/{last_seen_txid}:
+    get:
+      tags: [addresses]
+      summary: Next 25 confirmed txs after `last_seen_txid`
+      parameters:
+        - { $ref: "#/components/parameters/Scripthash" }
+        - { $ref: "#/components/parameters/LastSeenTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /address/{address}/txs/mempool:
+    get:
+      tags: [addresses]
+      summary: Mempool txs for the address (up to 50)
+      description: Does **not** accept `?asof=` (404).
+      parameters: [{ $ref: "#/components/parameters/Address" }]
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}/txs/mempool:
+    get:
+      tags: [addresses]
+      summary: Mempool txs for the scripthash (up to 50)
+      description: Does **not** accept `?asof=` (404).
+      parameters: [{ $ref: "#/components/parameters/Scripthash" }]
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /address/{address}/txs/summary:
+    get:
+      tags: [addresses]
+      summary: Compact confirmed history (rbitcoin dialect)
+      description: |
+        Not in Blockstream Esplora API.md; shaped like mempool.space
+        `/address/:addr/txs/summary`. Confirmed only, 25 per page, newest first.
+        Served above `--max-sh-creates`.
+      parameters:
+        - { $ref: "#/components/parameters/Address" }
+        - { $ref: "#/components/parameters/AfterTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/SummaryList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /address/{address}/txs/summary/{last_seen_txid}:
+    get:
+      tags: [addresses]
+      summary: Next compact page after `last_seen_txid` (rbitcoin dialect)
+      parameters:
+        - { $ref: "#/components/parameters/Address" }
+        - { $ref: "#/components/parameters/LastSeenTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/SummaryList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}/txs/summary:
+    get:
+      tags: [addresses]
+      summary: Compact confirmed history (rbitcoin dialect)
+      parameters:
+        - { $ref: "#/components/parameters/Scripthash" }
+        - { $ref: "#/components/parameters/AfterTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/SummaryList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthash/{scripthash}/txs/summary/{last_seen_txid}:
+    get:
+      tags: [addresses]
+      summary: Next compact page after `last_seen_txid` (rbitcoin dialect)
+      parameters:
+        - { $ref: "#/components/parameters/Scripthash" }
+        - { $ref: "#/components/parameters/LastSeenTxid" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { $ref: "#/components/responses/SummaryList" }
+        "404": { $ref: "#/components/responses/AsOfNotFound" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /addresses/txs:
+    post:
+      tags: [addresses]
+      summary: Merged tx page for several addresses
+      description: |
+        Mempool rows first (up to 50 per script), then one merged page of 25
+        confirmed rows, newest first. Does **not** accept `?asof=` (404).
+      parameters: [{ $ref: "#/components/parameters/AfterTxid" }, { $ref: "#/components/parameters/ClientHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/AddressArray" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /addresses/txs/summary:
+    post:
+      tags: [addresses]
+      summary: Merged compact page for several addresses (rbitcoin dialect)
+      parameters: [{ $ref: "#/components/parameters/AfterTxid" }, { $ref: "#/components/parameters/ClientHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/AddressArray" }
+      responses:
+        "200": { $ref: "#/components/responses/SummaryList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthashes/txs:
+    post:
+      tags: [addresses]
+      summary: Merged tx page for several scripthashes
+      parameters: [{ $ref: "#/components/parameters/AfterTxid" }, { $ref: "#/components/parameters/ClientHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/ScripthashArray" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /scripthashes/txs/summary:
+    post:
+      tags: [addresses]
+      summary: Merged compact page for several scripthashes (rbitcoin dialect)
+      parameters: [{ $ref: "#/components/parameters/AfterTxid" }, { $ref: "#/components/parameters/ClientHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/ScripthashArray" }
+      responses:
+        "200": { $ref: "#/components/responses/SummaryList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/AfterTxidNotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /mempool:
+    get:
+      tags: [mempool]
+      summary: Mempool summary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MempoolInfo" }
+  /mempool/txids:
+    get:
+      tags: [mempool]
+      summary: All mempool txids
+      responses:
+        "200":
+          description: Txids
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Hash" } }
+  /mempool/txids/page:
+    get:
+      tags: [mempool]
+      summary: First page of mempool txids in txid order
+      parameters: [{ $ref: "#/components/parameters/MaxTxs" }]
+      responses:
+        "200":
+          description: Txids
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Hash" } }
+  /mempool/txids/page/{last_txid}:
+    get:
+      tags: [mempool]
+      summary: Next page of mempool txids after `last_txid`
+      parameters:
+        - { name: last_txid, in: path, required: true, schema: { $ref: "#/components/schemas/Hash" } }
+        - { $ref: "#/components/parameters/MaxTxs" }
+      responses:
+        "200":
+          description: Txids
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Hash" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /mempool/recent:
+    get:
+      tags: [mempool]
+      summary: Most recently accepted mempool txs
+      responses:
+        "200":
+          description: Recent txs in accept order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [txid, fee, vsize, value]
+                  properties:
+                    txid: { $ref: "#/components/schemas/Hash" }
+                    fee: { type: integer, description: sats }
+                    vsize: { type: integer }
+                    value: { type: integer, description: total output value in sats }
+  /fee-estimates:
+    get:
+      tags: [mempool]
+      summary: Fee estimates by confirmation target
+      description: Keys are confirmation targets in blocks; values are sat/vB. Targets without an estimate are left out.
+      responses:
+        "200":
+          description: Estimates
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: number }
+              example: { "1": 12.345, "6": 4.0, "144": 1.0 }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /tx:
+    post:
+      tags: [broadcast]
+      summary: Broadcast a raw transaction
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: { type: string, description: raw transaction hex }
+      responses:
+        "200": { $ref: "#/components/responses/PlainHash" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /txs/test:
+    post:
+      tags: [broadcast]
+      summary: Test mempool acceptance without admitting
+      parameters:
+        - name: maxfeerate
+          in: query
+          description: BTC/kvB. `0` means unlimited; omitted means 0.1.
+          schema: { type: number, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: array, maxItems: 25, items: { type: string, description: raw tx hex } }
+      responses:
+        "200":
+          description: One result per tx
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TestAcceptResult" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /txs/package:
+    post:
+      tags: [broadcast]
+      summary: Submit a package (same path as RPC `submitpackage`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: array, maxItems: 25, items: { type: string, description: raw tx hex } }
+      responses:
+        "200":
+          description: Accepted txids
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [txids]
+                properties:
+                  txids: { type: array, items: { $ref: "#/components/schemas/Hash" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /internal/txs:
+    post:
+      tags: [internal]
+      summary: Bulk tx JSON by txid (unknown ids omitted)
+      requestBody: { $ref: "#/components/requestBodies/TxidArray" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /internal/mempool/txs:
+    get:
+      tags: [internal]
+      summary: First page of mempool tx JSON in txid order
+      parameters: [{ $ref: "#/components/parameters/MaxTxs" }]
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+    post:
+      tags: [internal]
+      summary: Bulk mempool tx JSON by txid (mempool only)
+      requestBody: { $ref: "#/components/requestBodies/TxidArray" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /internal/mempool/txs/all:
+    get:
+      tags: [internal]
+      summary: Every mempool tx JSON in txid order
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+  /internal/mempool/txs/{last_txid}:
+    get:
+      tags: [internal]
+      summary: Next page of mempool tx JSON after `last_txid`
+      parameters:
+        - { name: last_txid, in: path, required: true, schema: { $ref: "#/components/schemas/Hash" } }
+        - { $ref: "#/components/parameters/MaxTxs" }
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /internal/block/{hash}/txs:
+    get:
+      tags: [internal]
+      summary: Every tx in a block (public `/block/{hash}/txs` is 25 per page)
+      parameters: [{ $ref: "#/components/parameters/BlockHash" }]
+      responses:
+        "200": { $ref: "#/components/responses/TxList" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /internal/txs/outspends/by-txid:
+    post:
+      tags: [internal]
+      summary: "Outspends per txid (unknown txid → `[]`)"
+      requestBody: { $ref: "#/components/requestBodies/TxidArray" }
+      responses:
+        "200":
+          description: One array per txid, same order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: array, items: { $ref: "#/components/schemas/Outspend" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /internal/txs/outspends/by-outpoint:
+    post:
+      tags: [internal]
+      summary: "Outspend per `txid:vout` (malformed → `{\"spent\": false}`)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: array, items: { type: string, example: "<txid>:0" } }
+      responses:
+        "200":
+          description: One outspend per outpoint, same order
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Outspend" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+components:
+  headers:
+    ChainTip:
+      description: Block hash of the pinned chain view (live tip, scripthash-index watermark, or the `?asof=` block).
+      schema: { $ref: "#/components/schemas/Hash" }
+    ChainTipHeight:
+      description: Height of the pinned chain view.
+      schema: { type: integer }
+
+  parameters:
+    AsOf:
+      name: asof
+      in: query
+      required: false
+      description: |
+        Block hash (display order) on the current best chain. Pins the answer at
+        that block: no later confirmations and no mempool. Bad hex, an empty
+        value, an unknown or reorged-out block, or (address/scripthash routes) a
+        block ahead of the visible scripthash index → **404**.
+      schema: { $ref: "#/components/schemas/Hash" }
+    BlockHash:
+      { name: hash, in: path, required: true, schema: { $ref: "#/components/schemas/Hash" } }
+    Txid:
+      { name: txid, in: path, required: true, schema: { $ref: "#/components/schemas/Hash" } }
+    Address:
+      { name: address, in: path, required: true, description: Address on the node's network, schema: { type: string } }
+    Scripthash:
+      name: scripthash
+      in: path
+      required: true
+      description: Electrum scripthash (SHA256 of the scriptPubKey, byte-reversed hex)
+      schema: { $ref: "#/components/schemas/Hash" }
+    LastSeenTxid:
+      { name: last_seen_txid, in: path, required: true, schema: { $ref: "#/components/schemas/Hash" } }
+    AfterTxid:
+      name: after_txid
+      in: query
+      required: false
+      description: mempool.space-style cursor. Skips through this tx (mempool, then chain). Unknown or unparseable → 422.
+      schema: { $ref: "#/components/schemas/Hash" }
+    MaxTxs:
+      name: max_txs
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 10000, default: 10000 }
+    ClientHeader:
+      name: X-Rbitcoin-Client
+      in: header
+      required: false
+      description: Join-cache client id. Honored only on unix and loopback listeners; ignored on public TCP.
+      schema: { type: string }
+
+  requestBodies:
+    AddressArray:
+      required: true
+      content:
+        application/json:
+          schema: { type: array, maxItems: 300, items: { type: string } }
+    ScripthashArray:
+      required: true
+      content:
+        application/json:
+          schema: { type: array, maxItems: 300, items: { $ref: "#/components/schemas/Hash" } }
+    TxidArray:
+      required: true
+      content:
+        application/json:
+          schema: { type: array, items: { $ref: "#/components/schemas/Hash" } }
+
+  responses:
+    PlainInt:
+      description: Decimal integer
+      content: { text/plain: { schema: { type: string, pattern: "^[0-9]+$" } } }
+    PlainHash:
+      description: 64-character hex hash
+      content: { text/plain: { schema: { $ref: "#/components/schemas/Hash" } } }
+    PlainHex:
+      description: Hex string
+      content: { text/plain: { schema: { type: string, pattern: "^[0-9a-f]*$" } } }
+    NotFound:
+      description: Unknown object, malformed hash, or `pruned`
+      content: { text/plain: { schema: { type: string } } }
+    AsOfNotFound:
+      description: Unknown object, malformed hash, or an `asof` block that is unknown, off the best chain, or ahead of the scripthash index
+      content: { text/plain: { schema: { type: string } } }
+    BadRequest:
+      description: Bad input
+      content: { text/plain: { schema: { type: string } } }
+    TooLarge:
+      description: Body too large
+      content: { text/plain: { schema: { type: string } } }
+    AfterTxidNotFound:
+      description: "`after_txid not found`, or `body too long` (more than 300 scripts) on POST"
+      content: { text/plain: { schema: { type: string } } }
+    Unavailable:
+      description: No tip, mempool unavailable, scripthash index disabled, `--max-sh-creates` exceeded, or `chain view moved`
+      content: { text/plain: { schema: { type: string } } }
+    TxList:
+      description: Transactions
+      headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+      content:
+        application/json:
+          schema: { type: array, items: { $ref: "#/components/schemas/Transaction" } }
+    UtxoList:
+      description: Unspent outputs
+      headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+      content:
+        application/json:
+          schema: { type: array, items: { $ref: "#/components/schemas/Utxo" } }
+    SummaryList:
+      description: Compact history rows, newest first
+      headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+      content:
+        application/json:
+          schema: { type: array, items: { $ref: "#/components/schemas/TxSummary" } }
+    AddressStats:
+      description: Stats
+      headers: { X-Bitcoin-Chain-Tip: { $ref: "#/components/headers/ChainTip" }, X-Bitcoin-Chain-Tip-Height: { $ref: "#/components/headers/ChainTipHeight" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AddressInfo" }
+
+  schemas:
+    Hash:
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+    Block:
+      type: object
+      required: [id, height, version, timestamp, tx_count, size, weight, merkle_root, previousblockhash, mediantime, nonce, bits, difficulty]
+      properties:
+        id: { $ref: "#/components/schemas/Hash" }
+        height: { type: integer }
+        version: { type: integer }
+        timestamp: { type: integer }
+        tx_count: { type: integer }
+        size: { type: integer, description: BIP144 total size }
+        weight: { type: integer, description: BIP141 weight }
+        merkle_root: { $ref: "#/components/schemas/Hash" }
+        previousblockhash:
+          oneOf: [{ $ref: "#/components/schemas/Hash" }, { type: "null" }]
+        mediantime: { type: integer }
+        nonce: { type: integer }
+        bits: { type: integer, description: compact target as u32 (not Core's hex string) }
+        difficulty: { type: number }
+    BlockStatus:
+      type: object
+      required: [in_best_chain, height, next_best]
+      properties:
+        in_best_chain: { type: boolean }
+        height: { type: [integer, "null"] }
+        next_best:
+          oneOf: [{ $ref: "#/components/schemas/Hash" }, { type: "null" }]
+    TxStatus:
+      type: object
+      required: [confirmed]
+      properties:
+        confirmed: { type: boolean }
+        block_height: { type: integer }
+        block_hash: { $ref: "#/components/schemas/Hash" }
+        block_time: { type: integer }
+    Vout:
+      type: object
+      required: [scriptpubkey, scriptpubkey_asm, scriptpubkey_type, value]
+      properties:
+        scriptpubkey: { type: string }
+        scriptpubkey_asm: { type: string }
+        scriptpubkey_type: { type: string }
+        scriptpubkey_address: { type: string }
+        value: { type: integer, description: sats }
+    Vin:
+      type: object
+      required: [txid, vout, is_coinbase]
+      properties:
+        txid: { $ref: "#/components/schemas/Hash" }
+        vout: { type: integer }
+        is_coinbase: { type: boolean }
+        sequence: { type: integer }
+        scriptsig: { type: string }
+        scriptsig_asm: { type: string }
+        witness: { type: array, items: { type: string } }
+        inner_redeemscript_asm: { type: string }
+        inner_witnessscript_asm: { type: string }
+        prevout:
+          oneOf: [{ $ref: "#/components/schemas/Vout" }, { type: "null" }]
+    Transaction:
+      type: object
+      required: [txid, version, locktime, vin, vout, status]
+      properties:
+        txid: { $ref: "#/components/schemas/Hash" }
+        version: { type: integer }
+        locktime: { type: integer }
+        size: { type: integer }
+        weight: { type: integer }
+        sigops: { type: integer }
+        fee: { type: integer, description: sats }
+        vin: { type: array, items: { $ref: "#/components/schemas/Vin" } }
+        vout: { type: array, items: { $ref: "#/components/schemas/Vout" } }
+        status: { $ref: "#/components/schemas/TxStatus" }
+        pruned:
+          type: boolean
+          description: Present and true below the seqsigwit prune point; `vin` is then empty.
+    MerkleProof:
+      type: object
+      required: [block_height, merkle, pos]
+      properties:
+        block_height: { type: integer }
+        merkle: { type: array, items: { $ref: "#/components/schemas/Hash" } }
+        pos: { type: integer }
+    Outspend:
+      type: object
+      required: [spent]
+      properties:
+        spent: { type: boolean }
+        txid: { $ref: "#/components/schemas/Hash" }
+        vin: { type: integer }
+        status: { $ref: "#/components/schemas/TxStatus" }
+    Utxo:
+      type: object
+      required: [txid, vout, value, status]
+      properties:
+        txid: { $ref: "#/components/schemas/Hash" }
+        vout: { type: integer }
+        value: { type: integer }
+        status: { $ref: "#/components/schemas/TxStatus" }
+    Stats:
+      type: object
+      required: [tx_count, funded_txo_count, funded_txo_sum, spent_txo_count, spent_txo_sum]
+      properties:
+        tx_count: { type: integer }
+        funded_txo_count: { type: integer }
+        funded_txo_sum: { type: integer }
+        spent_txo_count: { type: integer }
+        spent_txo_sum: { type: integer }
+    AddressInfo:
+      type: object
+      required: [chain_stats, mempool_stats]
+      properties:
+        address: { type: string, description: present on /address/ }
+        scripthash: { $ref: "#/components/schemas/Hash" }
+        chain_stats: { $ref: "#/components/schemas/Stats" }
+        mempool_stats: { $ref: "#/components/schemas/Stats" }
+    TxSummary:
+      type: object
+      required: [txid, value, height, time]
+      properties:
+        txid: { $ref: "#/components/schemas/Hash" }
+        value: { type: integer, description: net sats for this script in this tx (funded − spent) }
+        height: { type: integer }
+        time: { type: integer, description: confirming header timestamp, 0 if the header is missing }
+        tx_position: { type: integer, description: index of the tx in its block }
+    MempoolInfo:
+      type: object
+      required: [count, vsize, total_fee, fee_histogram]
+      properties:
+        count: { type: integer }
+        vsize: { type: integer }
+        total_fee: { type: integer }
+        fee_histogram:
+          type: array
+          items: { type: array, prefixItems: [{ type: number }, { type: integer }], minItems: 2, maxItems: 2 }
+    TestAcceptResult:
+      type: object
+      required: [txid, wtxid, allowed]
+      properties:
+        txid: { $ref: "#/components/schemas/Hash" }
+        wtxid: { $ref: "#/components/schemas/Hash" }
+        allowed: { type: boolean }
+        vsize: { type: integer }
+        fees:
+          type: object
+          properties:
+            base: { type: number, description: BTC }
+        reject-reason: { type: string }
