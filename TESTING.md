@@ -88,6 +88,39 @@ Do **not** “fix” flakes with `RUST_TEST_THREADS=1`.
 
 Shared Tiny on-disk fixtures live in `rbitcoin_store::testutil` (`TempDir`, `tiny_store`) and `rbitcoin_query::testutil::tiny_query` — unique path, Tiny heads, drop-cleans. Net tests that need a regtest `ChainHub` use `tiny_regtest_hub` / `tiny_regtest_hub_labeled` (Tiny query + shipped `ChainHub::new`), including IBD confirm-reject / path / progress / archive / dial / confirm tests. Do **not** roll your own `std::env::temp_dir()` + `create_dir_all` for a Tiny store/query. Node-level scenarios still use `rbitcoin-test` (`TestDatadir`, `mine`, `chain_fixture`). Class A TxApply fixtures call `rbitcoin_query::testutil::FixtureChain` (`connect_block` / `commit_class_a_only`), which converts once then uses shipped `archive_class_a_from_wire`. Do not put dummy-Block conversion on production `Query`.
 
+## IBD synthetic replay (optional bench)
+
+`rbitcoin-bench ibd` builds a valid regtest chain with a chosen transaction
+shape, writes the raw blocks to a corpus, then replays them through the same
+confirm entry point IBD uses: lookup → load/pin → scripts → write. The store,
+pin, script pool, and Class A writer are production code; only the wire is
+synthetic. It is not part of the default compile graph or CI.
+
+```bash
+cargo run -p rbitcoin-bench --features cli --release -- ibd \
+  --case multi --txs-per-block 4000 --blocks 100 --warmup 100 --batch 144
+cargo run -p rbitcoin-bench --features cli --release -- ibd \
+  --case real-866342 --blocks 10
+```
+
+Cases: `empty` (coinbase only), `chain` (1-in/1-out), `multi` (2-in/2-out),
+`wide` (100-input txs), `witness` (P2WSH), `mixed` (alternating legacy/P2WSH),
+`real-866342` (vendored mainnet block + Floresta prevouts through structure and
+script verify). `--corpus DIR` replays raw `<height>.bin` blocks written by a
+previous run (genesis at `0000000000.bin`) instead of generating them; the
+corpus must be a contiguous chain from genesis.
+
+Output is blocks/s, tx/s, input/s, MiB/s, batch p50/p95, RSS, store MiB, and
+the confirm stage split (`decode`, `lookup`, `load`, `script`, `class_a`,
+`structural`, `class_c`, `connect`). `--out FILE` appends a CSV row; `--json`
+prints one object. The synthetic scripts are `OP_TRUE`/P2WSH-`OP_TRUE`, so the
+result measures decode, indexing, pinning, queue, and write work, **not**
+ECDSA/Schnorr cost. Use `real-866342` or a real corpus for script cost.
+
+A host A/B is still musl + `ibd: perf`; agent-VM numbers are not product
+results. Do not point `--corpus` at a mainnet datadir or run the replay against
+one.
+
 ### Third-party deps and compile cost (2026-08)
 
 | Change | Why it helps the cycle |

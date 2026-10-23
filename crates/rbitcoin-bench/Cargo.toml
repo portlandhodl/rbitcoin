@@ -23,9 +23,13 @@ doctest = false
 
 [dependencies]
 rbitcoin-primitives = { workspace = true }
+rbitcoin-consensus = { workspace = true }
+rbitcoin-query = { workspace = true }
+rbitcoin-store = { workspace = true }
 bitcoin = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+ruzstd = "0.9"
 
 [lints]
 workspace = true

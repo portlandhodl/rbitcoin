@@ -15,10 +15,14 @@
 //! are unique output scripts from heights spaced genesis→tip (so height-list
 //! servers cannot cache one window).
 //!
+//! `ibd` mode is a synthetic IBD replay: `cargo run -p rbitcoin-bench
+//! --features cli --release -- ibd --help`.
+//!
 //! Not a product binary. Build: `cargo run -p rbitcoin-bench --features cli --release`.
 
 mod electrum;
 mod esplora;
+mod ibd;
 mod jsonrpc;
 mod out;
 mod progress;
@@ -46,7 +50,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub fn cli_main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
-    match run(args.into_iter().collect()) {
+    let mut args: Vec<OsString> = args.into_iter().collect();
+    if args.get(1).is_some_and(|a| a == "ibd") {
+        args.drain(..2);
+        return ibd::run(&args);
+    }
+    match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
@@ -63,6 +72,7 @@ fn usage() -> String {
            cargo run -p rbitcoin-bench --features cli --release -- [OPTIONS]\n\
          \n\
          Required (one):\n\
+           ibd [OPTIONS]          synthetic IBD replay (see --help)\n\
            --electrum [HOST:PORT] Electrum TCP (default 127.0.0.1:50001)\n\
            --esplora [URL]        Esplora REST (default http://127.0.0.1:3000)\n\
          \n\
